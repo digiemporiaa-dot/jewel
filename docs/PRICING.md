@@ -1,8 +1,22 @@
-# Pricing Engine (design)
+# Pricing Engine
 
-> The engine is **implemented in Phase 2** at `lib/pricing`. This document is the
-> agreed contract the data model (Phase 1) already supports. **No code outside
-> `lib/pricing` may calculate jewellery prices.**
+> **Implemented (Phase 2).** `calculatePrice()` lives in `lib/pricing.ts`; the
+> server-side DB resolver is `lib/pricing/resolve.ts` and making-charge resolution
+> is `lib/pricing/making.ts`. **No code outside these may calculate jewellery
+> prices** (RULE 2). 40+ unit tests cover the cases below (`tests/pricing.test.ts`,
+> `tests/making.test.ts`).
+
+## Modules
+
+| File | Role |
+| --- | --- |
+| `lib/pricing.ts` | Pure engine — `calculatePrice()`, `isRateLockValid()`. decimal.js only. |
+| `lib/pricing/making.ts` | Pure making-charge resolution (`pickMakingRule`). |
+| `lib/pricing/resolve.ts` | Server resolver — loads rates/making/diamonds from the DB, calls the engine, recomputes cached `priceFrom`/`priceTo`. |
+
+The engine is invoked server-side only; the browser is never trusted for price.
+Cached `priceFrom`/`priceTo` are refreshed after any rate/making change and by
+`POST /api/cron/recompute-prices` (guarded by `CRON_SECRET`).
 
 ## Why dynamic pricing
 

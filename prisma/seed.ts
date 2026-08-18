@@ -426,7 +426,7 @@ const PRODUCTS: SeedProduct[] = [
     certification: 'IGI Certified', hasDiamond: true, isFeatured: true, occasion: ['Wedding'],
     tags: ['diamond', 'bracelet', 'tennis'], shortDescription: 'A line of matched round diamonds.',
     variants: [{ labelSuffix: '7 inch', size: '7in', netWeight: '7.100', stock: 1 }],
-    diamonds: [{ label: 'Line diamonds', clarity: 'VS', color: 'GH', shape: 'Round', caratWeight: '1.500', pieces: 30, rateKey: 'dVS' }],
+    diamonds: [{ label: 'Line diamonds', clarity: 'VS', color: 'GH', shape: 'Round', caratWeight: '0.050', pieces: 30, rateKey: 'dVS' }],
   },
   {
     name: 'Diamond Bridal Necklace Set', slug: 'diamond-bridal-necklace-set', sku: 'NK-DIA-0014',
@@ -436,7 +436,7 @@ const PRODUCTS: SeedProduct[] = [
     certification: 'IGI Certified', hasDiamond: true, hasStone: true, isFeatured: true, occasion: ['Wedding'],
     tags: ['diamond', 'bridal', 'necklace', 'set'], shortDescription: 'Statement bridal set with diamonds and emeralds.',
     variants: [{ labelSuffix: 'Set', netWeight: '34.000', stock: 0 }],
-    diamonds: [{ label: 'Necklace diamonds', clarity: 'SI', color: 'GH', shape: 'Round', caratWeight: '3.200', pieces: 120, rateKey: 'dSI' }],
+    diamonds: [{ label: 'Necklace diamonds', clarity: 'SI', color: 'GH', shape: 'Round', caratWeight: '0.027', pieces: 120, rateKey: 'dSI' }],
     stones: [{ name: 'Emerald', type: 'Gemstone', pieces: 8, weightCarat: '4.000', ratePerUnit: '3500' }],
   },
   {
@@ -447,7 +447,7 @@ const PRODUCTS: SeedProduct[] = [
     hasDiamond: true, isNewArrival: true, occasion: ['Gifting'], tags: ['diamond', 'pendant', 'rose'],
     shortDescription: 'Rose-gold heart pendant with pavé diamonds.',
     variants: [{ labelSuffix: 'One size', netWeight: '2.900', stock: 4 }],
-    diamonds: [{ label: 'Pavé', clarity: 'SI', color: 'GH', shape: 'Round', caratWeight: '0.250', pieces: 18, rateKey: 'dSI' }],
+    diamonds: [{ label: 'Pavé', clarity: 'SI', color: 'GH', shape: 'Round', caratWeight: '0.014', pieces: 18, rateKey: 'dSI' }],
   },
   {
     name: 'Gold Ring with Ruby', slug: 'gold-ring-with-ruby', sku: 'RG-STN-0016',
