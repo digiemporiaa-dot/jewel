@@ -1,8 +1,11 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import Decimal from 'decimal.js';
 import { getSessionToken } from '@/lib/session';
 import { getCart } from '@/lib/cart';
-import { formatCurrency } from '@/lib/utils/format';
+import { getStoreSettings } from '@/lib/store';
+import { getCurrentCustomer } from '@/lib/customer-session';
+import CheckoutClient from './CheckoutClient';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,31 +14,26 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-// Placeholder ahead of Phase 4 (payments/OTP/rate-lock). Shows the server-computed
-// order total so the flow is coherent; the full checkout is built next.
 export default async function CheckoutPage() {
-  const cart = await getCart(await getSessionToken());
+  const token = await getSessionToken();
+  const [cart, store, customer] = await Promise.all([getCart(token), getStoreSettings(), getCurrentCustomer()]);
+
+  if (cart.lines.length === 0) redirect('/cart');
+
+  const grand = new Decimal(cart.grandTotal);
+  const codAllowed = store.codMaxOrderValue != null && grand.lte(new Decimal(store.codMaxOrderValue.toString()));
+  const panRequired = store.panThreshold != null && grand.gt(new Decimal(store.panThreshold.toString()));
 
   return (
-    <div className="shell py-16 max-w-lg mx-auto text-center">
-      <p className="eyebrow">Checkout</p>
-      <h1 className="mt-3 text-3xl">Secure checkout is on the way</h1>
-      {cart.lines.length > 0 ? (
-        <>
-          <p className="mt-3 text-ink-soft">
-            Your bag total is <strong className="text-ink">{formatCurrency(cart.grandTotal)}</strong> ({cart.itemCount} item{cart.itemCount === 1 ? '' : 's'}).
-          </p>
-          <p className="mt-2 text-sm text-ink-soft">
-            OTP login, address, rate-lock, Razorpay, COD and invoicing arrive in the next phase.
-          </p>
-          <Link href="/cart" className="btn-outline mt-8 inline-flex">Back to bag</Link>
-        </>
-      ) : (
-        <>
-          <p className="mt-3 text-ink-soft">Your bag is empty.</p>
-          <Link href="/c/new-arrivals" className="btn-primary mt-8 inline-flex">Shop New Arrivals</Link>
-        </>
-      )}
+    <div className="shell py-8 sm:py-12">
+      <h1 className="text-3xl mb-6">Checkout</h1>
+      <CheckoutClient
+        summary={{ itemCount: cart.itemCount, makingTotal: cart.makingTotal, gstTotal: cart.gstTotal, shipping: cart.shipping, grandTotal: cart.grandTotal }}
+        verifiedPhone={customer?.phoneVerified ? customer.phone : null}
+        panRequired={panRequired}
+        codAllowed={codAllowed}
+        brandName={store.brandName}
+      />
     </div>
   );
 }

@@ -1,5 +1,72 @@
 # Changelog
 
+## Phase 4 — Checkout, Payments & Orders · 2026-08-18
+
+**Features added**
+- **Phone OTP** (`lib/otp.ts`): hashed codes (HMAC), 10-min expiry, 5-attempt cap,
+  resend cooldown, constant-time compare; codes never logged in production.
+- **Customer session** (`lib/customer-session.ts` + pure `lib/sign.ts`):
+  tamper-evident HMAC-signed cookie, separate from staff auth.
+- **Order pipeline** (`lib/orders.ts`) — the server is authoritative:
+  - Totals are **always recomputed from the cart/pricing engine**; no amount is
+    ever accepted from the browser (RULE 1, §59).
+  - **Rate lock**: snapshots the live rates + per-item price breakup onto the
+    immutable order; `isRateLockValid` honours `StoreSetting.rateLockMinutes`.
+  - **Inventory reserved in a transaction** for ready-to-ship lines (oversell-safe);
+    released on payment failure / cancellation.
+  - **Rules**: COD blocked above `codMaxOrderValue`; `VERIFICATION_HOLD` above
+    `verificationCallAbove`; PAN required above `panThreshold`; made-to-order
+    **advance/partial payment** via product `advancePercent`; COD token support.
+- **Razorpay** (`lib/payments/*`): orders created **server-side only** from the
+  server total; payment + webhook **signature verification** (pure, unit-tested);
+  a simulated dev-mode so the whole flow runs without live keys.
+- **Webhook** (`/api/webhooks/razorpay`): signature-verified, **idempotent**
+  (WebhookEvent recorded before processing, unique per delivery), **reprocessable**
+  on failure; handles payment.captured / order.paid / payment.failed / refund.processed.
+- **Checkout** (`/checkout`): guest checkout with phone-OTP verification, address,
+  payment method (Razorpay / COD / bank transfer), server-side place-order action,
+  Razorpay Checkout (live) or simulated confirm (dev). Order confirmation / tracking
+  page with timeline; **PDF invoice** (`pdf-lib`) from the frozen snapshot, access-
+  controlled (owner or staff).
+- **Transactional email** (`lib/email/*`, nodemailer): order + payment confirmations,
+  **non-blocking** so an order never fails if email fails (§67); recorded as
+  Notifications.
+- **Admin orders** (`/admin/orders`): searchable list + detail with price snapshot,
+  payments, timeline, internal notes, **controlled state transitions** (pure
+  `lib/order-status.ts`), high-value verification recording, manual payment
+  confirmation — all permission-gated + audited (DISPATCH is view-only).
+- **Customer account** (`/my-account`, `/my-account/orders`): OTP login/logout,
+  order history and tracking.
+
+**Tests** (Vitest, 72 total; +13)
+- Razorpay payment & webhook signatures (compute/verify, tamper + wrong-secret
+  rejection); signed-session round-trip + tamper rejection; order-status state
+  machine (valid/invalid transitions, terminal states).
+
+**Verification**
+- `tsc --noEmit` ✓ · `next build` ✓ (42 routes) · `vitest` ✓ (72/72).
+- **End-to-end financial flows** driven through the real server with headless
+  Chromium + DB assertions:
+  - Online order: OTP → pay (dev) → **CONFIRMED / CAPTURED**, `grandTotal` =
+    `amountPaid` = server-computed ₹24,432, **inventory reserved** (1 unit), correct
+    timeline, valid **PDF invoice** (401 unauthenticated, 200 for staff).
+  - High-value made-to-order (₹4.02L): **COD disabled**, **PAN captured**,
+    **VERIFICATION_HOLD**, **50% advance** collected (₹201,096) — partial payment.
+  - Webhook: bad signature → 400; valid → processed; duplicate delivery → deduped
+    (exactly one WebhookEvent).
+  - Admin: order manager sees actions; DISPATCH is view-only.
+
+**Known limitations**
+- Live Razorpay/SMS/SMTP require real credentials; dev-mode simulates payment and
+  logs OTP/email. Balance-payment collection for made-to-order and full refund UI
+  are minimal (statuses + webhook wired; richer flows in later phases).
+- Shipping/AWB is Phase 5; abandoned-cart automation and campaigns are Phase 6.
+
+**Next steps** — Phase 5: Shiprocket (serviceability, shipment, AWB, pickup,
+tracking, NDR, RTO) behind the provider interface; customer tracking.
+
+---
+
 ## Phase 3 — Storefront · 2026-08-18
 
 **Features added**
