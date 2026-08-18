@@ -1,5 +1,56 @@
 # Changelog
 
+## Phase 3 — Storefront · 2026-08-18
+
+**Features added**
+- **Storefront data layer** (`lib/storefront.ts`): URL-param filtering (metal, purity,
+  colour, price range, availability, occasion), sorting (recommended / newest /
+  price-low / price-high / best-selling), pagination, and search with logging.
+  "Virtual" categories (Gold / Silver / Diamond / New Arrivals) filter by attribute
+  so the nav resolves to populated pages.
+- **Product card + shared UI**: `ProductCard` (badges, wishlist heart, "From ₹"
+  range), `PriceLabel` (safe fallbacks), `ProductImage` (monogram fallback,
+  SSR-safe onError), `ProductGrid`, `ProductRow` (mobile scroll-snap).
+- **Listing pages**: `/c/[category]`, `/collection/[slug]`, `/collections`,
+  `/search` with a shared `FilterSort` panel (URL-driven, shareable) + `ListingView`.
+- **Product page** (`/p/[slug]`): desktop thumbnail+main / mobile swipe gallery;
+  variant & size selector (client picks the engine-computed breakup per variant);
+  expandable **price breakup** ("How this price is calculated" — metal, wastage,
+  making, diamond, stone, GST, total, rate used, weight, purity, timestamp);
+  availability + lead time; **pincode serviceability** check; Add to Bag / Buy Now;
+  Wishlist; **WhatsApp enquiry** (pre-filled, number from settings); sticky mobile
+  CTA; specs; related products; full SEO + Product & Breadcrumb JSON-LD.
+- **Cart** (`/cart`): guest cookie session; add/update/remove server actions with
+  ownership + stock checks; **server always recomputes** every line via the pricing
+  engine (browser totals never trusted); order summary (metal, making, stones, GST,
+  shipping, total) with free-shipping threshold from settings.
+- **Wishlist** (`/wishlist`): guest cookie session; toggle heart across cards;
+  move-to-bag using the first available variant. Live cart/wishlist counts in the
+  header.
+- **Pincode serviceability** (`lib/shipping/pincode.ts`): provider stub behind a
+  24h cache (Phase 5 swaps in Shiprocket). Site-wide WhatsApp floating button.
+
+**Verification**
+- `tsc --noEmit` ✓ · `next build` ✓ (37 routes) · `vitest` ✓ (59/59).
+- **Responsive check with headless Chromium** at 360 / 390 / 768 / 1280 across home,
+  category, product and cart: **zero horizontal overflow** at every width; mobile
+  gallery, sticky CTA and grids verified by screenshot.
+- Storefront runtime smoke: listings render engine prices (e.g. gold category shows
+  12 products ₹14,171–₹1,57,940); cart totals recomputed server-side (2×ring
+  ₹48,564 line, GST ₹1,441, grand total ₹49,490; header badge = 3).
+
+**Known limitations**
+- Checkout is a placeholder showing the server-computed total; the full flow (OTP,
+  address, rate-lock, Razorpay, COD, invoice) is Phase 4.
+- Reviews/ratings appear once Phase 6 adds them (JSON-LD includes aggregateRating
+  only when present).
+- Product media uses the monogram fallback until real images are uploaded (R2).
+
+**Next steps** — Phase 4: checkout (guest + phone OTP), rate-lock, Razorpay + COD +
+bank transfer, webhooks, order creation, invoice, transactional email.
+
+---
+
 ## Phase 2 — Pricing Engine + Catalog Admin · 2026-08-18
 
 **Features added**

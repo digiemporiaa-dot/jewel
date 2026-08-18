@@ -1,12 +1,30 @@
 import Link from 'next/link';
 import { getStoreSettings } from '@/lib/store';
 import { getNavigation } from '@/lib/navigation';
+import { getSessionToken } from '@/lib/session';
+import { getCartCount } from '@/lib/cart';
+import { getWishlistCount } from '@/lib/wishlist';
 import RateTicker from '@/components/layout/RateTicker';
 import MobileMenu from '@/components/layout/MobileMenu';
 import { SearchIcon, HeartIcon, BagIcon, UserIcon } from '@/components/icons';
 
+function CountBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span className="absolute -top-1.5 -right-1.5 grid place-items-center min-w-[16px] h-4 px-1 text-[0.6rem] leading-none bg-brass text-paper rounded-full">
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+}
+
 export default async function Header() {
-  const [store, nav] = await Promise.all([getStoreSettings(), getNavigation()]);
+  const token = await getSessionToken();
+  const [store, nav, cartCount, wishCount] = await Promise.all([
+    getStoreSettings(),
+    getNavigation(),
+    getCartCount(token),
+    getWishlistCount(token),
+  ]);
 
   return (
     <header className="relative z-40 bg-paper">
@@ -30,11 +48,16 @@ export default async function Header() {
               {store.brandName}
             </Link>
             <div className="flex items-center gap-3">
-              <Link href="/wishlist" aria-label="Wishlist" className="p-1.5">
-                <HeartIcon />
+              <Link href="/search" aria-label="Search" className="p-1.5">
+                <SearchIcon />
               </Link>
-              <Link href="/cart" aria-label="Cart" className="p-1.5">
+              <Link href="/wishlist" aria-label="Wishlist" className="relative p-1.5">
+                <HeartIcon />
+                <CountBadge count={wishCount} />
+              </Link>
+              <Link href="/cart" aria-label="Cart" className="relative p-1.5">
                 <BagIcon />
+                <CountBadge count={cartCount} />
               </Link>
             </div>
           </div>
@@ -62,11 +85,13 @@ export default async function Header() {
               <Link href="/my-account" className="flex items-center gap-1.5 hover:text-brass">
                 <UserIcon /> <span>Account</span>
               </Link>
-              <Link href="/wishlist" className="flex items-center gap-1.5 hover:text-brass" aria-label="Wishlist">
+              <Link href="/wishlist" className="relative flex items-center gap-1.5 hover:text-brass" aria-label="Wishlist">
                 <HeartIcon />
+                <CountBadge count={wishCount} />
               </Link>
-              <Link href="/cart" className="flex items-center gap-1.5 hover:text-brass" aria-label="Cart">
+              <Link href="/cart" className="relative flex items-center gap-1.5 hover:text-brass" aria-label="Cart">
                 <BagIcon />
+                <CountBadge count={cartCount} />
               </Link>
             </div>
           </div>

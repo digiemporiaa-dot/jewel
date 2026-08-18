@@ -1,15 +1,24 @@
 import Link from 'next/link';
 import { getStoreSettings } from '@/lib/store';
-import { getTopCategories, getActiveCollections } from '@/lib/catalog';
+import {
+  getTopCategories, getActiveCollections,
+  getFeaturedProducts, getNewArrivals, getBestSellers,
+} from '@/lib/catalog';
+import { getSessionToken } from '@/lib/session';
+import { getWishlistProductIds } from '@/lib/wishlist';
+import ProductRow from '@/components/storefront/ProductRow';
 
-// Foundation homepage (Phase 1). The full editorial homepage — featured
-// products, best sellers, reviews, Instagram — is built in Phase 3 once the
-// pricing engine and product cards exist.
+export const dynamic = 'force-dynamic';
+
 export default async function HomePage() {
-  const [store, categories, collections] = await Promise.all([
+  const [store, categories, collections, featured, newArrivals, bestSellers, savedIds] = await Promise.all([
     getStoreSettings(),
     getTopCategories(8),
     getActiveCollections(3),
+    getFeaturedProducts(8),
+    getNewArrivals(8),
+    getBestSellers(8),
+    getWishlistProductIds(await getSessionToken()),
   ]);
 
   return (
@@ -81,6 +90,12 @@ export default async function HomePage() {
         )}
       </section>
 
+      {/* New arrivals */}
+      <ProductRow eyebrow="Just in" title="New Arrivals" products={newArrivals} viewAllHref="/c/new-arrivals" savedIds={savedIds} />
+
+      {/* Featured */}
+      <ProductRow eyebrow="Handpicked" title="Featured Pieces" products={featured} viewAllHref="/collections" savedIds={savedIds} />
+
       {/* Editorial band */}
       <section className="bg-velvet text-paper">
         <div className="shell py-16 grid lg:grid-cols-2 gap-8 items-center">
@@ -103,6 +118,9 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* Best sellers */}
+      <ProductRow eyebrow="Loved by customers" title="Best Sellers" products={bestSellers} viewAllHref="/c/new-arrivals?sort=best-selling" savedIds={savedIds} />
 
       {/* Collections */}
       {collections.length > 0 && (
