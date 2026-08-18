@@ -1,0 +1,41 @@
+# Local / self-hosted stack. On Coolify, provision Postgres separately and set
+# DATABASE_URL + secrets via the dashboard; the `app` service maps 1:1.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: maya
+      POSTGRES_PASSWORD: maya
+      POSTGRES_DB: maya
+    ports:
+      - '5432:5432'
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U maya']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: 'postgresql://maya:maya@db:5432/maya?schema=public'
+      AUTH_SECRET: '${AUTH_SECRET:-change-me-in-production}'
+      AUTH_TRUST_HOST: 'true'
+      NEXT_PUBLIC_SITE_URL: '${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}'
+      CRON_SECRET: '${CRON_SECRET:-change-me}'
+    ports:
+      - '3000:3000'
+    # Apply migrations then start the server.
+    command: sh -c "npx prisma migrate deploy && node server.js"
+
+volumes:
+  db_data:

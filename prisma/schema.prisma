@@ -1,0 +1,1334 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Maya Jewellers — Prisma schema (source of truth)
+//
+// This schema is designed once, up front, to support every phase of the platform
+// so it does not have to be modified feature-by-feature. Money and weights use
+// Decimal columns exclusively — never floating point. All store-specific config
+// lives in StoreSetting so the platform is resellable / white-labelable.
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  CATALOG_MANAGER
+  SALES_EXECUTIVE
+  DISPATCH
+}
+
+enum MetalType {
+  GOLD
+  SILVER
+  PLATINUM
+  GOLD_PLATED
+  IMITATION
+}
+
+enum PricingMode {
+  WEIGHT_BASED
+  COMPONENT_BASED
+  FIXED
+}
+
+enum FulfilmentType {
+  READY_TO_SHIP
+  MADE_TO_ORDER
+}
+
+enum MakingChargeType {
+  PERCENTAGE // percent of metal value
+  PER_GRAM
+  FLAT
+}
+
+enum MakingChargeScope {
+  VARIANT
+  CATEGORY_METAL_PURITY
+  CATEGORY_METAL
+  METAL
+  GLOBAL
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+enum ImageDevice {
+  ALL
+  DESKTOP
+  MOBILE
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FLAT
+}
+
+enum CouponType {
+  PERCENTAGE
+  FLAT
+  FREE_SHIPPING
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAYMENT_CONFIRMED
+  VERIFICATION_HOLD
+  CONFIRMED
+  IN_MAKING
+  READY_TO_SHIP
+  SHIPPED
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+  REFUND_PENDING
+  REFUNDED
+  RTO
+}
+
+enum PaymentMethod {
+  RAZORPAY
+  COD
+  BANK_TRANSFER
+}
+
+enum PaymentType {
+  FULL
+  ADVANCE
+  BALANCE
+  COD_TOKEN
+}
+
+enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum RefundStatus {
+  PENDING
+  PROCESSED
+  FAILED
+}
+
+enum ShipmentStatus {
+  PENDING
+  PICKUP_SCHEDULED
+  PICKED_UP
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  NDR
+  RTO_INITIATED
+  RTO_DELIVERED
+  CANCELLED
+}
+
+enum WebhookStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  FAILED
+  SKIPPED
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AppointmentType {
+  SHOWROOM_VISIT
+  VIDEO_CONSULTATION
+}
+
+enum AppointmentStatus {
+  REQUESTED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  FOLLOW_UP
+  NEGOTIATION
+  CONVERTED
+  LOST
+}
+
+enum LeadSource {
+  WEBSITE
+  WHATSAPP
+  PHONE
+  APPOINTMENT
+  ABANDONED_CART
+  WALK_IN
+  REFERRAL
+}
+
+enum FollowUpStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum CmsBlockType {
+  HERO
+  RICH_TEXT
+  IMAGE_TEXT
+  PRODUCT_GRID
+  COLLECTION_GRID
+  BANNER
+  FAQ
+  TRUST_ROW
+  TESTIMONIALS
+  CTA
+}
+
+enum PublishStatus {
+  DRAFT
+  PUBLISHED
+  SCHEDULED
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  WHATSAPP
+  PUSH
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+}
+
+enum OtpPurpose {
+  LOGIN
+  CHECKOUT
+  PHONE_VERIFY
+}
+
+// ─── Store configuration (resellable / white-label) ──────────────────────────
+
+// Singleton row (id = "default"). NOTHING store-specific is hardcoded in code.
+model StoreSetting {
+  id           String @id @default("default")
+  brandName    String @default("Maya Jewellers")
+  tagline      String @default("Fine jewellery, crafted in Delhi")
+  logoUrl      String?
+  faviconUrl   String?
+
+  // Contact
+  phone         String?
+  whatsappNumber String?
+  email         String?
+  supportEmail  String?
+
+  // Address
+  addressLine  String?
+  city         String?
+  state        String?
+  pincode      String?
+  country      String @default("India")
+  gstin        String?
+
+  // Commerce config
+  currency            String  @default("INR")
+  locale              String  @default("en-IN")
+  gstPercentDefault   Decimal @default(3) @db.Decimal(5, 2)
+  freeShippingAbove   Decimal? @db.Decimal(12, 2)
+  flatShippingFee     Decimal @default(0) @db.Decimal(12, 2)
+
+  // Risk / verification thresholds
+  codMaxOrderValue      Decimal? @db.Decimal(12, 2)
+  codTokenAmount        Decimal @default(0) @db.Decimal(12, 2)
+  verificationCallAbove Decimal? @db.Decimal(12, 2)
+  panThreshold          Decimal? @db.Decimal(12, 2)
+
+  // Pricing behaviour
+  rateLockMinutes  Int @default(15)
+
+  // Social + content
+  socialLinks Json?   // { instagram, facebook, youtube, pinterest }
+  footerNote  String?
+  returnPolicy String?
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}
+
+// Admin-controllable storefront navigation.
+model NavItem {
+  id       String  @id @default(cuid())
+  label    String
+  href     String
+  order    Int     @default(0)
+  parentId String?
+  parent   NavItem?  @relation("NavItemChildren", fields: [parentId], references: [id], onDelete: Cascade)
+  children NavItem[] @relation("NavItemChildren")
+  isActive Boolean @default(true)
+
+  @@index([parentId, order])
+}
+
+// ─── Identity: staff & customers ─────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  phone        String?
+  name         String
+  passwordHash String
+  role         Role     @default(SALES_EXECUTIVE)
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  assignedLeads     Lead[]         @relation("LeadAssignee")
+  followUps         FollowUp[]     @relation("FollowUpAssignee")
+  callLogs          CallLog[]
+  auditLogs         AuditLog[]
+  verifiedOrders    Order[]        @relation("OrderVerifier")
+  rateChanges       MetalRate[]    @relation("RateChangedBy")
+  diamondRateChanges DiamondRate[] @relation("DiamondRateChangedBy")
+  approvedReviews   Review[]       @relation("ReviewApprover")
+  appointments      Appointment[]  @relation("AppointmentStaff")
+  orderNotes        OrderNote[]
+
+  @@index([role])
+  @@index([isActive])
+}
+
+model Customer {
+  id            String    @id @default(cuid())
+  phone         String    @unique
+  email         String?   @unique
+  name          String?
+  gender        String?
+  dob           DateTime?
+  anniversary   DateTime?
+  marketingOptIn Boolean  @default(false)
+  phoneVerified Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  addresses    Address[]
+  orders       Order[]
+  carts        Cart[]
+  wishlist     WishlistItem[]
+  reviews      Review[]
+  appointments Appointment[]
+  leads        Lead[]
+  callLogs     CallLog[]
+  notifications Notification[]
+
+  @@index([email])
+  @@index([createdAt])
+}
+
+model Otp {
+  id        String     @id @default(cuid())
+  target    String     // phone or email
+  codeHash  String
+  purpose   OtpPurpose
+  attempts  Int        @default(0)
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime   @default(now())
+
+  @@index([target, purpose])
+  @@index([expiresAt])
+}
+
+model Address {
+  id         String  @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  label      String? // Home / Office
+  name       String
+  phone      String
+  line1      String
+  line2      String?
+  city       String
+  state      String
+  pincode    String
+  country    String  @default("India")
+  isDefault  Boolean @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([customerId])
+}
+
+// ─── Catalog taxonomy ────────────────────────────────────────────────────────
+
+model Category {
+  id          String  @id @default(cuid())
+  name        String
+  slug        String  @unique
+  description String?
+  imageUrl    String?
+  order       Int     @default(0)
+  isActive    Boolean @default(true)
+  parentId    String?
+  parent      Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryTree")
+
+  seoTitle       String?
+  seoDescription String?
+
+  products         Product[]
+  makingChargeRules MakingChargeRule[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([slug])
+  @@index([isActive])
+  @@index([parentId, order])
+}
+
+model Collection {
+  id          String  @id @default(cuid())
+  name        String
+  slug        String  @unique
+  description String?
+  imageUrl    String?
+  order       Int     @default(0)
+  isActive    Boolean @default(true)
+
+  seoTitle       String?
+  seoDescription String?
+
+  products ProductCollection[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([slug])
+  @@index([isActive])
+}
+
+// ─── Metals, purities & rates ────────────────────────────────────────────────
+
+model Metal {
+  id        String    @id @default(cuid())
+  name      String    // Gold, Silver
+  type      MetalType
+  symbol    String?   // Au, Ag
+  order     Int       @default(0)
+  isActive  Boolean   @default(true)
+
+  purities Purity[]
+  products Product[]
+  makingChargeRules MakingChargeRule[]
+
+  @@unique([type])
+  @@index([isActive])
+}
+
+model Purity {
+  id       String  @id @default(cuid())
+  metalId  String
+  metal    Metal   @relation(fields: [metalId], references: [id], onDelete: Cascade)
+  name     String  // 24K, 22K, 18K, 925 Silver
+  // fineness as a fraction of pure metal, e.g. 22K = 0.9166. Decimal, never float.
+  fineness Decimal @db.Decimal(6, 4)
+  order    Int     @default(0)
+  isActive Boolean @default(true)
+
+  rates    MetalRate[]
+  products Product[]
+  makingChargeRules MakingChargeRule[]
+
+  @@unique([metalId, name])
+  @@index([isActive])
+}
+
+// Rate history — never destructive. `isCurrent` marks the live rate per purity.
+model MetalRate {
+  id          String   @id @default(cuid())
+  purityId    String
+  purity      Purity   @relation(fields: [purityId], references: [id], onDelete: Cascade)
+  ratePerGram Decimal  @db.Decimal(12, 2)
+  previousRate Decimal? @db.Decimal(12, 2)
+  isCurrent   Boolean  @default(true)
+  effectiveFrom DateTime @default(now())
+  changedById String?
+  changedBy   User?    @relation("RateChangedBy", fields: [changedById], references: [id])
+  note        String?
+  createdAt   DateTime @default(now())
+
+  @@index([purityId, isCurrent])
+  @@index([effectiveFrom])
+}
+
+model DiamondRate {
+  id          String   @id @default(cuid())
+  label       String   // e.g. "VS-GH-Round"
+  clarity     String?
+  color       String?
+  shape       String?
+  ratePerCarat Decimal @db.Decimal(12, 2)
+  previousRate Decimal? @db.Decimal(12, 2)
+  isCurrent   Boolean  @default(true)
+  effectiveFrom DateTime @default(now())
+  changedById String?
+  changedBy   User?    @relation("DiamondRateChangedBy", fields: [changedById], references: [id])
+  createdAt   DateTime @default(now())
+
+  productDiamonds ProductDiamond[]
+
+  @@index([label, isCurrent])
+}
+
+// ─── Making charges (resolved by scope + priority) ───────────────────────────
+
+model MakingChargeRule {
+  id        String            @id @default(cuid())
+  name      String
+  scope     MakingChargeScope
+  type      MakingChargeType
+  value     Decimal           @db.Decimal(12, 4) // percent, per-gram, or flat amount
+  minCharge Decimal?          @db.Decimal(12, 2)
+  priority  Int               @default(0)
+  isActive  Boolean           @default(true)
+
+  metalId    String?
+  metal      Metal?    @relation(fields: [metalId], references: [id])
+  purityId   String?
+  purity     Purity?   @relation(fields: [purityId], references: [id])
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
+
+  variants ProductVariant[]
+  products Product[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([scope, isActive])
+  @@index([metalId, purityId, categoryId])
+}
+
+// ─── Products ────────────────────────────────────────────────────────────────
+
+model Product {
+  id               String      @id @default(cuid())
+  name             String
+  slug             String      @unique
+  sku              String      @unique
+  shortDescription String?
+  description      String?
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  pricingMode PricingMode @default(WEIGHT_BASED)
+
+  // Metal attributes (WEIGHT_BASED / COMPONENT_BASED)
+  metalId    String?
+  metal      Metal?  @relation(fields: [metalId], references: [id])
+  purityId   String?
+  purity     Purity? @relation(fields: [purityId], references: [id])
+  metalColor String? // Yellow / White / Rose
+
+  netWeight   Decimal? @db.Decimal(10, 3) // grams
+  grossWeight Decimal? @db.Decimal(10, 3)
+  wastagePct  Decimal  @default(0) @db.Decimal(6, 3)
+
+  makingChargeRuleId String?
+  makingChargeRule   MakingChargeRule? @relation(fields: [makingChargeRuleId], references: [id])
+
+  // FIXED pricing
+  fixedPrice Decimal? @db.Decimal(12, 2)
+
+  // GST
+  gstPercent   Decimal @default(3) @db.Decimal(5, 2)
+  gstInclusive Boolean @default(false)
+
+  // Fulfilment
+  fulfilmentType FulfilmentType @default(READY_TO_SHIP)
+  leadTimeDays   Int?
+  advancePercent Decimal? @db.Decimal(5, 2) // made-to-order advance
+
+  certification String?
+  hasDiamond    Boolean @default(false)
+  hasStone      Boolean @default(false)
+
+  // Merchandising flags
+  isActive     Boolean @default(true)
+  isFeatured   Boolean @default(false)
+  isBestSeller Boolean @default(false)
+  isNewArrival Boolean @default(false)
+
+  occasion String[] @default([])
+  tags     String[] @default([])
+
+  // Cached price range for listing (recomputed by pricing cron on rate change).
+  priceFrom Decimal? @db.Decimal(12, 2)
+  priceTo   Decimal? @db.Decimal(12, 2)
+
+  // SEO
+  seoTitle       String?
+  seoDescription String?
+
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  images      ProductImage[]
+  variants    ProductVariant[]
+  diamonds    ProductDiamond[]
+  stones      ProductStone[]
+  collections ProductCollection[]
+  reviews     Review[]
+  wishlistItems WishlistItem[]
+  cartItems   CartItem[]
+  orderItems  OrderItem[]
+  appointments Appointment[]
+  leads       Lead[]
+
+  @@index([slug])
+  @@index([sku])
+  @@index([categoryId])
+  @@index([pricingMode])
+  @@index([isActive])
+  @@index([isFeatured])
+  @@index([isNewArrival])
+  @@index([isBestSeller])
+  @@index([createdAt])
+  @@index([priceFrom])
+}
+
+model ProductCollection {
+  productId    String
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  collectionId String
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@id([productId, collectionId])
+  @@index([collectionId])
+}
+
+model ProductImage {
+  id        String      @id @default(cuid())
+  productId String
+  product   Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url       String
+  alt       String?
+  type      MediaType   @default(IMAGE)
+  device    ImageDevice @default(ALL)
+  order     Int         @default(0)
+  isPrimary Boolean     @default(false)
+
+  @@index([productId, order])
+}
+
+model ProductVariant {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sku       String  @unique
+  label     String? // "22K / Size 12"
+  metalColor String?
+  size      String?
+
+  // Optional per-variant overrides of product-level attributes.
+  netWeight   Decimal? @db.Decimal(10, 3)
+  grossWeight Decimal? @db.Decimal(10, 3)
+  wastagePct  Decimal? @db.Decimal(6, 3)
+
+  makingChargeRuleId String?
+  makingChargeRule   MakingChargeRule? @relation(fields: [makingChargeRuleId], references: [id])
+
+  fixedPrice Decimal? @db.Decimal(12, 2)
+
+  isActive Boolean @default(true)
+
+  inventory  Inventory?
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+  diamonds   ProductDiamond[]
+  stones     ProductStone[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId])
+  @@index([sku])
+}
+
+model ProductDiamond {
+  id        String  @id @default(cuid())
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId String?
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  label       String?
+  clarity     String?
+  color       String?
+  cut         String?
+  shape       String?
+  caratWeight Decimal @db.Decimal(8, 3)
+  pieces      Int     @default(1)
+
+  // Either reference a live diamond rate, or pin a rate per carat.
+  diamondRateId String?
+  diamondRate   DiamondRate? @relation(fields: [diamondRateId], references: [id])
+  ratePerCarat  Decimal?     @db.Decimal(12, 2)
+
+  certification String?
+
+  @@index([productId])
+  @@index([variantId])
+}
+
+model ProductStone {
+  id        String  @id @default(cuid())
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId String?
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  name        String
+  type        String? // gemstone / kundan / pearl
+  pieces      Int     @default(1)
+  weightCarat Decimal? @db.Decimal(8, 3)
+  ratePerUnit Decimal? @db.Decimal(12, 2)
+  value       Decimal? @db.Decimal(12, 2) // flat value if not rate-based
+
+  @@index([productId])
+  @@index([variantId])
+}
+
+// ─── Inventory ───────────────────────────────────────────────────────────────
+
+model Inventory {
+  id                String @id @default(cuid())
+  variantId         String @unique
+  variant           ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  stockQty          Int    @default(0)
+  reservedQty       Int    @default(0)
+  lowStockThreshold Int    @default(2)
+  // available = stockQty - reservedQty (computed in app; never negative-oversold)
+
+  updatedAt DateTime @updatedAt
+
+  ledger InventoryLedger[]
+
+  @@index([stockQty])
+}
+
+model InventoryLedger {
+  id          String   @id @default(cuid())
+  inventoryId String
+  inventory   Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  delta       Int
+  reason      String   // ORDER_RESERVE, ORDER_RELEASE, RESTOCK, ADJUSTMENT, SALE
+  orderId     String?
+  note        String?
+  createdAt   DateTime @default(now())
+
+  @@index([inventoryId, createdAt])
+}
+
+// ─── Cart & wishlist ─────────────────────────────────────────────────────────
+
+model Cart {
+  id           String   @id @default(cuid())
+  customerId   String?
+  customer     Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  sessionToken String?  @unique // guest cart identifier
+  couponCode   String?
+  currency     String   @default("INR")
+
+  // Abandoned cart automation
+  abandonedAt    DateTime?
+  remindersSent  Int      @default(0)
+  lastReminderAt DateTime?
+  convertedOrderId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items CartItem[]
+
+  @@index([customerId])
+  @@index([abandonedAt])
+}
+
+model CartItem {
+  id        String  @id @default(cuid())
+  cartId    String
+  cart      Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  variantId String?
+  variant   ProductVariant? @relation(fields: [variantId], references: [id])
+  quantity  Int     @default(1)
+  // Snapshot of the price breakup at add-time (advisory only; server always recomputes).
+  priceSnapshot Json?
+  addedAt   DateTime @default(now())
+
+  @@unique([cartId, productId, variantId])
+  @@index([cartId])
+}
+
+model WishlistItem {
+  id           String  @id @default(cuid())
+  customerId   String?
+  customer     Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  sessionToken String?
+  productId    String
+  product      Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  // For price-drop / back-in-stock notifications.
+  notifyPriceDrop  Boolean @default(false)
+  notifyBackInStock Boolean @default(false)
+  priceAtAdd    Decimal? @db.Decimal(12, 2)
+  createdAt     DateTime @default(now())
+
+  @@unique([customerId, productId])
+  @@unique([sessionToken, productId])
+  @@index([productId])
+}
+
+// ─── Discounts ───────────────────────────────────────────────────────────────
+
+model Coupon {
+  id           String     @id @default(cuid())
+  code         String     @unique
+  description  String?
+  type         CouponType
+  value        Decimal    @db.Decimal(12, 2)
+  minOrder     Decimal?   @db.Decimal(12, 2)
+  maxDiscount  Decimal?   @db.Decimal(12, 2)
+  usageLimit   Int?
+  usageCount   Int        @default(0)
+  perUserLimit Int?
+  startsAt     DateTime?
+  endsAt       DateTime?
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  orders Order[]
+
+  @@index([code])
+  @@index([isActive])
+}
+
+// ─── Orders ──────────────────────────────────────────────────────────────────
+
+model Order {
+  id          String      @id @default(cuid())
+  orderNumber String      @unique
+  status      OrderStatus @default(PENDING_PAYMENT)
+
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+
+  // Guest / contact snapshot
+  contactName  String
+  contactPhone String
+  contactEmail String?
+  pan          String?
+
+  // Address snapshots (immutable copies stored on the order)
+  shippingAddress Json
+  billingAddress  Json?
+
+  fulfilmentType FulfilmentType @default(READY_TO_SHIP)
+
+  // Money (all Decimal)
+  subtotal     Decimal @db.Decimal(12, 2)
+  makingTotal  Decimal @default(0) @db.Decimal(12, 2)
+  discountTotal Decimal @default(0) @db.Decimal(12, 2)
+  gstTotal     Decimal @default(0) @db.Decimal(12, 2)
+  shippingTotal Decimal @default(0) @db.Decimal(12, 2)
+  grandTotal   Decimal @db.Decimal(12, 2)
+  amountPaid   Decimal @default(0) @db.Decimal(12, 2)
+  currency     String  @default("INR")
+
+  couponId   String?
+  coupon     Coupon? @relation(fields: [couponId], references: [id])
+  couponCode String?
+
+  paymentMethod PaymentMethod
+  paymentStatus PaymentStatus @default(PENDING)
+
+  // Price lock — snapshot of rates used, and lock window.
+  rateSnapshot Json?
+  rateLockedAt DateTime?
+
+  // High-value verification
+  requiresCall Boolean   @default(false)
+  verifiedById String?
+  verifiedBy   User?     @relation("OrderVerifier", fields: [verifiedById], references: [id])
+  verifiedAt   DateTime?
+  verificationResult String?
+  verificationNotes  String?
+
+  placedAt  DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items     OrderItem[]
+  payments  Payment[]
+  refunds   Refund[]
+  shipment  Shipment?
+  events    OrderEvent[]
+  notes     OrderNote[]
+  reviews   Review[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([paymentStatus])
+  @@index([contactPhone])
+  @@index([contactEmail])
+  @@index([placedAt])
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id])
+  variantId String?
+  variant   ProductVariant? @relation(fields: [variantId], references: [id])
+
+  // Immutable product snapshot at purchase time.
+  nameSnapshot String
+  skuSnapshot  String
+  imageSnapshot String?
+  weightSnapshot Decimal? @db.Decimal(10, 3)
+  metalSnapshot  String?
+  puritySnapshot String?
+
+  quantity  Int
+  unitPrice Decimal @db.Decimal(12, 2)
+  lineTotal Decimal @db.Decimal(12, 2)
+
+  // Full price breakup + rate used, frozen at purchase.
+  priceBreakup Json
+  metalRateUsed Decimal? @db.Decimal(12, 2)
+
+  @@index([orderId])
+}
+
+model OrderEvent {
+  id        String       @id @default(cuid())
+  orderId   String
+  order     Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status    OrderStatus?
+  message   String
+  actor     String?      // "system", staff name/email
+  createdAt DateTime     @default(now())
+
+  @@index([orderId, createdAt])
+}
+
+model OrderNote {
+  id        String @id @default(cuid())
+  orderId   String
+  order     Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  authorId  String?
+  author    User?  @relation(fields: [authorId], references: [id])
+  body      String
+  internal  Boolean @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+}
+
+// ─── Payments ────────────────────────────────────────────────────────────────
+
+model Payment {
+  id              String        @id @default(cuid())
+  orderId         String
+  order           Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  provider        String        @default("razorpay")
+  providerOrderId String?
+  providerPaymentId String?     @unique
+  method          PaymentMethod
+  type            PaymentType   @default(FULL)
+  amount          Decimal       @db.Decimal(12, 2)
+  currency        String        @default("INR")
+  status          PaymentStatus @default(PENDING)
+  rawPayload      Json?
+  capturedAt      DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  refunds Refund[]
+
+  @@index([orderId])
+  @@index([providerOrderId])
+  @@index([status])
+}
+
+model Refund {
+  id               String       @id @default(cuid())
+  orderId          String
+  order            Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  paymentId        String?
+  payment          Payment?     @relation(fields: [paymentId], references: [id])
+  amount           Decimal      @db.Decimal(12, 2)
+  status           RefundStatus @default(PENDING)
+  providerRefundId String?
+  reason           String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@index([orderId])
+}
+
+// Idempotent, signature-verified, reprocessable webhook log.
+model WebhookEvent {
+  id            String        @id @default(cuid())
+  provider      String        // razorpay / shiprocket
+  eventId       String        // provider event / delivery id
+  eventType     String
+  status        WebhookStatus @default(RECEIVED)
+  signatureValid Boolean      @default(false)
+  payload       Json
+  error         String?
+  attempts      Int           @default(0)
+  receivedAt    DateTime      @default(now())
+  processedAt   DateTime?
+
+  @@unique([provider, eventId])
+  @@index([provider, eventType])
+  @@index([status])
+}
+
+// ─── Shipping ────────────────────────────────────────────────────────────────
+
+model Shipment {
+  id       String @id @default(cuid())
+  orderId  String @unique
+  order    Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  provider String @default("shiprocket")
+
+  providerOrderId String?
+  providerShipmentId String?
+  awb      String?
+  courier  String?
+  status   ShipmentStatus @default(PENDING)
+  trackingUrl String?
+  labelUrl String?
+  manifestUrl String?
+
+  pickupScheduledAt DateTime?
+  shippedAt   DateTime?
+  deliveredAt DateTime?
+  ndrReason   String?
+  rtoInitiatedAt DateTime?
+
+  raw Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([awb])
+  @@index([status])
+}
+
+// 24h serviceability cache.
+model PincodeServiceability {
+  pincode      String  @id
+  serviceable  Boolean
+  codAvailable Boolean @default(false)
+  etaDays      Int?
+  raw          Json?
+  cachedAt     DateTime @default(now())
+
+  @@index([cachedAt])
+}
+
+// ─── Reviews ─────────────────────────────────────────────────────────────────
+
+model Review {
+  id         String       @id @default(cuid())
+  productId  String
+  product    Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  orderId    String?
+  order      Order?       @relation(fields: [orderId], references: [id])
+  rating     Int
+  title      String?
+  body       String?
+  images     Json?
+  status     ReviewStatus @default(PENDING)
+  verifiedPurchase Boolean @default(false)
+  approvedById String?
+  approvedBy   User?      @relation("ReviewApprover", fields: [approvedById], references: [id])
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@unique([productId, customerId, orderId])
+  @@index([productId, status])
+  @@index([status])
+}
+
+// ─── Appointments ────────────────────────────────────────────────────────────
+
+model Appointment {
+  id         String            @id @default(cuid())
+  type       AppointmentType
+  status     AppointmentStatus @default(REQUESTED)
+  customerId String?
+  customer   Customer?         @relation(fields: [customerId], references: [id])
+  name       String
+  phone      String
+  email      String?
+  date       DateTime
+  slot       String
+  productId  String?
+  product    Product?          @relation(fields: [productId], references: [id])
+  notes      String?
+  staffId    String?
+  staff      User?             @relation("AppointmentStaff", fields: [staffId], references: [id])
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  @@index([date])
+  @@index([status])
+}
+
+model AppointmentSlot {
+  id        String  @id @default(cuid())
+  dayOfWeek Int?    // 0-6 recurring, or use `date`
+  date      DateTime?
+  slot      String  // "11:00-11:30"
+  capacity  Int     @default(1)
+  isBlocked Boolean @default(false)
+
+  @@index([date])
+}
+
+// ─── CRM ─────────────────────────────────────────────────────────────────────
+
+model Lead {
+  id           String     @id @default(cuid())
+  source       LeadSource @default(WEBSITE)
+  status       LeadStatus @default(NEW)
+  name         String
+  phone        String
+  email        String?
+  customerId   String?
+  customer     Customer?  @relation(fields: [customerId], references: [id])
+  productId    String?
+  product      Product?   @relation(fields: [productId], references: [id])
+  estimatedValue Decimal? @db.Decimal(12, 2)
+  notes        String?
+  assignedToId String?
+  assignedTo   User?      @relation("LeadAssignee", fields: [assignedToId], references: [id])
+  lastContactedAt DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  followUps FollowUp[]
+  callLogs  CallLog[]
+
+  @@index([status])
+  @@index([assignedToId])
+  @@index([phone])
+}
+
+model FollowUp {
+  id           String         @id @default(cuid())
+  leadId       String
+  lead         Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  dueAt        DateTime
+  note         String?
+  status       FollowUpStatus @default(PENDING)
+  assignedToId String?
+  assignedTo   User?          @relation("FollowUpAssignee", fields: [assignedToId], references: [id])
+  completedAt  DateTime?
+  createdAt    DateTime       @default(now())
+
+  @@index([dueAt, status])
+  @@index([assignedToId])
+}
+
+model CallLog {
+  id         String   @id @default(cuid())
+  leadId     String?
+  lead       Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  staffId    String?
+  staff      User?    @relation(fields: [staffId], references: [id])
+  outcome    String?
+  notes      String?
+  calledAt   DateTime @default(now())
+
+  @@index([leadId])
+  @@index([customerId])
+}
+
+// ─── CMS & content ───────────────────────────────────────────────────────────
+
+model CmsPage {
+  id          String        @id @default(cuid())
+  slug        String        @unique
+  title       String
+  status      PublishStatus @default(DRAFT)
+  publishedAt DateTime?
+  scheduledAt DateTime?
+  seoTitle       String?
+  seoDescription String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  blocks CmsBlock[]
+
+  @@index([slug])
+  @@index([status])
+}
+
+model CmsBlock {
+  id       String       @id @default(cuid())
+  pageId   String
+  page     CmsPage      @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  type     CmsBlockType
+  order    Int          @default(0)
+  data     Json
+  isActive Boolean      @default(true)
+
+  @@index([pageId, order])
+}
+
+model BlogPost {
+  id            String        @id @default(cuid())
+  slug          String        @unique
+  title         String
+  author        String
+  featuredImage String?
+  category      String?
+  tags          String[]      @default([])
+  excerpt       String?
+  content       String
+  status        PublishStatus @default(DRAFT)
+  publishedAt   DateTime?
+  seoTitle       String?
+  seoDescription String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([slug])
+  @@index([status, publishedAt])
+}
+
+// ─── Campaigns, templates, notifications ─────────────────────────────────────
+
+model Campaign {
+  id        String   @id @default(cuid())
+  type      String   // BIRTHDAY, ANNIVERSARY, ABANDONED_CART, NEW_CUSTOMER, BACK_IN_STOCK, PRICE_DROP, ORDER_UPDATE
+  name      String
+  isActive  Boolean  @default(true)
+  config    Json?    // delays, thresholds
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type, isActive])
+}
+
+model MessageTemplate {
+  id        String              @id @default(cuid())
+  key       String              @unique // order_confirmation, otp, shipment_confirmation...
+  channel   NotificationChannel
+  subject   String?
+  body      String
+  isActive  Boolean             @default(true)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+}
+
+model Notification {
+  id         String             @id @default(cuid())
+  customerId String?
+  customer   Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  channel    NotificationChannel
+  templateKey String?
+  target     String
+  payload    Json?
+  status     NotificationStatus @default(QUEUED)
+  error      String?
+  sentAt     DateTime?
+  createdAt  DateTime           @default(now())
+
+  @@index([status])
+  @@index([customerId])
+}
+
+// ─── Analytics & audit ───────────────────────────────────────────────────────
+
+model SearchLog {
+  id           String   @id @default(cuid())
+  query        String
+  resultsCount Int      @default(0)
+  customerId   String?
+  sessionToken String?
+  createdAt    DateTime @default(now())
+
+  @@index([query])
+  @@index([createdAt])
+}
+
+// Provider-agnostic analytics event queue (GA4 etc. consume later).
+model AnalyticsEvent {
+  id           String   @id @default(cuid())
+  name         String   // view_item, add_to_cart, purchase...
+  sessionToken String?
+  customerId   String?
+  payload      Json?
+  createdAt    DateTime @default(now())
+
+  @@index([name])
+  @@index([createdAt])
+}
+
+// Immutable from the normal admin UI — append-only.
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String   // RATE_UPDATE, PRODUCT_DELETE, ORDER_CANCEL...
+  entity    String
+  entityId  String?
+  before    Json?
+  after     Json?
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([userId])
+  @@index([createdAt])
+}

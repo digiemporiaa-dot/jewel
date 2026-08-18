@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en-IN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Maya Jewellers — Design Reference</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;0,6..96,500;1,6..96,500&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --paper:#FAF8F4; --paper-2:#F1ECE4; --ink:#161513; --ink-soft:#5F5950;
+    --velvet:#17362C; --velvet-2:#0D2119; --line:#E4DED4; --line-strong:#CFC6B8; --brass:#A8813C;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:'Jost',system-ui,sans-serif;line-height:1.6}
+  h1,h2,h3{font-family:'Bodoni Moda',Georgia,serif;font-weight:500;line-height:1.12;margin:0}
+  .shell{max-width:1120px;margin:0 auto;padding:0 24px}
+  .eyebrow{font-size:.6875rem;letter-spacing:.22em;text-transform:uppercase;color:var(--ink-soft)}
+  section{padding:56px 0;border-bottom:1px solid var(--line)}
+  .swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:20px}
+  .sw{border:1px solid var(--line);border-radius:2px;overflow:hidden}
+  .sw .chip{height:64px}
+  .sw .meta{padding:8px 10px;font-size:.75rem;display:flex;justify-content:space-between}
+  .btn-primary{display:inline-flex;align-items:center;gap:.5rem;background:var(--velvet);color:var(--paper);
+    padding:.85rem 1.75rem;border-radius:2px;font-size:.8125rem;letter-spacing:.12em;text-transform:uppercase;border:0;cursor:pointer}
+  .btn-outline{display:inline-flex;align-items:center;gap:.5rem;border:1px solid var(--line-strong);color:var(--ink);
+    padding:.85rem 1.75rem;border-radius:2px;font-size:.8125rem;letter-spacing:.12em;text-transform:uppercase;background:transparent;cursor:pointer}
+  .topbar{background:var(--velvet);color:var(--paper);font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;padding:8px 0}
+  .topbar .shell{display:flex;justify-content:space-between}
+  .header{border-bottom:1px solid var(--line)}
+  .header .shell{display:flex;align-items:center;justify-content:space-between;height:80px}
+  .brand{font-family:'Bodoni Moda',serif;font-size:1.7rem}
+  .nav{display:flex;gap:28px;font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft);border-bottom:1px solid var(--line);padding:14px 0}
+  .card{border:1px solid var(--line);border-radius:2px;overflow:hidden;max-width:280px}
+  .card .img{aspect-ratio:4/5;background:var(--paper-2);display:flex;align-items:center;justify-content:center;color:#bbb;font-family:'Bodoni Moda',serif;font-size:2rem}
+  .card .body{padding:14px}
+  .badge{display:inline-block;font-size:.6rem;letter-spacing:.12em;text-transform:uppercase;background:var(--velvet);color:var(--paper);padding:3px 8px;border-radius:2px}
+  .type-row{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;margin:8px 0}
+  code{background:var(--paper-2);padding:2px 6px;border-radius:2px;font-size:.85em}
+</style>
+</head>
+<body>
+  <!-- This file is the living visual reference derived from the approved brand
+       brief (tokens, fonts, component rules). Storefront and admin must follow it;
+       do not redesign without approval. -->
+  <div class="topbar"><div class="shell"><span>Gold 22K ₹6,560/g · Silver ₹92/g</span><span>BIS Hallmarked · Certified Diamonds</span></div></div>
+  <div class="header"><div class="shell"><span class="eyebrow">Search</span><span class="brand">Maya Jewellers</span><span class="eyebrow">Account · Wishlist · Bag</span></div></div>
+  <div class="nav shell">New Arrivals · Gold · Diamond · Silver · Rings · Earrings · Necklaces · Bracelets · Bangles · Mangalsutra · Wedding · Gifting · Collections</div>
+
+  <section class="shell">
+    <p class="eyebrow">Foundation</p>
+    <h1 style="font-size:2.5rem;margin-top:8px">Design tokens</h1>
+    <div class="swatches">
+      <div class="sw"><div class="chip" style="background:var(--paper)"></div><div class="meta"><span>paper</span><code>#FAF8F4</code></div></div>
+      <div class="sw"><div class="chip" style="background:var(--paper-2)"></div><div class="meta"><span>paper-2</span><code>#F1ECE4</code></div></div>
+      <div class="sw"><div class="chip" style="background:var(--ink)"></div><div class="meta"><span style="color:#fff">ink</span><code>#161513</code></div></div>
+      <div class="sw"><div class="chip" style="background:var(--ink-soft)"></div><div class="meta"><span style="color:#fff">ink-soft</span><code>#5F5950</code></div></div>
+      <div class="sw"><div class="chip" style="background:var(--velvet)"></div><div class="meta"><span style="color:#fff">velvet</span><code>#17362C</code></div></div>
+      <div class="sw"><div class="chip" style="background:var(--velvet-2)"></div><div class="meta"><span style="color:#fff">velvet-2</span><code>#0D2119</code></div></div>
+      <div class="sw"><div class="chip" style="background:var(--line)"></div><div class="meta"><span>line</span><code>#E4DED4</code></div></div>
+      <div class="sw"><div class="chip" style="background:var(--line-strong)"></div><div class="meta"><span>line-strong</span><code>#CFC6B8</code></div></div>
+      <div class="sw"><div class="chip" style="background:var(--brass)"></div><div class="meta"><span style="color:#fff">brass</span><code>#A8813C</code></div></div>
+    </div>
+  </section>
+
+  <section class="shell">
+    <p class="eyebrow">Typography</p>
+    <div class="type-row"><h1 style="font-size:3rem">Bodoni Moda</h1><span style="color:var(--ink-soft)">Headings</span></div>
+    <div class="type-row"><h2 style="font-size:2rem;font-style:italic">Heirloom, reimagined</h2></div>
+    <p style="max-width:520px">Body & UI use <strong>Jost</strong>. Elegant, editorial, generous whitespace. Border radius is capped at <code>2px</code>; no gradients, glassmorphism or heavy shadows.</p>
+    <div style="display:flex;gap:12px;margin-top:12px"><button class="btn-primary">Shop New Arrivals</button><button class="btn-outline">Book a Visit</button></div>
+  </section>
+
+  <section class="shell">
+    <p class="eyebrow">Component — product card</p>
+    <div class="card" style="margin-top:16px">
+      <div class="img">M</div>
+      <div class="body">
+        <span class="badge">Ready to Ship</span>
+        <h3 style="font-size:1.15rem;margin:10px 0 2px">22K Gold Floral Ring</h3>
+        <p style="font-size:.8rem;color:var(--ink-soft);margin:0">Rings · 22K · BIS Hallmark</p>
+        <p style="margin:8px 0 0"><span style="font-size:.7rem;color:var(--ink-soft)">Starting from</span><br><strong>₹31,240</strong></p>
+      </div>
+    </div>
+    <p style="margin-top:16px;font-size:.85rem;color:var(--ink-soft)">Dynamic prices are always computed by the pricing engine — “Starting from” reflects the lowest variant at today’s live rate.</p>
+  </section>
+</body>
+</html>
