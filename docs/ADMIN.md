@@ -42,6 +42,26 @@ Reads live counts: orders today, sales today, pending payments, pending dispatch
 new customers, new leads, upcoming appointments, low stock, abandoned carts. All
 queries are defensive (fall back to zero) so the panel always renders.
 
+## CRM, CMS & campaigns (Phase 6)
+
+- **CRM** (`/admin/crm`) — lead pipeline, assignment, follow-ups, call logs.
+  **Sales executives are scoped server-side to their own leads**; a direct URL to
+  someone else's lead returns not-found. Managers (`orders.manage`) see all leads.
+- **Customers** (`/admin/customers`) — lifetime value, orders, addresses,
+  appointments and linked leads.
+- **Appointments** (`/admin/appointments`) — status and staff assignment.
+  Bookings from `/appointments` auto-raise a CRM lead.
+- **Reviews** (`/admin/reviews`) — moderation queue. Customers may only review
+  products they actually purchased (re-verified server-side), and nothing appears
+  on the storefront until approved.
+- **CMS** (`/admin/cms`) — block-based pages. Ten fixed block types, each with its
+  own schema; **no free-form HTML editor**, so content can never inject markup.
+- **Blog** (`/admin/blog`) — posts with SEO fields and Article structured data.
+- **Campaigns** (`/admin/campaigns`) — automation toggles, configurable
+  abandoned-cart delays (abandon-after, three stages, minimum gap) and editable
+  message templates. Runs via `POST /api/cron/abandoned-cart` and
+  `POST /api/cron/campaigns` with the `CRON_SECRET` bearer token.
+
 ## Roadmap (by phase)
 
 - **Phase 2** — Products/variants/images CRUD, CSV import (dry-run), inventory,

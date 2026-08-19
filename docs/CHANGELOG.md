@@ -1,5 +1,74 @@
 # Changelog
 
+## Phase 6 — CRM + CMS · 2026-08-19
+
+**Features added**
+- **CRM** (`/admin/crm`): lead pipeline with per-stage counts, create/assign leads,
+  stage transitions, **scheduled follow-ups** with a "due in 24h" worklist, and
+  **call logging**. Sales executives are scoped server-side to their own leads;
+  managers see everything (`lib/admin/crm.ts`).
+- **Customers** (`/admin/customers`): searchable list plus a detail view with
+  lifetime value, paid-order count, order history, addresses, appointments and
+  linked CRM leads.
+- **Appointments**: storefront `/appointments` booking (showroom visit or video
+  consultation, live slot availability, product of interest) which **re-checks slot
+  availability server-side**, links/creates the customer, **raises a CRM lead**, and
+  sends a best-effort confirmation email. `/admin/appointments` manages status and
+  staff assignment.
+- **Reviews**: submission restricted to **verified purchases** (re-verified
+  server-side against a fulfilled order), one review per customer per product,
+  admin moderation queue (`/admin/reviews`) with approve/reject, and approved
+  reviews + aggregate rating on the product page.
+- **CMS** (`/admin/cms`): block-based pages with **ten fixed block types** and a
+  strict Zod schema per type — there is deliberately **no free-form HTML editor**,
+  so content cannot inject markup or scripts. Add/edit/reorder/hide/delete blocks,
+  draft / published / scheduled states, rendered at `/pages/[slug]`.
+- **Blog** (`/admin/blog` + `/blog`, `/blog/[slug]`): full CRUD, categories, tags,
+  excerpt, featured image, SEO fields, and **Article JSON-LD**.
+- **Campaigns & abandoned cart** (`/admin/campaigns`): per-campaign on/off plus
+  **configurable abandoned-cart delays** (abandon-after, three reminder stages,
+  minimum gap), editable **message templates** with `{{placeholder}}` rendering, and
+  cron endpoints `POST /api/cron/abandoned-cart` and `POST /api/cron/campaigns`
+  (both CRON_SECRET-protected). Birthday/anniversary greetings for opted-in
+  customers.
+- **Seed content**: a published "Our Story" CMS page (hero, rich text, trust row,
+  FAQ, CTA), two blog posts, three campaigns and two message templates.
+
+**Tests** (Vitest, 92 total; +13)
+- Abandoned-cart scheduling (`lib/campaigns/schedule.ts` is pure): abandonment
+  threshold, per-stage due dates, empty/converted carts skipped, and the
+  **anti-spam guarantees** — never more than the configured number of reminders,
+  minimum gap respected even when a stage is due, at most one reminder per run,
+  and custom delay configuration honoured.
+
+**Verification**
+- `tsc --noEmit` ✓ · `next build` ✓ (58 routes) · `vitest` ✓ (92/92).
+- **End-to-end against the running app:**
+  - Appointment booked through the real form → appointment `REQUESTED`, customer
+    created, and a CRM lead auto-raised with `source=APPOINTMENT`.
+  - CMS page renders every seeded block type; blog post emits `"@type":"Article"`.
+  - Abandoned-cart cron: unauthorized → 401; run 1 **marks** abandoned without
+    sending; run 2 **sends exactly one** reminder; run 3 immediately after
+    **sends nothing** (minimum gap) — reminder count stays at 1, one Notification.
+  - **RBAC**: SALES_EXECUTIVE reaches CRM/customers/appointments but is blocked
+    from campaigns/CMS/blog, sees only "Your assigned leads", and a direct URL to
+    an unassigned lead **leaks nothing** (not-found; admin sees it fine).
+  - Reviews: anonymous PDP shows the sign-in gate with **no review form**.
+
+**Known limitations**
+- WhatsApp/SMS templates are stored and rendered but dispatch is email-only for
+  now (the channel field is ready; a gateway is a drop-in).
+- Back-in-stock and price-drop campaigns have configuration and wishlist flags but
+  no trigger job yet.
+- The CMS block editor covers all ten types; drag-and-drop reordering is
+  up/down buttons rather than pointer dragging.
+
+**Next steps** — Phase 7: SEO (sitemap, robots, structured data sweep),
+performance, security & accessibility passes, audit-log UI, error pages,
+monitoring and production polish.
+
+---
+
 ## Phase 5 — Shipping (Shiprocket) · 2026-08-19
 
 **Features added**

@@ -31,6 +31,11 @@ async function reset() {
   await prisma.purity.deleteMany();
   await prisma.metal.deleteMany();
   await prisma.category.deleteMany();
+  await prisma.cmsBlock.deleteMany();
+  await prisma.cmsPage.deleteMany();
+  await prisma.blogPost.deleteMany();
+  await prisma.messageTemplate.deleteMany();
+  await prisma.campaign.deleteMany();
   await prisma.navItem.deleteMany();
   await prisma.user.deleteMany();
   await prisma.storeSetting.deleteMany();
@@ -627,6 +632,85 @@ async function seedProducts(
   }
 }
 
+/** CMS pages, blog posts (Phase 6). Uses fixed block types — never raw HTML. */
+async function seedContent() {
+  const about = await prisma.cmsPage.create({
+    data: {
+      slug: 'about', title: 'Our Story', status: 'PUBLISHED', publishedAt: new Date(),
+      seoTitle: 'Our Story — Maya Jewellers',
+      seoDescription: 'Three generations of Delhi jewellers, crafting hallmarked gold and certified diamonds.',
+    },
+  });
+  const aboutBlocks = [
+    { type: 'HERO' as const, order: 0, data: { eyebrow: 'Since 1974', heading: 'Three generations of Delhi craft', subheading: 'Hallmarked gold, certified diamonds, and a price you can always verify.', imageUrl: '', mobileImageUrl: '', ctaLabel: 'Book a visit', ctaHref: '/appointments' } },
+    { type: 'RICH_TEXT' as const, order: 1, data: { heading: 'How we price', body: 'Every dynamic price is calculated live from the day’s metal rate, weight, wastage, making charges and GST.\nWe show you the same breakup on every product page — nothing is hidden in a round number.', align: 'left' } },
+    { type: 'TRUST_ROW' as const, order: 2, data: { items: [
+      { title: 'BIS Hallmarked', subtitle: 'Certified purity on every gold piece' },
+      { title: 'Certified Diamonds', subtitle: 'IGI / GIA graded stones' },
+      { title: 'Live Rate Pricing', subtitle: 'Priced on today’s metal rate' },
+      { title: 'Pan-India Delivery', subtitle: 'Insured and fully tracked' },
+    ] } },
+    { type: 'FAQ' as const, order: 3, data: { heading: 'Frequently asked', items: [
+      { question: 'Why does the price change?', answer: 'Gold and silver rates move daily. Dynamic products are priced against the live rate, so the price you see is always current.' },
+      { question: 'Is the price locked when I order?', answer: 'Yes. We snapshot the rate at checkout and honour it for the configured lock window.' },
+      { question: 'Do you offer made-to-order pieces?', answer: 'Many pieces are made to order with a stated lead time and an advance payment.' },
+    ] } },
+    { type: 'CTA' as const, order: 4, data: { heading: 'Visit our Karol Bagh showroom', subheading: 'Private viewings, unhurried guidance, no obligation.', ctaLabel: 'Book an appointment', ctaHref: '/appointments' } },
+  ];
+  for (const b of aboutBlocks) {
+    await prisma.cmsBlock.create({ data: { pageId: about.id, type: b.type, order: b.order, data: b.data } });
+  }
+
+  await prisma.blogPost.createMany({
+    data: [
+      {
+        slug: 'best-gold-jewellery-for-weddings', title: 'Best gold jewellery for weddings',
+        author: 'Maya Jewellers', category: 'Guides', tags: ['gold', 'wedding', 'bridal'],
+        excerpt: 'From mangalsutra to bridal sets — what to buy, what to look for, and how gold is priced.',
+        content: 'Choosing wedding jewellery is as much about the occasion as the metal.\nStart with the pieces you will wear again: a 22K chain, a pair of jhumkas, a mangalsutra.\nAlways check the BIS hallmark, and ask for the price breakup — metal value, wastage, making charges and GST should all be visible.\nAt Maya Jewellers every dynamic price is computed from the day’s live rate, so you can compare like for like.',
+        status: 'PUBLISHED', publishedAt: new Date(),
+        seoTitle: 'Best gold jewellery for weddings — a buyer’s guide',
+        seoDescription: 'A practical guide to buying wedding gold: hallmarking, weights, making charges and how prices are calculated.',
+      },
+      {
+        slug: 'understanding-making-charges', title: 'Understanding making charges',
+        author: 'Maya Jewellers', category: 'Guides', tags: ['pricing', 'making-charges'],
+        excerpt: 'Percentage, per-gram or flat — what making charges mean and why they differ by piece.',
+        content: 'Making charges pay for the craft: the design, the labour and the finishing.\nThey can be a percentage of the metal value, a rate per gram, or a flat amount — and intricate work costs more than a plain band.\nWe publish the making charge on every price breakup so you always know what you are paying for.',
+        status: 'PUBLISHED', publishedAt: new Date(),
+      },
+    ],
+    skipDuplicates: true,
+  });
+}
+
+/** Campaign defaults + editable templates (Phase 6). */
+async function seedCampaigns() {
+  await prisma.campaign.createMany({
+    data: [
+      { type: 'ABANDONED_CART', name: 'Abandoned cart', isActive: true, config: { abandonAfterMinutes: 60, stageDelaysMinutes: [60, 1440, 4320], minGapMinutes: 60 } },
+      { type: 'BIRTHDAY', name: 'Birthday greetings', isActive: true },
+      { type: 'ANNIVERSARY', name: 'Anniversary greetings', isActive: true },
+    ],
+    skipDuplicates: true,
+  });
+
+  await prisma.messageTemplate.createMany({
+    data: [
+      {
+        key: 'abandoned_cart', channel: 'EMAIL',
+        subject: 'You left something behind at {{brand}}',
+        body: '<h2 style="font-family:Georgia,serif;color:#17362C">{{brand}}</h2><p>Hi {{name}}, you left <strong>{{product}}</strong> in your bag.</p><p>Prices move with the daily metal rate — complete your order to secure today’s price.</p><p><a href="{{url}}" style="color:#A8813C">Return to your bag</a></p>',
+      },
+      {
+        key: 'birthday', channel: 'EMAIL', subject: 'Happy birthday from {{brand}}',
+        body: '<p>Happy birthday, {{name}}! Wishing you a wonderful year ahead.</p>',
+      },
+    ],
+    skipDuplicates: true,
+  });
+}
+
 async function main() {
   console.log('🌱 Seeding Maya Jewellers…');
   await reset();
@@ -642,6 +726,8 @@ async function main() {
     ringsCategoryId: categoryMap.get('rings')!,
   });
   await seedProducts(categoryMap, collectionMap, refs, rules);
+  await seedContent();
+  await seedCampaigns();
 
   const [products, variants, users] = await Promise.all([
     prisma.product.count(),

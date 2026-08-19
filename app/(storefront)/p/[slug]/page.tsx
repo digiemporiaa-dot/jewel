@@ -5,6 +5,9 @@ import { getProductDetail, getRelatedProducts } from '@/lib/product-detail';
 import { getStoreSettings } from '@/lib/store';
 import { getSessionToken } from '@/lib/session';
 import { getWishlistProductIds } from '@/lib/wishlist';
+import { getCustomerId } from '@/lib/customer-session';
+import { getApprovedReviews, canReview } from '@/lib/reviews';
+import Reviews from './Reviews';
 import { formatCurrency } from '@/lib/utils/format';
 import ProductGrid from '@/components/storefront/ProductGrid';
 import Gallery from './Gallery';
@@ -38,10 +41,13 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   const detail = await getProductDetail(slug);
   if (!detail) notFound();
 
-  const [store, related, savedIds] = await Promise.all([
+  const customerId = await getCustomerId();
+  const [store, related, savedIds, reviews, reviewEligibility] = await Promise.all([
     getStoreSettings(),
     getRelatedProducts(detail.categorySlug, detail.id, 4),
     getWishlistProductIds(await getSessionToken()),
+    getApprovedReviews(detail.id),
+    canReview(customerId, detail.id),
   ]);
 
   const priceForSchema = detail.priceFrom ?? detail.variants.find((v) => v.breakup)?.breakup?.unitTotal ?? null;
@@ -144,6 +150,17 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           </dl>
         </section>
       </div>
+
+      {/* Reviews */}
+      <Reviews
+        productId={detail.id}
+        slug={detail.slug}
+        reviews={reviews.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() }))}
+        average={detail.reviewAverage}
+        count={detail.reviewCount}
+        canReview={reviewEligibility.allowed}
+        reason={reviewEligibility.reason}
+      />
 
       {/* Related */}
       {related.length > 0 && (

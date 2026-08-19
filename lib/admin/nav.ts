@@ -59,6 +59,12 @@ export const ADMIN_NAV: AdminNavSection[] = [
     ],
   },
   {
+    title: 'Marketing',
+    items: [
+      { label: 'Campaigns', href: '/admin/campaigns', permission: 'settings.manage' },
+    ],
+  },
+  {
     title: 'System',
     items: [
       { label: 'Settings', href: '/admin/settings', permission: 'settings.manage' },
