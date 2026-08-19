@@ -65,6 +65,24 @@ export default async function OrderPage({ params }: { params: Promise<{ orderNum
         </div>
       )}
 
+      {/* Shipment tracking */}
+      {order.shipment && (
+        <div className="mt-6 border border-line bg-white p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="font-heading text-lg">Tracking</h2>
+            <span className="text-xs px-2 py-0.5 border border-velvet text-velvet rounded-[2px]">{order.shipment.status.replace(/_/g, ' ')}</span>
+          </div>
+          <dl className="mt-3 text-sm space-y-1">
+            {order.shipment.courier && <Row label="Courier" value={order.shipment.courier} />}
+            {order.shipment.awb && <Row label="AWB" value={order.shipment.awb} />}
+            {order.shipment.deliveredAt && <Row label="Delivered" value={formatDate(order.shipment.deliveredAt)} />}
+          </dl>
+          {order.shipment.trackingUrl && (
+            <a href={order.shipment.trackingUrl} target="_blank" rel="noreferrer" className="btn-outline text-sm mt-3 inline-flex">Track shipment</a>
+          )}
+        </div>
+      )}
+
       {/* Items */}
       <div className="mt-8 border border-line bg-white">
         <div className="px-5 py-3 border-b border-line font-heading text-lg">Items</div>

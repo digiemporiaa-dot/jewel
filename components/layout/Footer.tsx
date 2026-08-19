@@ -11,7 +11,7 @@ const SHOP = [
 ];
 
 const HELP = [
-  { label: 'Track Order', href: '/my-account/orders' },
+  { label: 'Track Order', href: '/track' },
   { label: 'Book Appointment', href: '/appointments' },
   { label: 'Shipping & Returns', href: '/pages/shipping-returns' },
   { label: 'Jewellery Care', href: '/pages/jewellery-care' },

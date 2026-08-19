@@ -1,5 +1,72 @@
 # Changelog
 
+## Phase 5 — Shipping (Shiprocket) · 2026-08-19
+
+**Features added**
+- **Provider abstraction** (`lib/shipping/provider.ts`): a `ShippingProvider`
+  interface covering serviceability, shipment creation, AWB, pickup, label,
+  manifest, tracking and cancellation, resolved via `getShippingProvider()` so the
+  aggregator can be replaced without touching callers (brief §21).
+- **Shiprocket implementation** (`lib/shipping/shiprocket.ts`): token auth with
+  refresh, REST calls for every operation, and a **simulated dev mode** when
+  credentials are absent so the whole lifecycle runs locally and in tests.
+- **Pure status mapping** (`lib/shipping/status.ts`): courier status → internal
+  `ShipmentStatus` + the `OrderStatus` it drives, plus terminal-state detection.
+- **Shipment service** (`lib/shipping/shipments.ts`): create → AWB → pickup →
+  label/manifest → tracking, with order-status sync and side effects:
+  **commit reserved stock + capture COD on delivery** (recording the cash balance
+  as its own `BALANCE` payment row), **release stock on RTO**, NDR reason capture.
+- **Admin**: `/admin/shipments` list with status facets (NDR/RTO highlighted) and a
+  **shipment panel** on the order detail with all lifecycle actions — permission-
+  gated (`shipments.manage`) and audited.
+- **Shiprocket webhook** (`/api/webhooks/shiprocket`): shared-token authenticated,
+  idempotent via `WebhookEvent`, reprocessable on failure; handles tracking, NDR
+  and RTO through the same mapping.
+- **Reconciliation cron** (`/api/cron/shipment-reconciliation`, CRON_SECRET): polls
+  non-terminal shipments so late/missed webhooks self-heal.
+- **Customer tracking**: public `/track` (order number + phone, ownership-checked,
+  no disclosure on mismatch) and a tracking block on the order page.
+
+**Bug found and fixed by tests**
+- `"UNDELIVERED"` contains the substring `"DELIVERED"`, so a **failed delivery was
+  being mapped to DELIVERED** — which would have wrongly committed stock and
+  captured COD. Fixed by ordering the NDR rule before DELIVERED and adding a
+  `\bDELIVERED\b` word-boundary guard, plus a regression test.
+
+**Tests** (Vitest, 79 total; +7)
+- Status mapping: delivery/transit/pickup/NDR/RTO-initiated vs RTO-delivered,
+  unknown fallback, terminal-state detection, and the UNDELIVERED regression.
+
+**Verification**
+- `tsc --noEmit` ✓ · `next build` ✓ (45 routes) · `vitest` ✓ (79/79).
+- **End-to-end lifecycle** driven through the real admin UI (headless Chromium) +
+  webhooks + DB assertions:
+  - Prepaid order: create shipment → AWB → pickup → label → tracking →
+    order `SHIPPED` / shipment `IN_TRANSIT`; then `DELIVERED` webhook →
+    order `DELIVERED`, **stock committed 5→4, reserved 1→0**.
+  - Webhook auth + idempotency: no token → 401; duplicate delivery → deduped
+    (`duplicate:true`), both events `PROCESSED`.
+  - **UNDELIVERED webhook → shipment `NDR`** (not delivered), NDR reason recorded.
+  - **COD**: ₹1,000 token collected online at checkout, balance on delivery →
+    payments reconcile exactly (₹1,000 `COD_TOKEN` + ₹1,052.72 `BALANCE` =
+    ₹2,052.72 grand total), order `DELIVERED` / `CAPTURED`.
+  - **RTO**: `RTO Initiated` webhook → order `RTO`, shipment `RTO_INITIATED`,
+    **reserved inventory released 1→0**.
+  - Cron: unauthorized → 401; authorized skips terminal shipments.
+  - `/track`: correct order+phone shows status/AWB/timeline; **wrong phone
+    discloses nothing**.
+
+**Known limitations**
+- Live Shiprocket needs real credentials; dev mode simulates AWBs and tracking.
+  Courier selection uses the recommended option (no rate-shopping UI yet).
+- NDR follow-up workflow (re-attempt scheduling, customer outreach) is recorded but
+  not automated — that belongs with the Phase 6 CRM/campaign work.
+
+**Next steps** — Phase 6: CRM (leads, follow-ups, call logs), CMS + blog, reviews,
+appointments, campaigns and abandoned-cart automation.
+
+---
+
 ## Phase 4 — Checkout, Payments & Orders · 2026-08-18
 
 **Features added**

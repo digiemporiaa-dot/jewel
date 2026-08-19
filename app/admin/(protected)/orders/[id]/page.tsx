@@ -5,6 +5,8 @@ import { can } from '@/lib/auth/rbac';
 import { formatCurrency, formatDate } from '@/lib/utils/format';
 import PageHeader from '@/components/admin/PageHeader';
 import OrderActions from './OrderActions';
+import ShipmentPanel from '@/components/admin/ShipmentPanel';
+import { can as canPerm } from '@/lib/auth/rbac';
 
 export const dynamic = 'force-dynamic';
 
@@ -92,7 +94,7 @@ export default async function AdminOrderDetail({ params }: { params: Promise<{ i
         </div>
 
         {/* Actions (only for order managers) */}
-        <div>
+        <div className="space-y-6">
           {canManage ? (
             <OrderActions
               orderId={order.id}
@@ -102,6 +104,25 @@ export default async function AdminOrderDetail({ params }: { params: Promise<{ i
             />
           ) : (
             <div className="border border-line bg-white p-5 text-sm text-ink-soft">You have view-only access to orders.</div>
+          )}
+
+          {canPerm(staff.role, 'shipments.manage') && (
+            <ShipmentPanel
+              orderId={order.id}
+              shipment={{
+                exists: !!order.shipment,
+                status: order.shipment?.status ?? null,
+                awb: order.shipment?.awb ?? null,
+                courier: order.shipment?.courier ?? null,
+                trackingUrl: order.shipment?.trackingUrl ?? null,
+                labelUrl: order.shipment?.labelUrl ?? null,
+                manifestUrl: order.shipment?.manifestUrl ?? null,
+                pickupScheduledAt: order.shipment?.pickupScheduledAt?.toISOString() ?? null,
+                shippedAt: order.shipment?.shippedAt?.toISOString() ?? null,
+                deliveredAt: order.shipment?.deliveredAt?.toISOString() ?? null,
+                ndrReason: order.shipment?.ndrReason ?? null,
+              }}
+            />
           )}
         </div>
       </div>
