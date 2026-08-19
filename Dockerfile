@@ -41,11 +41,19 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# Prisma schema + engine + migration scripts for `prisma migrate deploy`.
+# Prisma client runtime + engine, needed by the app at request time.
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/prisma ./prisma
+
+# The migration CLI lives in its own prefix. Copying node_modules/prisma out of
+# the builder does not work: the CLI pulls in a large dependency tree (effect,
+# @prisma/config and friends) that a cherry-picked copy always leaves behind.
+# Installing it here keeps that tree intact without dragging the whole builder
+# node_modules into the runtime image. Keep the version in step with the
+# `prisma` devDependency in package.json.
+RUN npm install --prefix /opt/prisma-cli prisma@6.19.3 \
+  && npm cache clean --force
 
 USER nextjs
 EXPOSE 3000
@@ -59,4 +67,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
 # `server.js` is emitted by Next.js standalone output.
 # `npx` resolves through node_modules/.bin, which this stage does not copy, so
 # the Prisma CLI is invoked directly at its package entry point instead.
-CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy && node server.js"]
+CMD ["sh", "-c", "node /opt/prisma-cli/node_modules/prisma/build/index.js migrate deploy --schema=/app/prisma/schema.prisma && node server.js"]
