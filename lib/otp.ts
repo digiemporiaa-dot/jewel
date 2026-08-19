@@ -1,6 +1,8 @@
 import 'server-only';
 import { createHmac, timingSafeEqual, randomInt } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
+import { getSmsProvider } from '@/lib/sms';
+import { normalizeIndianMobile } from '@/lib/sms/provider';
 import type { OtpPurpose } from '@prisma/client';
 
 /**
@@ -56,13 +58,40 @@ export async function sendOtp(target: string, purpose: OtpPurpose): Promise<Send
     },
   });
 
-  // Dispatch (dev: log; prod: SMS/email provider — wired in Phase 6 campaigns).
+  // Dispatch. In development the code is logged and returned so the flow stays
+  // testable without a gateway; the code is never logged in production.
   const isDev = process.env.NODE_ENV !== 'production';
   if (isDev) {
     console.info(`[otp] ${purpose} code for ${normalized}: ${code}`);
     return { ok: true, devCode: code };
   }
-  // TODO(prod): integrate SMS gateway; never log the code.
+
+  // Testing hatch. Numbers listed in OTP_DEBUG_PHONES get their code written to
+  // the server log instead of an SMS, so the checkout flow is testable before the
+  // DLT/gateway setup is live. Scoped to an explicit allowlist so no shopper's
+  // code is ever logged. REMOVE the variable once SMS delivery works.
+  const debugPhones = (process.env.OTP_DEBUG_PHONES ?? '')
+    .split(',')
+    .map((s) => s.trim().replace(/\D/g, ''))
+    .filter(Boolean);
+  if (debugPhones.length > 0 && debugPhones.includes(normalized.replace(/\D/g, ''))) {
+    console.warn(`[otp][debug] ${purpose} code for ${normalized}: ${code}`);
+    return { ok: true };
+  }
+
+  // Only phone targets go to SMS. Email delivery is a separate channel.
+  if (!normalizeIndianMobile(normalized)) {
+    return { ok: false, error: 'Enter a valid 10-digit mobile number' };
+  }
+
+  const sms = await getSmsProvider().sendOtp({ phone: normalized, code });
+  if (!sms.ok) {
+    // The stored code is useless once delivery failed, and leaving it in place
+    // would make the shopper sit out the resend cooldown for a code they never
+    // received.
+    await prisma.otp.deleteMany({ where: { target: normalized, purpose, consumedAt: null } });
+    return { ok: false, error: sms.error };
+  }
   return { ok: true };
 }
 
