@@ -28,6 +28,10 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV AUTH_TRUST_HOST=true
 ENV PORT=3000
+# Next.js standalone binds to $HOSTNAME. Docker sets HOSTNAME to the container
+# id, so the server would listen only on the container's own IP and the
+# healthcheck against 127.0.0.1 would be refused. Bind to all interfaces.
+ENV HOSTNAME=0.0.0.0
 
 RUN addgroup --system --gid 1001 nodejs \
   && adduser --system --uid 1001 nextjs
@@ -53,4 +57,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
   CMD wget -q --spider http://127.0.0.1:3000/api/health || exit 1
 
 # `server.js` is emitted by Next.js standalone output.
-CMD ["node", "server.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node server.js"]
