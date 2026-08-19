@@ -22,7 +22,7 @@ export async function submitReviewAction(input: unknown): Promise<{ ok: boolean;
   const customerId = await getCustomerId();
   if (!customerId) return { ok: false, error: 'Please sign in to leave a review' };
 
-  const rl = checkLimit(`review:${await getClientIp()}`, LIMITS.review);
+  const rl = await checkLimit(`review:${await getClientIp()}`, LIMITS.review);
   if (!rl.allowed) return { ok: false, error: 'Too many submissions. Please try again later.' };
 
   try {

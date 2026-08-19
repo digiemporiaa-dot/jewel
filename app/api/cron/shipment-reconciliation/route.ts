@@ -6,13 +6,18 @@ import { isTerminalShipmentStatus } from '@/lib/shipping/status';
 import { ShipmentStatus } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs'; // Prisma needs the Node runtime, never Edge.
+// Serverless platforms cap execution time; 60s is the Vercel Hobby ceiling and
+// comfortably within Pro. If the catalogue grows large enough for a run to
+// approach this, batch the job rather than raising the limit.
+export const maxDuration = 60;
 
 /**
  * Poll the courier for non-terminal shipments and apply the latest tracking
  * (brief §56 shipment reconciliation). Protected by CRON_SECRET; belt-and-braces
  * for webhooks that arrive late or not at all.
  */
-export async function POST(request: Request) {
+async function handler(request: Request) {
   if (!isAuthorizedCron(request)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -35,3 +40,9 @@ export async function POST(request: Request) {
   }
   return NextResponse.json({ ok: true, checked: active.length, refreshed });
 }
+
+// Vercel Cron invokes scheduled jobs with **GET** and an
+// `Authorization: Bearer $CRON_SECRET` header; other schedulers (Coolify, cURL,
+// GitHub Actions) use POST. Both verbs run the identical, secret-protected handler.
+export const GET = handler;
+export const POST = handler;

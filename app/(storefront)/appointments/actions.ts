@@ -33,7 +33,7 @@ export async function bookAppointmentAction(input: unknown): Promise<{ ok: boole
   const d = parsed.data;
 
   // Public form — throttle per IP to prevent booking spam.
-  const rl = checkLimit(`appointment:${await getClientIp()}`, LIMITS.appointment);
+  const rl = await checkLimit(`appointment:${await getClientIp()}`, LIMITS.appointment);
   if (!rl.allowed) return { ok: false, error: 'Too many requests. Please try again later.' };
 
   const date = new Date(d.date);

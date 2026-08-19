@@ -1,8 +1,30 @@
+// Hosts allowed through next/image. On Vercel a wildcard turns the image
+// optimizer into an open proxy that anyone can bill to your account, so the list
+// is derived from the buckets/CDNs this store actually serves from. Add more with
+// IMAGE_HOSTS="cdn.example.com,images.example.net".
+function imageRemotePatterns() {
+  const hosts = new Set();
+  for (const raw of (process.env.IMAGE_HOSTS ?? '').split(',')) {
+    const h = raw.trim();
+    if (h) hosts.add(h);
+  }
+  for (const url of [process.env.R2_PUBLIC_URL, process.env.R2_ENDPOINT]) {
+    if (!url) continue;
+    try { hosts.add(new URL(url).hostname); } catch { /* ignore malformed env */ }
+  }
+  // No storage configured yet (fresh install / local dev) — stay permissive so
+  // seeded and externally hosted images still render.
+  if (hosts.size === 0) return [{ protocol: 'https', hostname: '**' }];
+  return [...hosts].map((hostname) => ({ protocol: 'https', hostname }));
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  output: 'standalone',
+  // Standalone produces the self-contained server the Dockerfile runs. Vercel
+  // builds its own serverless output and does not want it.
+  ...(process.env.VERCEL ? {} : { output: 'standalone' }),
   experimental: {
     // Keep server actions body limit modest; large uploads use presigned URLs.
     serverActions: {
@@ -11,9 +33,7 @@ const nextConfig = {
   },
   images: {
     formats: ['image/avif', 'image/webp'],
-    remotePatterns: [
-      { protocol: 'https', hostname: '**' },
-    ],
+    remotePatterns: imageRemotePatterns(),
   },
   async headers() {
     // Content Security Policy. Razorpay Checkout and Google Fonts are the only

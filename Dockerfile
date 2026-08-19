@@ -43,5 +43,11 @@ COPY --from=builder /app/prisma ./prisma
 USER nextjs
 EXPOSE 3000
 
+# Readiness probe — Coolify and `docker compose` both read this. `wget` ships with
+# BusyBox in the alpine base, so no extra package is needed. The generous
+# start-period covers first boot while migrations run.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+  CMD wget -q --spider http://127.0.0.1:3000/api/health || exit 1
+
 # `server.js` is emitted by Next.js standalone output.
 CMD ["node", "server.js"]

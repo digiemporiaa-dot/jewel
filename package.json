@@ -2,10 +2,11 @@
   "name": "maya-jewellers",
   "version": "0.1.0",
   "private": true,
-  "description": "Maya Jewellers — production-ready jewellery e-commerce platform",
+  "description": "Maya Jewellers \u2014 production-ready jewellery e-commerce platform",
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
+    "postinstall": "prisma generate",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",

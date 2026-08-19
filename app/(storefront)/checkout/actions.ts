@@ -22,7 +22,7 @@ export async function sendCheckoutOtp(phone: string): Promise<{ ok: boolean; err
   // Rate limit per IP and per destination — OTP is the most abusable surface.
   const ip = await getClientIp();
   for (const key of [`otp:send:ip:${ip}`, `otp:send:phone:${parsed.data}`]) {
-    const rl = checkLimit(key, LIMITS.otpSend);
+    const rl = await checkLimit(key, LIMITS.otpSend);
     if (!rl.allowed) {
       return { ok: false, error: `Too many code requests. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).` };
     }
@@ -40,7 +40,7 @@ export async function verifyCheckoutOtp(phone: string, code: string): Promise<{ 
 
   // Throttle verification attempts to blunt brute-force guessing.
   const ip = await getClientIp();
-  const rl = checkLimit(`otp:verify:${ip}:${parsed.data}`, LIMITS.otpVerify);
+  const rl = await checkLimit(`otp:verify:${ip}:${parsed.data}`, LIMITS.otpVerify);
   if (!rl.allowed) return { ok: false, error: 'Too many attempts. Please request a new code shortly.' };
 
   const res = await verifyOtp(parsed.data, 'CHECKOUT', codeParsed.data);

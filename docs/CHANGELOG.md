@@ -1,5 +1,59 @@
 # Changelog
 
+## Deployment — Coolify + Vercel · 2026-08-19
+
+Deployment readiness pass. No product behaviour changed; the pricing engine,
+order pipeline and security model are untouched.
+
+**Added**
+- **`GET /api/health`** — readiness probe. `200 {"status":"ok","database":"up"}`
+  when Postgres answers, `503 {"status":"degraded"}` when it does not. Deliberately
+  reports nothing else: an unauthenticated endpoint must not become a
+  reconnaissance surface, and the error text goes to the logs, never the response.
+  Wired into Coolify's health check *and* a Dockerfile `HEALTHCHECK`, so a failed
+  deploy rolls back instead of serving a broken site.
+- **`docs/VERCEL.md`** — the serverless path, including the four things that
+  actually differ there (pooled database URL, shared rate-limit store, `vercel.json`
+  cron, 60s function cap) and a trade-off table against the Docker/Coolify target.
+- **`vercel.json`** — cron schedule (UTC) for the four scheduled jobs.
+- Optional **Upstash Redis** backend for `lib/rate-limit.ts`, over the REST API so
+  it adds no dependency. Required on serverless, where in-memory counters are
+  per-isolate and an attacker gets a free attempt per cold start. It **fails open**
+  to the in-memory counter if Redis is unreachable — a rate limiter must never take
+  checkout down with it. `checkLimit` is now async; the four call sites await it.
+
+**Changed**
+- `docs/DEPLOYMENT.md` — the Coolify section is now a real runbook: VPS
+  prerequisites, database-first ordering, build-pack settings, required env vars,
+  migrations as a pre-deployment command, domain/TLS/health, scheduled tasks,
+  post-deploy verification and webhook wiring.
+- Cron routes export **both `GET` and `POST`** (Vercel Cron sends GET with a bearer
+  token; Coolify/cURL send POST). Same secret-checked handler either way, plus
+  explicit `runtime = 'nodejs'` and `maxDuration = 60`.
+- `next.config.mjs` — `output: 'standalone'` is now skipped on Vercel (which builds
+  its own output) and kept everywhere else, so the Docker image is unaffected.
+  `images.remotePatterns` is derived from `R2_PUBLIC_URL` / `R2_ENDPOINT` /
+  `IMAGE_HOSTS` instead of a blanket `https://**` — on a metered host a wildcard
+  turns the image optimizer into an open proxy anyone can bill to your account.
+- `package.json` — `postinstall: prisma generate` so a cached `node_modules` can
+  never ship a stale client.
+
+**Verified**
+- `tsc --noEmit` clean · `next build` clean · **107/107 tests** (4 new, covering the
+  rate-limiter fallback and fail-open paths).
+- Build succeeds with an **unreachable database** — every data-backed route is
+  dynamic, so the Docker build needs no DB at image-build time.
+- Standalone server booted and probed: `/api/health` → 200 with Postgres up,
+  **503 with Postgres stopped**, back to 200 on recovery. Security headers present
+  on the response.
+
+**Not done**
+- Nothing is deployed. This prepares the repository; provisioning the VPS, Coolify,
+  the database and DNS is a manual step (`docs/DEPLOYMENT.md`).
+- Automating `prisma migrate deploy` inside a Vercel build would need a `directUrl`
+  in the `datasource` block. That is a Prisma schema change, so per **RULE 3** it
+  was not made — documented in `docs/VERCEL.md` instead.
+
 ## Phase 7 — Production Polish · 2026-08-19
 
 **Features added**

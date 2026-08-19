@@ -2,6 +2,10 @@
 
 Target: **Docker → Coolify → VPS → PostgreSQL**.
 
+> Deploying to **Vercel** instead? See [`VERCEL.md`](./VERCEL.md) — serverless
+> changes the database, rate-limiting and cron setup in ways this document does
+> not cover.
+
 ## Build output
 
 `next.config.mjs` uses `output: 'standalone'`, so the runtime image ships a
@@ -25,17 +29,121 @@ NEXT_PUBLIC_SITE_URL=https://shop.example \
 docker compose up --build -d
 ```
 
-## Coolify
+## Coolify — step by step
 
-1. New Resource → Dockerfile app pointing at this repo.
-2. Attach a managed **PostgreSQL** and copy its connection string to `DATABASE_URL`.
-3. Set env vars from `.env.example` (`AUTH_SECRET`, `NEXT_PUBLIC_SITE_URL`,
-   provider keys, `CRON_SECRET`, …).
-4. **`AUTH_TRUST_HOST=true`** is required behind Coolify's proxy (already the
-   default in the Dockerfile).
-5. Deploy. Run `npx prisma migrate deploy` on release (compose does this
-   automatically; for Coolify add it as a pre-start command) and seed once if
-   desired: `npm run db:seed`.
+### Prerequisites
+
+A VPS (2 vCPU / 4 GB RAM is comfortable for this app + Postgres) with Coolify
+installed, and a domain whose DNS A record points at that server's IP.
+
+```bash
+# On the VPS, as root — installs Coolify, then open http://<server-ip>:8000
+curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
+```
+
+### 1. Create the database first
+
+Coolify -> **Project -> New Resource -> Database -> PostgreSQL 16**. Deploy it,
+then open the resource and copy the **internal** connection string (the one using
+the service hostname, not `localhost`). Keeping Postgres inside Coolify's network
+means it is never exposed to the public internet.
+
+### 2. Create the application
+
+**New Resource -> Public Repository** (or GitHub App if the repo is private):
+
+| Field | Value |
+| --- | --- |
+| Repository | `https://github.com/digiemporiaa-dot/jewel` |
+| Branch | `claude/maya-jewellers-ecommerce-8v3un2` (or `main` once merged) |
+| Build Pack | **Dockerfile** |
+| Dockerfile location | `/Dockerfile` |
+| Port | `3000` |
+
+### 3. Environment variables
+
+**Configuration -> Environment Variables.** Minimum to boot:
+
+```
+DATABASE_URL=<internal connection string from step 1>
+AUTH_SECRET=<openssl rand -base64 32>
+AUTH_TRUST_HOST=true
+NEXT_PUBLIC_SITE_URL=https://your-domain.com
+CRON_SECRET=<openssl rand -hex 32>
+```
+
+Add provider keys as you enable them - `RAZORPAY_*`, `SHIPROCKET_*`, `SMTP_*`,
+`R2_*`. Anything left blank keeps that integration in simulated mode; the app
+still builds and runs. Full list with comments in `.env.example`.
+
+> `NEXT_PUBLIC_SITE_URL` is baked into canonical URLs, the sitemap and JSON-LD.
+> Set the real domain before letting Google index the site.
+
+> `AUTH_TRUST_HOST=true` is mandatory behind Coolify's Traefik proxy - without it
+> Auth.js rejects every sign-in with `UntrustedHost`. The Dockerfile already sets
+> it; keeping it in the dashboard too makes it visible.
+
+### 4. Migrations
+
+The image does **not** migrate on start, so a bad migration can never take the
+site down on its own. Set it explicitly instead - Coolify ->
+**Pre-deployment Command**:
+
+```
+npx prisma migrate deploy
+```
+
+Seed the demo catalogue once (optional - skip if importing real products), from
+Coolify's terminal for the container:
+
+```bash
+npx prisma db seed
+```
+
+### 5. Domain, TLS and health
+
+- **Configuration -> Domains** -> `https://your-domain.com`. Coolify issues the
+  Let's Encrypt certificate automatically once DNS resolves.
+- **Health Check Path** -> `/api/health`. It returns `200 {"status":"ok"}` when
+  the database answers and `503 {"status":"degraded"}` when it does not, so a
+  failed deploy rolls back instead of serving a broken site. The Dockerfile
+  carries the same probe as a `HEALTHCHECK`.
+
+### 6. Scheduled tasks
+
+Coolify -> **Scheduled Tasks**, one per row in the cron table below. Each is an
+HTTP call carrying the shared secret:
+
+```bash
+curl -fsS -X POST https://your-domain.com/api/cron/recompute-prices \
+  -H "Authorization: Bearer $CRON_SECRET"
+```
+
+### 7. Verify the deployment
+
+```bash
+curl -s  https://your-domain.com/api/health          # {"status":"ok",...}
+curl -sI https://your-domain.com | grep -i strict-transport
+curl -sI https://your-domain.com/admin               # 307 -> sign-in
+curl -i  https://your-domain.com/api/cron/campaigns  # 401 without the secret
+curl -s  https://your-domain.com/sitemap.xml | head
+```
+
+Then sign in at `/admin`, **change the seeded admin password immediately**, and
+fill in Store Settings - brand, phone, WhatsApp, address, GST. None of it is
+hardcoded, so the site shows placeholder values until you do.
+
+### 8. Webhooks
+
+Point the provider dashboards at the live domain:
+
+- Razorpay -> `https://your-domain.com/api/webhooks/razorpay`, with the same
+  secret in `RAZORPAY_WEBHOOK_SECRET`.
+- Shiprocket -> `https://your-domain.com/api/webhooks/shiprocket`, sending
+  `x-api-key: $SHIPROCKET_WEBHOOK_TOKEN`.
+
+Both verify signatures and are idempotent - a redelivered event is recorded and
+ignored, never processed twice.
 
 ## Environment variables
 
@@ -44,9 +152,13 @@ See `.env.example`. Minimum to boot: `DATABASE_URL`, `AUTH_SECRET`. Never commit
 
 ## Health & readiness
 
+`GET /api/health` is the probe: `200 {"status":"ok","database":"up"}` when
+Postgres answers, `503 {"status":"degraded"}` when it does not. It is `no-store`
+and reports nothing beyond up/down - an unauthenticated endpoint should not
+become a reconnaissance surface.
+
 The app renders its shell even if the database is briefly unavailable (data
-accessors fall back), but `/admin` and checkout require the DB. Point health
-checks at `/` or `/api/auth/session`.
+accessors fall back), but `/admin` and checkout require the DB.
 
 ## Scheduled jobs (cron)
 
