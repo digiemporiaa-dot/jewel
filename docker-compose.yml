@@ -1,19 +1,27 @@
 # Local / self-hosted stack. On Coolify, provision Postgres separately and set
 # DATABASE_URL + secrets via the dashboard; the `app` service maps 1:1.
+#
+# SECURITY NOTES
+#  - Postgres publishes NO host port. Docker writes its own iptables rules and
+#    bypasses UFW, so a published 5432 would be reachable from the public
+#    internet even with the firewall enabled. The app reaches the DB over the
+#    private compose network on hostname `db`.
+#  - The app binds to 127.0.0.1 only. Nginx (or Coolify's proxy) terminates TLS
+#    and forwards to it.
+#  - No credentials are hardcoded. Everything comes from .env, which is
+#    gitignored.
 services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: maya
-      POSTGRES_PASSWORD: maya
-      POSTGRES_DB: maya
-    ports:
-      - '5432:5432'
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U maya']
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -26,14 +34,11 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    env_file: .env
     environment:
-      DATABASE_URL: 'postgresql://maya:maya@db:5432/maya?schema=public'
-      AUTH_SECRET: '${AUTH_SECRET:-change-me-in-production}'
       AUTH_TRUST_HOST: 'true'
-      NEXT_PUBLIC_SITE_URL: '${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}'
-      CRON_SECRET: '${CRON_SECRET:-change-me}'
     ports:
-      - '3000:3000'
+      - '127.0.0.1:3000:3000'
     healthcheck:
       test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1:3000/api/health']
       interval: 30s
@@ -42,6 +47,20 @@ services:
       retries: 3
     # Apply migrations then start the server.
     command: sh -c "npx prisma migrate deploy && node server.js"
+
+  # One-off tasks. Uses the `builder` stage because the runtime image ships
+  # neither devDependencies nor tsx. Not started by `docker compose up`.
+  #   docker compose run --rm seed
+  seed:
+    build:
+      context: .
+      target: builder
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+    command: npx tsx prisma/seed.ts
+    profiles: ['tools']
 
 volumes:
   db_data:
