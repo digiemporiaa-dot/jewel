@@ -18,6 +18,25 @@ function imageRemotePatterns() {
   return [...hosts].map((hostname) => ({ protocol: 'https', hostname }));
 }
 
+/**
+ * Hosts the browser is allowed to talk to directly. Image uploads use presigned
+ * PUTs straight to R2, so the bucket host has to be in `connect-src` or the CSP
+ * blocks the request before it leaves the page. R2 addresses buckets as
+ * subdomains (bucket.account.r2.cloudflarestorage.com), hence the wildcard.
+ */
+function uploadConnectSources() {
+  const out = new Set();
+  for (const url of [process.env.R2_ENDPOINT, process.env.R2_PUBLIC_URL]) {
+    if (!url) continue;
+    try {
+      const { hostname } = new URL(url);
+      out.add(`https://${hostname}`);
+      out.add(`https://*.${hostname}`);
+    } catch { /* ignore malformed env */ }
+  }
+  return [...out];
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -45,7 +64,7 @@ const nextConfig = {
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com data:",
       "img-src 'self' data: blob: https:",
-      "connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com",
+      ["connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com", ...uploadConnectSources()].join(' '),
       "frame-src https://api.razorpay.com https://checkout.razorpay.com",
       "form-action 'self'",
       "frame-ancestors 'self'",
