@@ -9,6 +9,9 @@ WORKDIR /app
 # ─── deps ───────────────────────────────────────────────────────────────────
 FROM base AS deps
 COPY package.json package-lock.json* ./
+# The `postinstall` script runs `prisma generate`, which needs the schema.
+# Without this COPY, `npm ci` fails before any dependency is usable.
+COPY prisma ./prisma
 RUN npm ci
 
 # ─── builder ────────────────────────────────────────────────────────────────
