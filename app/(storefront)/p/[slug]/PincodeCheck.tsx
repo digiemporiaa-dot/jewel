@@ -15,9 +15,12 @@ export default function PincodeCheck() {
 
   return (
     <div>
-      <label className="block text-xs tracking-[0.1em] uppercase text-ink-soft mb-1.5">Delivery & serviceability</label>
+      <label htmlFor="pincode-check" className="block text-xs tracking-[0.1em] uppercase text-ink-soft mb-1.5">
+        Delivery &amp; serviceability
+      </label>
       <div className="flex gap-2">
         <input
+          id="pincode-check"
           inputMode="numeric"
           maxLength={6}
           value={pincode}

@@ -1,5 +1,77 @@
 # Changelog
 
+## Phase 7 — Production Polish · 2026-08-19
+
+**Features added**
+- **SEO**: `app/sitemap.ts` (live products, categories, collections, published CMS
+  pages and blog posts — 43 URLs on seed data) and `app/robots.ts` excluding
+  admin/API/transactional routes. Site-wide **Organization + WebSite JSON-LD**
+  with a `SearchAction`, joining the existing Product, Breadcrumb and Article
+  structured data.
+- **Audit log UI** (`/admin/audit`): filterable by action and entity, showing who,
+  what, before/after, IP and timestamp. **Read-only by design** — no edit or delete
+  action exists, so the record stays append-only (brief §44).
+- **Store settings** (`/admin/settings`): the white-label configuration surface —
+  brand, contact, address/GST, and every commerce rule (free-shipping threshold,
+  COD limit and token, verification-call and PAN thresholds, rate-lock minutes),
+  social links and policies. Changes are audited.
+- **Staff & roles** (`/admin/staff`, SUPER_ADMIN only): create accounts, change
+  roles, enable/disable, reset passwords. Guards against removing the **last active
+  super admin**; passwords are never written to the audit log.
+- **Rate limiting** (`lib/rate-limit.ts`): fixed-window limiter applied to OTP send
+  (per IP *and* per phone), OTP verify, appointment booking and review submission.
+- **Security headers**: a real **Content-Security-Policy** (Razorpay + Google Fonts
+  are the only third parties), HSTS, `Permissions-Policy`, plus `no-store` on
+  admin/cart/checkout/account/order routes.
+- **Structured logging** (`lib/logger.ts`): single-line JSON with **secret
+  redaction** — passwords, OTPs, tokens, signatures, PAN and card fields can never
+  reach the logs.
+- **Accessibility**: skip-link as the first tab stop, `<main>` landmark, and a
+  labelled pincode input (the one gap the audit found).
+- **Docs**: backup/restore procedure, cron schedule table, monitoring and alerting
+  guidance, and the security posture — all in `docs/DEPLOYMENT.md`.
+
+**Tests** (Vitest, 103 total; +11)
+- Rate limiter: allows to the limit then blocks, resets after the window, keys are
+  independent (one caller cannot block another), buckets are pruned, and the OTP
+  presets are asserted strict.
+- Log redaction: secret keys redacted by substring, nested objects and arrays
+  covered, PAN redacted, errors flattened without stack traces, deep-nesting guard.
+
+**Verification**
+- `tsc --noEmit` ✓ · `next build` ✓ (**60 routes**) · `vitest` ✓ (103/103).
+- **Mobile QA sweep** at 360 / 390 / 768 / 1280 across ten pages (home, category,
+  product, cart, search, appointments, blog, CMS page, track, collections):
+  **zero horizontal overflow at every width**.
+- **Production build console audit**: **0 CSP violations, 0 JavaScript errors**
+  across seven pages. (The `unsafe-eval` violation seen under `next dev` is Next's
+  hot-reloader and does not occur in the built app — checked against the real
+  standalone server.)
+- **Accessibility audit** (automated, all storefront pages): no missing alt text,
+  no unnamed buttons/links, no unlabelled inputs, `<main>` present, exactly one
+  `h1`. Skip link confirmed as the first tab stop.
+- **SEO**: `robots.txt` and `sitemap.xml` verified live; Organization/WebSite
+  JSON-LD present on the homepage.
+- **Security**: CSP/HSTS/Permissions-Policy headers verified on responses;
+  `/admin` → 307; all four cron endpoints → 401 without the secret; **ADMIN is
+  redirected away from `/admin/staff`** with no staff UI leaked (SUPER_ADMIN only).
+- **Image fallback**: production build renders **0 broken images** — the monogram
+  placeholder replaces the seed's fictional image paths.
+
+**Known limitations / recommended before go-live**
+- **One index recommendation, not applied**: `/admin/audit` filters by `action`,
+  which has no index, and AuditLog grows unboundedly. Adding
+  `@@index([action, createdAt])` to `AuditLog` would keep it fast. This is a Prisma
+  schema change, so per RULE 3 it awaits your approval rather than being applied.
+- The rate limiter is in-memory and therefore per container — correct for a single
+  instance; swap the store for Redis before scaling horizontally.
+- Product imagery is placeholder (monogram fallback) until real photography is
+  uploaded to R2.
+- Live Razorpay / Shiprocket / SMTP / R2 credentials must be set, and
+  `AUTH_SECRET` + `CRON_SECRET` rotated, before go-live.
+
+---
+
 ## Phase 6 — CRM + CMS · 2026-08-19
 
 **Features added**

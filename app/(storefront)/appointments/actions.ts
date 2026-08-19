@@ -3,6 +3,8 @@
 import { z } from 'zod';
 import { getAvailableSlots, bookAppointment, AppointmentError } from '@/lib/appointments';
 import { getCustomerId } from '@/lib/customer-session';
+import { checkLimit, LIMITS } from '@/lib/rate-limit';
+import { getClientIp } from '@/lib/request-id';
 import { getStoreSettings } from '@/lib/store';
 import { sendEmail } from '@/lib/email';
 import { prisma } from '@/lib/prisma';
@@ -29,6 +31,10 @@ export async function bookAppointmentAction(input: unknown): Promise<{ ok: boole
   const parsed = bookSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid details' };
   const d = parsed.data;
+
+  // Public form — throttle per IP to prevent booking spam.
+  const rl = checkLimit(`appointment:${await getClientIp()}`, LIMITS.appointment);
+  if (!rl.allowed) return { ok: false, error: 'Too many requests. Please try again later.' };
 
   const date = new Date(d.date);
   if (Number.isNaN(date.getTime())) return { ok: false, error: 'Invalid date' };

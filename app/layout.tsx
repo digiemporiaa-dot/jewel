@@ -45,7 +45,67 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en-IN" className={`${bodoni.variable} ${jost.variable}`}>
-      <body>{children}</body>
+      <body>
+        {/* Skip link — first focusable element, for keyboard and screen readers. */}
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:left-4 focus:top-4 focus:bg-velvet focus:text-paper focus:px-4 focus:py-2"
+        >
+          Skip to content
+        </a>
+        <OrganizationSchema />
+        {children}
+      </body>
     </html>
   );
+}
+
+/** Organization + WebSite structured data, emitted site-wide (brief §28). */
+async function OrganizationSchema() {
+  const store = await getStoreSettings();
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000').replace(/\/$/, '');
+  const social = (store.socialLinks as Record<string, string> | null) ?? {};
+
+  const ld = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'Organization',
+        '@id': `${siteUrl}#organization`,
+        name: store.brandName,
+        url: siteUrl,
+        ...(store.logoUrl ? { logo: store.logoUrl } : {}),
+        ...(store.phone
+          ? { contactPoint: [{ '@type': 'ContactPoint', telephone: store.phone, contactType: 'customer service', areaServed: 'IN' }] }
+          : {}),
+        ...(store.addressLine
+          ? {
+              address: {
+                '@type': 'PostalAddress',
+                streetAddress: store.addressLine,
+                addressLocality: store.city ?? undefined,
+                addressRegion: store.state ?? undefined,
+                postalCode: store.pincode ?? undefined,
+                addressCountry: store.country ?? 'IN',
+              },
+            }
+          : {}),
+        sameAs: Object.values(social).filter(Boolean),
+      },
+      {
+        '@type': 'WebSite',
+        '@id': `${siteUrl}#website`,
+        url: siteUrl,
+        name: store.brandName,
+        publisher: { '@id': `${siteUrl}#organization` },
+        potentialAction: {
+          '@type': 'SearchAction',
+          target: { '@type': 'EntryPoint', urlTemplate: `${siteUrl}/search?q={search_term_string}` },
+          'query-input': 'required name=search_term_string',
+        },
+      },
+    ],
+  };
+
+  return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(ld) }} />;
 }

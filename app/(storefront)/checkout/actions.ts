@@ -6,6 +6,8 @@ import { prisma } from '@/lib/prisma';
 import { getSessionToken } from '@/lib/session';
 import { getCustomerId, setCustomerSession } from '@/lib/customer-session';
 import { sendOtp, verifyOtp } from '@/lib/otp';
+import { checkLimit, LIMITS } from '@/lib/rate-limit';
+import { getClientIp } from '@/lib/request-id';
 import { phoneSchema, placeOrderSchema } from '@/lib/validations/checkout';
 import { createOrder, confirmPayment, markPaymentFailed, CheckoutError } from '@/lib/orders';
 import { createRazorpayOrder, verifyRazorpayPayment, publicKeyId } from '@/lib/payments/razorpay';
@@ -16,6 +18,16 @@ import { sendOrderConfirmation, sendPaymentConfirmation } from '@/lib/email/noti
 export async function sendCheckoutOtp(phone: string): Promise<{ ok: boolean; error?: string; devCode?: string }> {
   const parsed = phoneSchema.safeParse(phone);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid phone' };
+
+  // Rate limit per IP and per destination — OTP is the most abusable surface.
+  const ip = await getClientIp();
+  for (const key of [`otp:send:ip:${ip}`, `otp:send:phone:${parsed.data}`]) {
+    const rl = checkLimit(key, LIMITS.otpSend);
+    if (!rl.allowed) {
+      return { ok: false, error: `Too many code requests. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).` };
+    }
+  }
+
   const res = await sendOtp(parsed.data, 'CHECKOUT');
   return res.ok ? { ok: true, devCode: res.devCode } : { ok: false, error: res.error };
 }
@@ -25,6 +37,11 @@ export async function verifyCheckoutOtp(phone: string, code: string): Promise<{ 
   if (!parsed.success) return { ok: false, error: 'Invalid phone' };
   const codeParsed = z.string().trim().regex(/^\d{6}$/).safeParse(code);
   if (!codeParsed.success) return { ok: false, error: 'Enter the 6-digit code' };
+
+  // Throttle verification attempts to blunt brute-force guessing.
+  const ip = await getClientIp();
+  const rl = checkLimit(`otp:verify:${ip}:${parsed.data}`, LIMITS.otpVerify);
+  if (!rl.allowed) return { ok: false, error: 'Too many attempts. Please request a new code shortly.' };
 
   const res = await verifyOtp(parsed.data, 'CHECKOUT', codeParsed.data);
   if (!res.ok) return { ok: false, error: res.error };

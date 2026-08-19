@@ -1,15 +1,49 @@
 import { requirePermission } from '@/lib/auth/guard';
-import SectionPlaceholder from '@/components/admin/SectionPlaceholder';
+import { getStoreSettings, getSocialLinks } from '@/lib/store';
+import PageHeader from '@/components/admin/PageHeader';
+import SettingsForm from './SettingsForm';
 
 export const dynamic = 'force-dynamic';
 
-export default async function Page() {
+export default async function SettingsPage() {
   await requirePermission('settings.manage');
+  const store = await getStoreSettings();
+  const social = getSocialLinks(store);
+
   return (
-    <SectionPlaceholder
-      title="Settings"
-      description="Store configuration and thresholds"
-      phase="Phase 1"
-    />
+    <div>
+      <PageHeader
+        title="Store Settings"
+        description="Every store-specific value lives here — nothing brand-specific is hardcoded."
+      />
+      <SettingsForm
+        defaults={{
+          brandName: store.brandName,
+          tagline: store.tagline,
+          phone: store.phone ?? '',
+          whatsappNumber: store.whatsappNumber ?? '',
+          email: store.email ?? '',
+          supportEmail: store.supportEmail ?? '',
+          addressLine: store.addressLine ?? '',
+          city: store.city ?? '',
+          state: store.state ?? '',
+          pincode: store.pincode ?? '',
+          gstin: store.gstin ?? '',
+          gstPercentDefault: store.gstPercentDefault.toString(),
+          freeShippingAbove: store.freeShippingAbove?.toString() ?? '',
+          flatShippingFee: store.flatShippingFee.toString(),
+          codMaxOrderValue: store.codMaxOrderValue?.toString() ?? '',
+          codTokenAmount: store.codTokenAmount.toString(),
+          verificationCallAbove: store.verificationCallAbove?.toString() ?? '',
+          panThreshold: store.panThreshold?.toString() ?? '',
+          rateLockMinutes: store.rateLockMinutes,
+          instagram: social.instagram ?? '',
+          facebook: social.facebook ?? '',
+          youtube: social.youtube ?? '',
+          returnPolicy: store.returnPolicy ?? '',
+          footerNote: store.footerNote ?? '',
+        }}
+      />
+    </div>
   );
 }

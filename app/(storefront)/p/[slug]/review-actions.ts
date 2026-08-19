@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getCustomerId } from '@/lib/customer-session';
 import { submitReview, ReviewError } from '@/lib/reviews';
+import { checkLimit, LIMITS } from '@/lib/rate-limit';
+import { getClientIp } from '@/lib/request-id';
 
 const schema = z.object({
   productId: z.string().min(1),
@@ -19,6 +21,9 @@ export async function submitReviewAction(input: unknown): Promise<{ ok: boolean;
 
   const customerId = await getCustomerId();
   if (!customerId) return { ok: false, error: 'Please sign in to leave a review' };
+
+  const rl = checkLimit(`review:${await getClientIp()}`, LIMITS.review);
+  if (!rl.allowed) return { ok: false, error: 'Too many submissions. Please try again later.' };
 
   try {
     await submitReview({
