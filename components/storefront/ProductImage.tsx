@@ -27,6 +27,10 @@ export default function ProductImage({
   const imgRef = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
+    // Reset on every src change. Without this a single failed image latches the
+    // fallback on for good, so a gallery whose first image is missing keeps
+    // showing the monogram even after the shopper picks a thumbnail that loads.
+    setFailed(!src);
     const img = imgRef.current;
     if (img && img.complete && img.naturalWidth === 0) setFailed(true);
   }, [src]);
