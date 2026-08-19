@@ -57,4 +57,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
   CMD wget -q --spider http://127.0.0.1:3000/api/health || exit 1
 
 # `server.js` is emitted by Next.js standalone output.
-CMD ["sh", "-c", "npx prisma migrate deploy && node server.js"]
+# `npx` resolves through node_modules/.bin, which this stage does not copy, so
+# the Prisma CLI is invoked directly at its package entry point instead.
+CMD ["sh", "-c", "node node_modules/prisma/build/index.js migrate deploy && node server.js"]
