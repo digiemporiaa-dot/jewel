@@ -29,6 +29,13 @@ export default async function CheckoutPage() {
       <h1 className="text-3xl mb-6">Checkout</h1>
       <CheckoutClient
         summary={{ itemCount: cart.itemCount, makingTotal: cart.makingTotal, gstTotal: cart.gstTotal, shipping: cart.shipping, grandTotal: cart.grandTotal }}
+        analyticsItems={cart.lines.map((l) => ({
+          item_id: l.variantId ?? l.productId,
+          item_name: l.name,
+          price: Number(l.unitPrice),
+          quantity: l.quantity,
+          ...(l.variantLabel ? { item_variant: l.variantLabel } : {}),
+        }))}
         verifiedPhone={customer?.phoneVerified ? customer.phone : null}
         panRequired={panRequired}
         codAllowed={codAllowed}

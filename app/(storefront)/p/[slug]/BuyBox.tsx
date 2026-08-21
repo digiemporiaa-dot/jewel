@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useTransition } from 'react';
+import { useState, useMemo, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils/cn';
 import { formatCurrency } from '@/lib/utils/format';
@@ -12,6 +12,7 @@ import PriceBreakup from './PriceBreakup';
 import PincodeCheck from './PincodeCheck';
 import { addToCartAction } from '@/app/(storefront)/cart/actions';
 import type { DetailVariant } from '@/lib/product-detail';
+import { trackEcommerce } from '@/lib/marketing/events';
 
 export default function BuyBox({
   product,
@@ -37,6 +38,24 @@ export default function BuyBox({
   const canBuy = !!variant && (madeToOrder || variant.inStock) && !!variant.breakup;
   const maxQty = variant && !madeToOrder ? Math.max(1, variant.available) : 99;
 
+  // `view_item` fires per variant: on a jewellery PDP the shopper switching
+  // between 18K and 22K is a materially different item at a different price, and
+  // reporting only the default would understate what was actually browsed.
+  useEffect(() => {
+    if (!variant?.breakup) return;
+    trackEcommerce('view_item', {
+      currency: 'INR',
+      value: Number(variant.breakup.unitTotal),
+      items: [{
+        item_id: variant.sku,
+        item_name: product.name,
+        price: Number(variant.breakup.unitTotal),
+        quantity: 1,
+        ...(product.purityName ? { item_variant: product.purityName } : {}),
+      }],
+    });
+  }, [variant?.sku, variant?.breakup, product.name, product.purityName]);
+
   const whatsappLink = buildWhatsAppLink({
     whatsappNumber: product.whatsappNumber,
     brandName: product.brandName,
@@ -52,6 +71,20 @@ export default function BuyBox({
     start(async () => {
       const res = await addToCartAction({ productId: product.id, variantId: variant.id, quantity: qty });
       if (res.ok) {
+        // Only on success — reporting an add that the server rejected (out of
+        // stock, say) would put items in the funnel that never entered a cart.
+        if (variant.breakup) {
+          trackEcommerce('add_to_cart', {
+            currency: 'INR',
+            value: Number(variant.breakup.unitTotal) * qty,
+            items: [{
+              item_id: variant.sku,
+              item_name: product.name,
+              price: Number(variant.breakup.unitTotal),
+              quantity: qty,
+            }],
+          });
+        }
         if (redirect) router.push('/checkout');
         else { setMsg('Added to your bag'); router.refresh(); }
       } else setMsg(res.error ?? 'Could not add to bag');

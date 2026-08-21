@@ -24,19 +24,6 @@ function imageRemotePatterns() {
  * blocks the request before it leaves the page. R2 addresses buckets as
  * subdomains (bucket.account.r2.cloudflarestorage.com), hence the wildcard.
  */
-function uploadConnectSources() {
-  const out = new Set();
-  for (const url of [process.env.R2_ENDPOINT, process.env.R2_PUBLIC_URL]) {
-    if (!url) continue;
-    try {
-      const { hostname } = new URL(url);
-      out.add(`https://${hostname}`);
-      out.add(`https://*.${hostname}`);
-    } catch { /* ignore malformed env */ }
-  }
-  return [...out];
-}
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -55,29 +42,16 @@ const nextConfig = {
     remotePatterns: imageRemotePatterns(),
   },
   async headers() {
-    // Content Security Policy. Razorpay Checkout and Google Fonts are the only
-    // third parties allowed; 'unsafe-inline' on styles is required by Tailwind's
-    // runtime-injected styles and the inline JSON-LD script tags.
-    const csp = [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' https://checkout.razorpay.com",
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "font-src 'self' https://fonts.gstatic.com data:",
-      "img-src 'self' data: blob: https:",
-      ["connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com", ...uploadConnectSources()].join(' '),
-      "frame-src https://api.razorpay.com https://checkout.razorpay.com",
-      "form-action 'self'",
-      "frame-ancestors 'self'",
-      "base-uri 'self'",
-      "object-src 'none'",
-      'upgrade-insecure-requests',
-    ].join('; ');
-
+    // NOTE: `Content-Security-Policy` is deliberately absent here. Headers
+    // declared in this file are fixed when the server starts, but marketing tag
+    // IDs are database values that change without a redeploy — and a policy set
+    // here would override the one middleware composes. `middleware.ts` is the
+    // single owner of the CSP; the baseline it starts from is in
+    // `lib/security/csp.ts`.
     return [
       {
         source: '/(.*)',
         headers: [
-          { key: 'Content-Security-Policy', value: csp },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },

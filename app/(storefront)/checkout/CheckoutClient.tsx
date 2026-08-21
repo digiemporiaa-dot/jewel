@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatCurrency } from '@/lib/utils/format';
 import { cn } from '@/lib/utils/cn';
 import { sendCheckoutOtp, verifyCheckoutOtp, placeOrder, confirmCheckoutPayment } from './actions';
+import { trackEcommerce, type EventItem } from '@/lib/marketing/events';
 
 type Summary = { itemCount: number; makingTotal: string; gstTotal: string; shipping: string; grandTotal: string };
 
@@ -13,12 +14,26 @@ declare global {
 }
 
 export default function CheckoutClient({
-  summary, verifiedPhone, panRequired, codAllowed, brandName,
+  summary, verifiedPhone, panRequired, codAllowed, brandName, analyticsItems,
 }: {
   summary: Summary; verifiedPhone: string | null; panRequired: boolean; codAllowed: boolean; brandName: string;
+  analyticsItems: EventItem[];
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+
+  // `begin_checkout` marks reaching this page, not completing it, so it fires
+  // once on mount. The ref survives React's development double-invoke of effects.
+  const checkoutTracked = useRef(false);
+  useEffect(() => {
+    if (checkoutTracked.current || analyticsItems.length === 0) return;
+    checkoutTracked.current = true;
+    trackEcommerce('begin_checkout', {
+      currency: 'INR',
+      value: Number(summary.grandTotal),
+      items: analyticsItems,
+    });
+  }, [analyticsItems, summary.grandTotal]);
 
   // Contact + OTP
   const [name, setName] = useState('');

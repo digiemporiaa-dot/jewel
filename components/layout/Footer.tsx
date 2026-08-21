@@ -1,13 +1,16 @@
 import Link from 'next/link';
 import { getStoreSettings, getSocialLinks } from '@/lib/store';
 import { getFooterMenus, getMenu, MENU_KEYS, type NavLink } from '@/lib/navigation';
+import { getTagConfig } from '@/lib/marketing/config';
+import { ConsentReopenLink } from '@/components/marketing/ConsentBanner';
 import { InstagramIcon, WhatsAppIcon } from '@/components/icons';
 
 export default async function Footer() {
-  const [store, columns, legal] = await Promise.all([
+  const [store, columns, legal, tags] = await Promise.all([
     getStoreSettings(),
     getFooterMenus(),
     getMenu(MENU_KEYS.footerLegal),
+    getTagConfig(),
   ]);
   const social = getSocialLinks(store);
 
@@ -83,6 +86,7 @@ export default async function Footer() {
             {legal.map((l) => (
               <Link key={l.href} href={l.href} className="hover:text-paper">{l.label}</Link>
             ))}
+            <ConsentReopenLink consentMode={tags.consentMode} />
             {store.phone && <span>{store.phone}</span>}
           </div>
         </div>

@@ -6,6 +6,9 @@ import { getOrderForView } from '@/lib/order-detail';
 import { getStoreSettings } from '@/lib/store';
 import { formatCurrency, formatDate } from '@/lib/utils/format';
 import { cn } from '@/lib/utils/cn';
+import { getTagConfig } from '@/lib/marketing/config';
+import { claimPurchaseTracking, sendMetaCapiPurchase } from '@/lib/marketing/purchase';
+import PurchaseTracker from '@/components/marketing/PurchaseTracker';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,8 +42,30 @@ export default async function OrderPage({ params }: { params: Promise<{ orderNum
   const paid = Number(order.amountPaid) > 0;
   const isBank = order.paymentMethod === 'BANK_TRANSFER';
 
+  // Conversion reporting. The claim is atomic and single-use, so this returns a
+  // payload on exactly one render per order — a refresh gets null and reports
+  // nothing. Meta CAPI is sent from here with the same event id as the browser
+  // pixel, so the two are deduplicated into one conversion rather than counted
+  // twice.
+  const [tags, purchase] = await Promise.all([getTagConfig(), claimPurchaseTracking(order.id)]);
+  if (purchase) {
+    const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? '').replace(/\/$/, '');
+    await sendMetaCapiPurchase(
+      purchase,
+      { email: order.contactEmail, phone: order.contactPhone },
+      `${siteUrl}/order/${order.orderNumber}`
+    );
+  }
+
   return (
     <div className="shell py-10 max-w-3xl mx-auto">
+      {purchase && (
+        <PurchaseTracker
+          payload={purchase}
+          googleAdsId={tags.googleAdsId}
+          googleAdsLabel={tags.googleAdsLabel}
+        />
+      )}
       <div className="text-center">
         <p className="eyebrow">{order.status === 'PENDING_PAYMENT' ? 'Almost there' : 'Thank you'}</p>
         <h1 className="mt-2 text-3xl">

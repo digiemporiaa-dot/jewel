@@ -62,6 +62,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
     title: 'Marketing',
     items: [
       { label: 'Campaigns', href: '/admin/campaigns', permission: 'settings.manage' },
+      { label: 'Tracking & Pixels', href: '/admin/marketing/tags', permission: 'settings.manage' },
     ],
   },
   {

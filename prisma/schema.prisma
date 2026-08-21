@@ -908,6 +908,11 @@ model Order {
   verificationResult String?
   verificationNotes  String?
 
+  // Conversion-tracking claim. Set once, atomically, the first time a purchase
+  // event is emitted for this order, so a shopper refreshing the confirmation
+  // page cannot create a second conversion and corrupt the client's ROAS.
+  purchaseTrackedAt DateTime?
+
   placedAt  DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1347,4 +1352,47 @@ model AuditLog {
   @@index([entity, entityId])
   @@index([userId])
   @@index([createdAt])
+}
+
+// ─── Marketing & analytics tags ──────────────────────────────────────────────
+//
+// Singleton row of operator-supplied tracking IDs. A separate model rather than
+// more StoreSetting columns: this is its own concern, with its own permission
+// and audit story, and one of its fields is a secret.
+//
+// Every field is a *typed, format-validated ID* — never a snippet of markup.
+// A free-form script field in an e-commerce admin is a card-skimming vector:
+// any staff account, or one stolen session, could inject a script that reads
+// the checkout form and posts card details elsewhere, invisibly, while the site
+// keeps working. Anything exotic belongs inside GTM.
+model MarketingTags {
+  id String @id @default("default")
+
+  // Google
+  gtmId                  String?
+  ga4MeasurementId       String?
+  googleAdsId            String?
+  googleAdsLabel         String?
+  googleSiteVerification String?
+
+  // Meta. `metaCapiToken` is a secret: server-side only, never serialised to
+  // the browser, masked in the admin UI.
+  metaPixelId     String?
+  metaCapiToken   String?
+  metaCapiEnabled Boolean @default(false)
+
+  // Behaviour analytics
+  clarityProjectId String?
+  hotjarSiteId     String?
+
+  // Other pixels
+  pinterestTagId String?
+  tiktokPixelId  String?
+  snapPixelId    String?
+
+  // Consent — REQUIRED | IMPLIED | OFF
+  consentMode       String  @default("REQUIRED")
+  consentBannerText String?
+
+  updatedAt DateTime @updatedAt
 }

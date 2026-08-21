@@ -2,6 +2,9 @@ import type { Metadata } from 'next';
 import { Bodoni_Moda, Jost } from 'next/font/google';
 import './globals.css';
 import { getStoreSettings } from '@/lib/store';
+import { getTagConfig } from '@/lib/marketing/config';
+import TagScripts from '@/components/marketing/TagScripts';
+import ConsentBanner from '@/components/marketing/ConsentBanner';
 
 const bodoni = Bodoni_Moda({
   subsets: ['latin'],
@@ -19,7 +22,7 @@ const jost = Jost({
 });
 
 export async function generateMetadata(): Promise<Metadata> {
-  const store = await getStoreSettings();
+  const [store, tags] = await Promise.all([getStoreSettings(), getTagConfig()]);
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
   return {
     metadataBase: new URL(siteUrl),
@@ -35,14 +38,21 @@ export async function generateMetadata(): Promise<Metadata> {
       locale: 'en_IN',
     },
     robots: { index: true, follow: true },
+    // Search Console ownership. A meta tag, not a script — Next renders it into
+    // <head> for us, so the stored value never touches executable markup.
+    ...(tags.googleSiteVerification
+      ? { verification: { google: tags.googleSiteVerification } }
+      : {}),
   };
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const tags = await getTagConfig();
+
   return (
     <html lang="en-IN" className={`${bodoni.variable} ${jost.variable}`}>
       <body>
@@ -55,6 +65,9 @@ export default function RootLayout({
         </a>
         <OrganizationSchema />
         {children}
+        {/* Analytics last: nothing here may compete with first paint. */}
+        <TagScripts config={tags} />
+        <ConsentBanner config={tags} />
       </body>
     </html>
   );
