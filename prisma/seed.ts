@@ -8,6 +8,7 @@ import {
   MakingChargeScope,
 } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { bootstrapNavigation, bootstrapPolicyPages } from './bootstrap';
 
 const prisma = new PrismaClient();
 
@@ -37,6 +38,7 @@ async function reset() {
   await prisma.messageTemplate.deleteMany();
   await prisma.campaign.deleteMany();
   await prisma.navItem.deleteMany();
+  await prisma.navMenu.deleteMany();
   await prisma.user.deleteMany();
   await prisma.storeSetting.deleteMany();
 }
@@ -92,25 +94,13 @@ async function seedStaff() {
   }
 }
 
+/**
+ * Navigation menus. The definitions live in prisma/bootstrap.ts so that a live
+ * store can be brought up to date with `npm run db:bootstrap` without running
+ * this destructive seed.
+ */
 async function seedNav() {
-  const items = [
-    ['New Arrivals', '/c/new-arrivals'],
-    ['Gold', '/c/gold'],
-    ['Diamond', '/c/diamond'],
-    ['Silver', '/c/silver'],
-    ['Rings', '/c/rings'],
-    ['Earrings', '/c/earrings'],
-    ['Necklaces', '/c/necklaces'],
-    ['Bracelets', '/c/bracelets'],
-    ['Bangles', '/c/bangles'],
-    ['Mangalsutra', '/c/mangalsutra'],
-    ['Wedding', '/c/wedding'],
-    ['Gifting', '/c/gifting'],
-    ['Collections', '/collections'],
-  ];
-  await prisma.navItem.createMany({
-    data: items.map(([label, href], i) => ({ label: label!, href: href!, order: i })),
-  });
+  await bootstrapNavigation(prisma);
 }
 
 async function seedCategories() {
@@ -660,6 +650,9 @@ async function seedContent() {
   for (const b of aboutBlocks) {
     await prisma.cmsBlock.create({ data: { pageId: about.id, type: b.type, order: b.order, data: b.data } });
   }
+
+  // The seven pages the footer links to, created as DRAFT for the client to fill in.
+  await bootstrapPolicyPages(prisma);
 
   await prisma.blogPost.createMany({
     data: [

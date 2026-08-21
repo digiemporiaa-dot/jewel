@@ -1,32 +1,14 @@
 import Link from 'next/link';
 import { getStoreSettings, getSocialLinks } from '@/lib/store';
+import { getFooterMenus, getMenu, MENU_KEYS, type NavLink } from '@/lib/navigation';
 import { InstagramIcon, WhatsAppIcon } from '@/components/icons';
 
-const SHOP = [
-  { label: 'New Arrivals', href: '/c/new-arrivals' },
-  { label: 'Gold', href: '/c/gold' },
-  { label: 'Diamond', href: '/c/diamond' },
-  { label: 'Silver', href: '/c/silver' },
-  { label: 'Collections', href: '/collections' },
-];
-
-const HELP = [
-  { label: 'Track Order', href: '/track' },
-  { label: 'Book Appointment', href: '/appointments' },
-  { label: 'Shipping & Returns', href: '/pages/shipping-returns' },
-  { label: 'Jewellery Care', href: '/pages/jewellery-care' },
-  { label: 'Contact Us', href: '/pages/contact' },
-];
-
-const ABOUT = [
-  { label: 'Our Story', href: '/pages/about' },
-  { label: 'BIS Hallmark', href: '/pages/hallmark' },
-  { label: 'Certifications', href: '/pages/certifications' },
-  { label: 'Blog', href: '/blog' },
-];
-
 export default async function Footer() {
-  const store = await getStoreSettings();
+  const [store, columns, legal] = await Promise.all([
+    getStoreSettings(),
+    getFooterMenus(),
+    getMenu(MENU_KEYS.footerLegal),
+  ]);
   const social = getSocialLinks(store);
 
   return (
@@ -65,9 +47,9 @@ export default async function Footer() {
             </div>
           </div>
 
-          <FooterCol title="Shop" links={SHOP} />
-          <FooterCol title="Help" links={HELP} />
-          <FooterCol title="About" links={ABOUT} />
+          {columns.map((col) => (
+            <FooterCol key={col.key} title={col.title} links={col.links} />
+          ))}
         </div>
 
         {/* Newsletter */}
@@ -98,8 +80,9 @@ export default async function Footer() {
             {store.gstin ? ` · GSTIN ${store.gstin}` : ''}. All rights reserved.
           </p>
           <div className="flex items-center gap-4">
-            <Link href="/pages/privacy" className="hover:text-paper">Privacy</Link>
-            <Link href="/pages/terms" className="hover:text-paper">Terms</Link>
+            {legal.map((l) => (
+              <Link key={l.href} href={l.href} className="hover:text-paper">{l.label}</Link>
+            ))}
             {store.phone && <span>{store.phone}</span>}
           </div>
         </div>
@@ -113,7 +96,7 @@ function FooterCol({
   links,
 }: {
   title: string;
-  links: { label: string; href: string }[];
+  links: NavLink[];
 }) {
   return (
     <div>

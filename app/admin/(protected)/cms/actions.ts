@@ -7,6 +7,7 @@ import { assertPermission } from '@/lib/auth/guard';
 import { writeAudit } from '@/lib/audit';
 import { prisma } from '@/lib/prisma';
 import { parseBlockData, defaultBlockData } from '@/lib/cms/blocks';
+import { resolveBlockStyle, syncLegacyFields } from '@/lib/cms/style';
 import { CmsBlockType, PublishStatus, type Prisma } from '@prisma/client';
 
 export type Result = { ok: boolean; error?: string };
@@ -100,17 +101,44 @@ export async function addBlockAction(pageId: string, type: string): Promise<Resu
   return { ok: true };
 }
 
-/** Save a block's typed content. Validated against that block type's schema. */
+/**
+ * Save a block's typed content and its presentation style.
+ *
+ * Content is validated against the block type's own schema; `style` is validated
+ * separately against the constrained vocabulary in lib/cms/style.ts and stored
+ * alongside it under the `style` key of the same JSON column. The resolved style
+ * is written in full, so what the editor showed is exactly what is stored — and
+ * for a block that had no style before, resolving reproduces its current
+ * appearance rather than inventing a new one.
+ */
 export async function saveBlockAction(blockId: string, data: unknown): Promise<Result> {
-  await assertPermission('cms.manage');
-  const block = await prisma.cmsBlock.findUnique({ where: { id: blockId }, select: { pageId: true, type: true } });
+  const staff = await assertPermission('cms.manage');
+  const block = await prisma.cmsBlock.findUnique({
+    where: { id: blockId },
+    select: { pageId: true, type: true, page: { select: { slug: true } } },
+  });
   if (!block) return { ok: false, error: 'Block not found' };
 
   const parsed = parseBlockData(block.type, data);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid block content' };
 
-  await prisma.cmsBlock.update({ where: { id: blockId }, data: { data: parsed.data as Prisma.InputJsonValue } });
+  const style = resolveBlockStyle(block.type, data);
+  const content = syncLegacyFields(block.type, parsed.data as Record<string, unknown>, style);
+
+  await prisma.cmsBlock.update({
+    where: { id: blockId },
+    data: { data: { ...content, style } as Prisma.InputJsonValue },
+  });
+  await writeAudit({
+    userId: staff.id,
+    action: 'CMS_BLOCK_SAVE',
+    entity: 'CmsBlock',
+    entityId: blockId,
+    after: { type: block.type, style },
+  });
+
   revalidatePath(`/admin/cms/${block.pageId}`);
+  revalidatePath(`/pages/${block.page.slug}`);
   return { ok: true };
 }
 

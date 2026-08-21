@@ -11,17 +11,21 @@ export default function ProductRow({
   viewAllHref,
   savedIds,
   eyebrow,
+  sectionClassName = 'shell py-12',
 }: {
   title: string;
   products: ProductCardData[];
   viewAllHref?: string;
   savedIds?: Set<string>;
   eyebrow?: string;
+  /** Layout classes for the wrapping section. CMS blocks pass their resolved
+   *  width + spacing here; every other caller keeps the default rhythm. */
+  sectionClassName?: string;
 }) {
   if (products.length === 0) return null;
 
   return (
-    <section className="shell py-12">
+    <section className={sectionClassName}>
       <div className="flex items-end justify-between mb-6">
         <div>
           {eyebrow && <p className="eyebrow">{eyebrow}</p>}

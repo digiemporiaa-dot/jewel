@@ -279,8 +279,23 @@ model StoreSetting {
 }
 
 // Admin-controllable storefront navigation.
+//
+// A menu is addressed by a stable `key` ('header', 'footer-shop', …) that the
+// layout components look up, so a redeployment for another jeweller inherits the
+// same structure and only the labels and hrefs differ.
+model NavMenu {
+  id        String    @id @default(cuid())
+  key       String    @unique
+  label     String
+  items     NavItem[]
+  updatedAt DateTime  @updatedAt
+  createdAt DateTime  @default(now())
+}
+
 model NavItem {
   id       String  @id @default(cuid())
+  menuId   String
+  menu     NavMenu @relation(fields: [menuId], references: [id], onDelete: Cascade)
   label    String
   href     String
   order    Int     @default(0)
@@ -289,6 +304,7 @@ model NavItem {
   children NavItem[] @relation("NavItemChildren")
   isActive Boolean @default(true)
 
+  @@index([menuId, order])
   @@index([parentId, order])
 }
 

@@ -103,13 +103,30 @@ export default async function Header() {
         <div className="shell">
           <ul className="flex items-center justify-center gap-7 h-12">
             {nav.map((item) => (
-              <li key={item.href}>
+              <li key={item.href} className="relative group">
                 <Link
                   href={item.href}
-                  className="text-[0.78rem] tracking-[0.14em] uppercase text-ink-soft hover:text-ink transition-colors"
+                  className="block py-3 text-[0.78rem] tracking-[0.14em] uppercase text-ink-soft hover:text-ink transition-colors"
                 >
                   {item.label}
                 </Link>
+                {item.children && item.children.length > 0 && (
+                  // One level of dropdown, opened by hover or keyboard focus —
+                  // `focus-within` keeps it reachable without a mouse, and no
+                  // client component is needed for it.
+                  <ul className="absolute left-1/2 -translate-x-1/2 top-full z-50 min-w-[190px] border border-line bg-paper py-1.5 shadow-sm opacity-0 invisible transition-opacity group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible">
+                    {item.children.map((child) => (
+                      <li key={child.href}>
+                        <Link
+                          href={child.href}
+                          className="block px-4 py-2 text-[0.8rem] text-ink-soft hover:text-brass whitespace-nowrap"
+                        >
+                          {child.label}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </li>
             ))}
           </ul>
