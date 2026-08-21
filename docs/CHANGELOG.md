@@ -1,5 +1,95 @@
 # Changelog
 
+## CMS design controls + managed navigation · 2026-08-21
+
+### Block design controls
+
+- **`lib/cms/style.ts`** — a constrained presentation vocabulary (`background`,
+  `spacing`, `align`, `width`, `mediaSide`, `columns`) stored under a `style` key
+  inside the existing `CmsBlock.data` JSON. No migration.
+  - **Fixed choices only.** No colour picker, no CSS field, no free spacing input.
+    Every option maps to a complete literal Tailwind class — nothing is ever
+    interpolated into a class string, because Tailwind's scanner cannot see
+    `bg-${x}` and it would be an injection surface besides.
+  - **Per-type capability map** decides which controls a block offers, so a FAQ
+    never shows an image-side control. Adding a block type later is one row.
+  - **A velvet background switches text to light automatically.** Headings carry
+    an explicit `color: var(--ink)` from globals.css, so inheriting is not enough;
+    the override is applied deliberately. Dark text on dark green is the obvious
+    failure and staff would not catch it in an editor that shows blocks on white.
+  - **Backwards compatible by construction.** Each type's defaults reproduce its
+    original markup, seeded from the legacy content fields where one already
+    existed (`RICH_TEXT.align`, `IMAGE_TEXT.imagePosition`, `BANNER.tone`), which
+    `syncLegacyFields` keeps in step on save. Those three duplicate controls were
+    removed from the content form rather than left to fight the new ones.
+- `BlockRenderer` consumes the resolved classes for all ten types; `BlockEditor`
+  gains a Design panel driven by the capability map plus a *View on storefront*
+  link. `ProductRow` takes an optional `sectionClassName` so a CMS block can set
+  its own rhythm without affecting the homepage.
+
+### Managed header and footer
+
+- **Schema**: new `NavMenu` addressed by a stable `key`; `NavItem` gains `menuId`.
+  The migration adds the column **nullable, backfills existing rows to the header
+  menu, then sets NOT NULL** — `prisma migrate deploy` runs against live data at
+  container start, and the table already held 13 rows.
+- **`lib/navigation.ts`** serves menus by key through `unstable_cache`, tagged and
+  invalidated on save. Header and footer render on every page, so an uncached
+  query per request was a real cost. Errors propagate out of the cached function
+  on purpose: `unstable_cache` does not store a rejection, so a database blip
+  cannot pin the fallback in cache.
+- **Fallback**: an empty or failing menu falls back to the built-in arrays.
+  Verified by emptying the header menu — the storefront still rendered all 13
+  links rather than an empty bar.
+- Header renders one level of dropdown, opened by hover **or keyboard focus**
+  (`focus-within`), with no client component. Mobile drawer shows children inline.
+- **`/admin/navigation`** behind `settings.manage`: menu picker, add/edit/delete,
+  up-down reorder, link picker (published pages, categories, collections, or a
+  custom URL), and *Reset to defaults*. Every mutation re-checks the permission
+  server-side and writes an audit entry. Hrefs are restricted to a site-relative
+  path or `https://` — `javascript:` and protocol-relative URLs are refused.
+- **Broken-link warnings**: links pointing at a `/pages/<slug>` that is missing or
+  unpublished are flagged per item and summarised at the top. This is the exact
+  failure that was already live — the footer shipped linking to seven pages that
+  had never been created.
+
+### The seven missing pages
+
+- `shipping-returns`, `jewellery-care`, `contact`, `hallmark`, `certifications`,
+  `privacy`, `terms` created as **DRAFT** with placeholder guidance blocks.
+  Publishing legal text the jeweller has not read would be a commitment made on
+  their behalf — worse than a 404. The admin flags them as unpublished until
+  someone fills them in.
+- **`prisma/bootstrap.ts`** holds the menu and page definitions and is idempotent:
+  it creates what is missing and touches nothing that exists, so it is safe to run
+  against a live store (`npm run db:bootstrap`) without the destructive `seed.ts`.
+  Verified by running it twice — the second run created nothing.
+
+### Verified
+
+- `tsc --noEmit` clean · `next build` clean · **121 tests** (14 new, covering the
+  backwards-compatibility guarantee and the class-mapping rules).
+- `/pages/about` still emits its original classes after the change: `bg-paper-2`,
+  `py-14 lg:py-20`, `grid-cols-2 lg:grid-cols-4`, `bg-velvet`, `py-14`.
+- Styling a block to velvet/roomy/centre produced `bg-velvet text-paper` with
+  `py-20 lg:py-24` and light body text on the live page.
+- Migration verified against the populated table: 13 rows adopted, 0 orphans.
+- No horizontal overflow at 360/390/768/1280 across four pages.
+- `/admin/navigation` returns 307 to the login when unauthenticated.
+
+### Found, not fixed — pre-existing soft 404
+
+`/pages/<unknown-slug>` returns **HTTP 200** carrying the 404 page body, instead
+of a real 404. Same for `/p/<unknown-product>`. This predates these changes
+(present since the Phase 6 CMS commit) and affects any `force-dynamic` route
+calling `notFound()`.
+
+No content leaks — draft pages correctly render the not-found page, and the
+sitemap already excludes them. But search engines treat a 200 as a real page, so
+the seven new DRAFT policy URLs would be indexable as soft 404s until published.
+Left alone because the fix touches caching behaviour on product and category
+routes too, which deserves its own decision.
+
 ## Deployment — Coolify + Vercel · 2026-08-19
 
 Deployment readiness pass. No product behaviour changed; the pricing engine,

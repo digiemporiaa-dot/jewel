@@ -68,6 +68,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
     title: 'System',
     items: [
       { label: 'Settings', href: '/admin/settings', permission: 'settings.manage' },
+      { label: 'Navigation', href: '/admin/navigation', permission: 'settings.manage' },
       { label: 'Staff & Roles', href: '/admin/staff', permission: 'staff.manage' },
       { label: 'Audit Log', href: '/admin/audit', permission: 'audit.view' },
     ],

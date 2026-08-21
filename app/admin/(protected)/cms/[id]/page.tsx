@@ -37,6 +37,7 @@ export default async function EditCmsPage({ params }: { params: Promise<{ id: st
         <h2 className="font-heading text-xl mb-3">Content blocks</h2>
         <BlockEditor
           pageId={page.id}
+          pageSlug={page.slug}
           blocks={page.blocks.map((b) => ({
             id: b.id, type: b.type, order: b.order, isActive: b.isActive,
             data: (b.data ?? {}) as Record<string, unknown>,

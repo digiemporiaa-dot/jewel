@@ -4,13 +4,27 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils/cn';
 import { BLOCK_LABELS } from '@/lib/cms/blocks';
+import {
+  resolveBlockStyle, parseBlockStyle, styleControlsFor, styleOptions,
+  STYLE_CONTROL_LABELS, STYLE_OPTION_LABELS,
+  type StyleControl,
+} from '@/lib/cms/style';
 import { addBlockAction, saveBlockAction, deleteBlockAction, moveBlockAction, toggleBlockAction } from './actions';
+import type { CmsBlockType } from '@prisma/client';
 
 type Block = { id: string; type: string; order: number; isActive: boolean; data: Record<string, unknown> };
 
 const BLOCK_TYPES = Object.keys(BLOCK_LABELS) as (keyof typeof BLOCK_LABELS)[];
 
-/** Field descriptors per block type — mirrors lib/cms/blocks.ts schemas. */
+/**
+ * Field descriptors per block type — mirrors lib/cms/blocks.ts schemas.
+ *
+ * RICH_TEXT.align, IMAGE_TEXT.imagePosition and BANNER.tone are deliberately
+ * absent: the Design panel below owns those now. They remain in the stored
+ * content (kept in step by `syncLegacyFields` on save) so older data stays valid,
+ * but showing two controls for one visual outcome would only invite them to
+ * disagree.
+ */
 const FIELDS: Record<string, { key: string; label: string; kind: 'text' | 'textarea' | 'number' | 'select'; options?: string[] }[]> = {
   HERO: [
     { key: 'eyebrow', label: 'Eyebrow', kind: 'text' },
@@ -23,13 +37,11 @@ const FIELDS: Record<string, { key: string; label: string; kind: 'text' | 'texta
   RICH_TEXT: [
     { key: 'heading', label: 'Heading', kind: 'text' },
     { key: 'body', label: 'Body (one paragraph per line)', kind: 'textarea' },
-    { key: 'align', label: 'Align', kind: 'select', options: ['left', 'center'] },
   ],
   IMAGE_TEXT: [
     { key: 'heading', label: 'Heading', kind: 'text' },
     { key: 'body', label: 'Body', kind: 'textarea' },
     { key: 'imageUrl', label: 'Image URL', kind: 'text' },
-    { key: 'imagePosition', label: 'Image position', kind: 'select', options: ['left', 'right'] },
     { key: 'ctaLabel', label: 'Button label', kind: 'text' },
     { key: 'ctaHref', label: 'Button link', kind: 'text' },
   ],
@@ -46,7 +58,6 @@ const FIELDS: Record<string, { key: string; label: string; kind: 'text' | 'texta
     { key: 'text', label: 'Text', kind: 'text' },
     { key: 'ctaLabel', label: 'Button label', kind: 'text' },
     { key: 'ctaHref', label: 'Button link', kind: 'text' },
-    { key: 'tone', label: 'Tone', kind: 'select', options: ['velvet', 'paper'] },
   ],
   CTA: [
     { key: 'heading', label: 'Heading', kind: 'text' },
@@ -63,7 +74,7 @@ const LIST_BLOCKS: Record<string, { heading: boolean; itemKeys: [string, string]
   TESTIMONIALS: { heading: true, itemKeys: ['quote', 'author'], itemLabels: ['Quote', 'Author'] },
 };
 
-export default function BlockEditor({ pageId, blocks }: { pageId: string; blocks: Block[] }) {
+export default function BlockEditor({ pageId, pageSlug, blocks }: { pageId: string; pageSlug: string; blocks: Block[] }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [newType, setNewType] = useState<string>('HERO');
@@ -96,7 +107,7 @@ export default function BlockEditor({ pageId, blocks }: { pageId: string; blocks
       ) : (
         blocks.map((b) => (
           <BlockCard
-            key={b.id} block={b} pending={pending}
+            key={b.id} block={b} pending={pending} pageSlug={pageSlug}
             onSave={(data) => run(() => saveBlockAction(b.id, data))}
             onDelete={() => run(() => deleteBlockAction(b.id), 'Block removed')}
             onMove={(dir) => run(() => moveBlockAction(b.id, dir), 'Reordered')}
@@ -109,9 +120,9 @@ export default function BlockEditor({ pageId, blocks }: { pageId: string; blocks
 }
 
 function BlockCard({
-  block, pending, onSave, onDelete, onMove, onToggle,
+  block, pending, pageSlug, onSave, onDelete, onMove, onToggle,
 }: {
-  block: Block; pending: boolean;
+  block: Block; pending: boolean; pageSlug: string;
   onSave: (data: Record<string, unknown>) => void;
   onDelete: () => void;
   onMove: (dir: 'up' | 'down') => void;
@@ -121,8 +132,22 @@ function BlockCard({
   const listCfg = LIST_BLOCKS[block.type];
   const fields = FIELDS[block.type] ?? [];
 
+  const blockType = block.type as CmsBlockType;
+  // Resolving rather than reading `data.style` directly means a block saved
+  // before this feature existed opens showing the values it actually renders
+  // with, not a set of blanks.
+  const style = resolveBlockStyle(blockType, data);
+  const controls = styleControlsFor(blockType);
+
   function set(key: string, value: unknown) {
     setData((d) => ({ ...d, [key]: value }));
+  }
+
+  function setStyle(control: StyleControl, raw: string) {
+    // Round-trip through the same validator the server uses, so the editor can
+    // never put a value into `data.style` that the renderer would then discard.
+    const candidate = { ...style, [control]: control === 'columns' ? Number(raw) : raw };
+    setData((d) => ({ ...d, style: { ...style, ...parseBlockStyle(blockType, candidate) } }));
   }
 
   const items = (Array.isArray(data.items) ? data.items : []) as Record<string, string>[];
@@ -190,7 +215,42 @@ function BlockCard({
         </div>
       )}
 
-      <button onClick={() => onSave(data)} disabled={pending} className="btn-primary text-xs">Save block</button>
+      <fieldset className="border border-line p-3">
+        <legend className="px-1 text-xs tracking-[0.1em] uppercase text-ink-soft">Design</legend>
+        <div className="grid sm:grid-cols-3 gap-3">
+          {controls.map((control) => (
+            <label key={control} className="block">
+              <span className="block mb-1 text-xs text-ink-soft">{STYLE_CONTROL_LABELS[control]}</span>
+              <select
+                value={String(style[control])}
+                onChange={(e) => setStyle(control, e.target.value)}
+                className="b-inp"
+              >
+                {styleOptions(control).map((o) => (
+                  <option key={String(o)} value={String(o)}>
+                    {STYLE_OPTION_LABELS[String(o)] ?? String(o)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-ink-soft">
+          Fixed options only, so the page stays on-brand. A velvet background switches text to light automatically.
+        </p>
+      </fieldset>
+
+      <div className="flex items-center gap-3">
+        <button onClick={() => onSave(data)} disabled={pending} className="btn-primary text-xs">Save block</button>
+        <a
+          href={`/pages/${pageSlug}`}
+          target="_blank"
+          rel="noreferrer"
+          className="text-xs underline decoration-line-strong underline-offset-4 hover:text-brass"
+        >
+          View on storefront
+        </a>
+      </div>
       <style>{`.b-inp{width:100%;border:1px solid var(--line);padding:.45rem .6rem;font-size:.85rem;outline:none}.b-inp:focus{border-color:var(--brass)}`}</style>
     </div>
   );

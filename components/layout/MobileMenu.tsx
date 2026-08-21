@@ -71,6 +71,19 @@ export default function MobileMenu({
                   >
                     {item.label}
                   </Link>
+                  {/* Children are shown inline and indented rather than behind a
+                      toggle: the drawer already scrolls, and one less tap to
+                      reach a category is worth more than a shorter list. */}
+                  {item.children?.map((child) => (
+                    <Link
+                      key={child.href}
+                      href={child.href}
+                      onClick={() => setOpen(false)}
+                      className="block pl-9 pr-5 py-3 text-sm text-ink-soft border-b border-line/60 hover:text-brass"
+                    >
+                      {child.label}
+                    </Link>
+                  ))}
                 </li>
               ))}
             </ul>
