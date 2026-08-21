@@ -1,5 +1,98 @@
 # Changelog
 
+## Phase 3 · Item 1 — HSN codes and a GST-correct invoice · 2026-08-21
+
+An invoice missing HSN or the wrong tax split is what gets flagged in a GST
+audit, and it cannot be corrected retroactively once the goods have shipped.
+
+### Schema
+
+`Product.hsnCode` (default `7113`, backfilled onto existing products by the
+column default), `StoreSetting.sellerStateCode`, and on `Order`:
+`invoiceNumber` (unique), `placeOfSupply`, `taxBreakup`. Plus `InvoiceCounter`,
+one row per financial year.
+
+### The tax split
+
+`lib/tax/gst.ts` is pure and fully tested. Intra-state (buyer state == seller
+state) splits CGST + SGST at half the rate each; inter-state charges IGST at the
+full rate. Derived from the shipping address at order creation and **frozen into
+the order** — rates and the seller's registered state can both change, and a
+reprinted invoice must show what was actually charged.
+
+Details that matter:
+
+- **Tax is computed per line and summed**, not by applying a rate to the order
+  total. Lines can carry different HSN codes, and the HSN summary a GST invoice
+  must show is only derivable line by line.
+- **CGST is rounded and SGST takes the remainder**, so the two always add up to
+  the line's tax exactly. Rounding half the tax twice can differ from rounding
+  the whole by a paisa, which is the kind of thing that gets an invoice queried.
+- **The full GST state code table is included.** A partial list would silently
+  misclassify sales to whichever state was left out.
+- Addresses are free text, so state resolution accepts the code or the name, and
+  the spellings shoppers actually type (`New Delhi`, `Orissa`, `Pondicherry`).
+  An unresolvable state returns null rather than guessing.
+- When the shipping state cannot be resolved the sale is treated as intra-state.
+  That is the conservative direction: it files tax to the wrong government, which
+  is a correction, rather than under-collecting.
+
+### Invoice numbering
+
+Sequential and gap-free per financial year, `MJ/2026-27/0001`. The prefix is
+derived from the brand name, so a redeployment for another jeweller gets its own
+series.
+
+Two design points:
+
+- **Allocated when the sale completes, not at checkout.** An abandoned payment
+  would otherwise burn a number and leave a gap in a series GST requires to be
+  gap-free.
+- **`INSERT … ON CONFLICT DO UPDATE … RETURNING`**, called inside the order
+  transaction. That takes a row lock, so a second checkout blocks until the first
+  commits. Counting orders, or reading the maximum and adding one, both hand two
+  concurrent checkouts the same number. `Order.invoiceNumber` also carries a
+  unique index as a backstop.
+
+The financial year is computed in **IST**: an order at 02:00 IST on 1 April is in
+the new year even though it is still 31 March in UTC.
+
+### Invoice
+
+Now shows HSN per line, taxable value, the tax split with rates, place of supply
+and supply type, seller GSTIN and state, invoice number and date, and an HSN
+summary table at the foot. Orders predating this change render the GST they
+recorded rather than a split that was never charged.
+
+### Admin
+
+HSN on the product editor (defaulted, with a note on when to change it) and the
+GST state code in Settings, validated against the real code list.
+
+### Verified
+
+`tsc` clean · `next build` clean · **182 tests** (25 new).
+
+Generated both invoices end to end through the authenticated route against a
+running production build:
+
+- Delhi → Delhi: `CGST @ 1.50% ₹1,500.00` + `SGST @ 1.50% ₹1,500.00`, place of
+  supply `Delhi (07)`, `MJ/2026-27/0001`
+- Delhi → Karnataka: `IGST @ 3.00% ₹3,000.00`, place of supply `Karnataka (29)`,
+  `MJ/2026-27/0002`
+- Both with HSN `7113` per line and in the summary; the summary reconciles to the
+  footer total.
+
+Concurrency: 20 simultaneous allocations produced 20 distinct numbers, 1..20 with
+no gaps. That test needs a real database — it talks to Postgres when one is
+reachable and skips cleanly when it is not, so `npm test` stays runnable without.
+
+### Operator note
+
+**Set the GST state code in Settings before the next order.** Without it no tax
+split can be derived and the invoice falls back to showing the recorded GST
+total. `07` for Delhi.
+
 ## Marketing tags, dynamic CSP and consent · 2026-08-21
 
 The owner pastes tracking IDs into the admin and they work — no code edit, no

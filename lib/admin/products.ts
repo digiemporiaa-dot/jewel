@@ -114,6 +114,7 @@ function toData(input: ProductInput): Prisma.ProductCreateInput {
     leadTimeDays: input.leadTimeDays ?? null,
     advancePercent: input.advancePercent,
     certification: input.certification || null,
+    hsnCode: input.hsnCode || '7113',
     isActive: input.isActive,
     isFeatured: input.isFeatured,
     isBestSeller: input.isBestSeller,

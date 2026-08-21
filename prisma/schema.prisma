@@ -252,6 +252,10 @@ model StoreSetting {
   pincode      String?
   country      String @default("India")
   gstin        String?
+  // GST state code of the place of business, e.g. "07" for Delhi. Determines
+  // whether a sale is intra-state (CGST+SGST) or inter-state (IGST); without it
+  // the split cannot be derived at all.
+  sellerStateCode String?
 
   // Commerce config
   currency            String  @default("INR")
@@ -612,6 +616,11 @@ model Product {
   seoDescription String?
 
   publishedAt DateTime?
+  // HSN classification for the GST invoice. 7113 is "articles of jewellery and
+  // parts thereof" — correct for almost everything a jeweller sells, so it is
+  // the default rather than a field someone must remember to fill in.
+  hsnCode String? @default("7113")
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -895,6 +904,13 @@ model Order {
 
   paymentMethod PaymentMethod
   paymentStatus PaymentStatus @default(PENDING)
+
+  // Tax, frozen at order time alongside the price snapshot. Rates and the
+  // seller's registered state can both change; a reprinted invoice must show
+  // what was actually charged, not what today's settings would produce.
+  invoiceNumber String? @unique
+  placeOfSupply String?
+  taxBreakup    Json?
 
   // Price lock — snapshot of rates used, and lock window.
   rateSnapshot Json?
@@ -1395,4 +1411,19 @@ model MarketingTags {
   consentBannerText String?
 
   updatedAt DateTime @updatedAt
+}
+
+
+// Gap-free invoice sequence, one row per financial year.
+//
+// A GST invoice series must be sequential with no gaps, so the number cannot be
+// derived by counting orders (a cancelled or failed order would leave a hole) or
+// generated optimistically. The counter is incremented inside the order
+// transaction with a row lock, so two concurrent checkouts cannot take the same
+// number.
+model InvoiceCounter {
+  id            String   @id @default(cuid())
+  financialYear String   @unique  // "2026-27"
+  lastNumber    Int      @default(0)
+  updatedAt     DateTime @updatedAt
 }

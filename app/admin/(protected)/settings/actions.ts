@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import { resolveStateCode } from '@/lib/tax/gst';
 import { assertPermission } from '@/lib/auth/guard';
 import { writeAudit } from '@/lib/audit';
 import { prisma } from '@/lib/prisma';
@@ -22,6 +23,14 @@ const settingsSchema = z.object({
   state: z.string().trim().max(60).optional().or(z.literal('')),
   pincode: z.string().trim().max(10).optional().or(z.literal('')),
   gstin: z.string().trim().max(20).optional().or(z.literal('')),
+  // Two-digit GST state code. Validated against the real list, because an
+  // unrecognised code makes every invoice's tax split underivable.
+  sellerStateCode: z
+    .string()
+    .trim()
+    .optional()
+    .or(z.literal(''))
+    .refine((v) => !v || resolveStateCode(v) !== null, 'Enter a valid GST state code, e.g. 07 for Delhi'),
   gstPercentDefault: z.string().trim().refine((v) => /^\d+(\.\d{1,2})?$/.test(v), 'Enter a valid GST %'),
   freeShippingAbove: money.optional(),
   flatShippingFee: money.optional(),
@@ -71,6 +80,7 @@ export async function updateSettingsAction(fd: FormData): Promise<Result> {
       state: nullIfEmpty(d.state),
       pincode: nullIfEmpty(d.pincode),
       gstin: nullIfEmpty(d.gstin),
+      sellerStateCode: d.sellerStateCode ? resolveStateCode(d.sellerStateCode) : null,
       gstPercentDefault: d.gstPercentDefault,
       freeShippingAbove: nullIfEmpty(d.freeShippingAbove),
       flatShippingFee: d.flatShippingFee && d.flatShippingFee !== '' ? d.flatShippingFee : '0',

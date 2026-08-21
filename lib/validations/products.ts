@@ -33,6 +33,14 @@ export const productSchema = z
     leadTimeDays: z.coerce.number().int().min(0).max(365).optional().nullable(),
     advancePercent: optionalDecimal,
     certification: z.string().trim().max(120).optional().nullable(),
+    // HSN classification for the GST invoice. 4–8 digits per the GST schedule.
+    hsnCode: z
+      .string()
+      .trim()
+      .regex(/^\d{4,8}$/, 'HSN must be 4 to 8 digits, e.g. 7113')
+      .optional()
+      .nullable()
+      .or(z.literal('')),
     isActive: z.coerce.boolean().default(true),
     isFeatured: z.coerce.boolean().default(false),
     isBestSeller: z.coerce.boolean().default(false),

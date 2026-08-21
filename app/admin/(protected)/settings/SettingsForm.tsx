@@ -50,6 +50,13 @@ export default function SettingsForm({ defaults }: { defaults: SettingsDefaults 
           <F label="State"><input name="state" defaultValue={v('state')} className="s-inp" /></F>
           <F label="Pincode"><input name="pincode" defaultValue={v('pincode')} className="s-inp" /></F>
           <F label="GSTIN"><input name="gstin" defaultValue={v('gstin')} className="s-inp" /></F>
+          <F label="GST state code">
+            <input name="sellerStateCode" defaultValue={v('sellerStateCode')} placeholder="07" className="s-inp" />
+            <span className="mt-1 block text-xs text-ink-soft">
+              Two digits for your registered state — 07 Delhi, 27 Maharashtra, 29 Karnataka. Decides
+              whether an invoice charges CGST+SGST or IGST, so it must match your GSTIN.
+            </span>
+          </F>
           <F label="Default GST %"><input name="gstPercentDefault" defaultValue={v('gstPercentDefault')} className="s-inp" /></F>
         </Grid>
       </Section>

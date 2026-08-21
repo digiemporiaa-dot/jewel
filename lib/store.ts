@@ -24,6 +24,7 @@ const FALLBACK: StoreSetting = {
   pincode: null,
   country: 'India',
   gstin: null,
+  sellerStateCode: null,
   currency: 'INR',
   locale: 'en-IN',
   gstPercentDefault: '3' as unknown as StoreSetting['gstPercentDefault'],

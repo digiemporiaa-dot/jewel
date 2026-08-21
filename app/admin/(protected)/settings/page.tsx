@@ -29,6 +29,7 @@ export default async function SettingsPage() {
           state: store.state ?? '',
           pincode: store.pincode ?? '',
           gstin: store.gstin ?? '',
+          sellerStateCode: store.sellerStateCode ?? '',
           gstPercentDefault: store.gstPercentDefault.toString(),
           freeShippingAbove: store.freeShippingAbove?.toString() ?? '',
           flatShippingFee: store.flatShippingFee.toString(),

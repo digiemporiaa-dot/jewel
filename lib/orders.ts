@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
 import { getCart, type CartSummary } from '@/lib/cart';
 import { getStoreSettings } from '@/lib/store';
+import { buildTaxBreakup, resolveStateCode, type TaxLineInput } from '@/lib/tax/gst';
 import { getCurrentRates } from '@/lib/rates';
 import { reserveStock, releaseStock, OutOfStockError } from '@/lib/inventory';
 import { isRateLockValid } from '@/lib/pricing';
@@ -158,6 +159,35 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     status = requiresCall ? OrderStatus.VERIFICATION_HOLD : OrderStatus.CONFIRMED;
   }
 
+  // ── GST: derive the split from where the goods are going ─────────────────────
+  //
+  // Frozen into the order alongside the rate snapshot. The seller's registered
+  // state and the tax rates can both change later; a reprinted invoice has to
+  // show what was actually charged, not what today's settings would produce.
+  //
+  // Falls back to the seller's own state when the shipping state cannot be
+  // resolved, which makes the sale intra-state. That is the conservative
+  // direction: CGST+SGST on a sale that was really inter-state is a filing
+  // correction, whereas defaulting the other way under-collects nothing but
+  // files tax to the wrong government.
+  const sellerStateCode = resolveStateCode(store.sellerStateCode) ?? resolveStateCode(store.state);
+  const buyerStateCode = resolveStateCode(input.shippingAddress.state);
+  const taxBreakup = sellerStateCode
+    ? buildTaxBreakup({
+        sellerStateCode,
+        buyerStateCode: buyerStateCode ?? sellerStateCode,
+        lines: cart.lines.map<TaxLineInput>((line) => {
+          const v = line.variantId ? vmap.get(line.variantId) : null;
+          const perUnitTaxable = new Decimal(line.breakup?.taxable ?? '0');
+          return {
+            hsnCode: v?.product.hsnCode ?? '',
+            taxableValue: perUnitTaxable.times(line.quantity).toFixed(2),
+            gstRate: line.breakup?.gstPercent ?? store.gstPercentDefault.toString(),
+          };
+        }),
+      })
+    : null;
+
   // ── Persist in a transaction; reserve inventory for ready-to-ship lines. ──────
   const created = await prisma.$transaction(async (tx) => {
     const order = await tx.order.create({
@@ -184,6 +214,11 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
         paymentStatus: PaymentStatus.PENDING,
         rateSnapshot: rateSnapshot as unknown as Prisma.InputJsonValue,
         rateLockedAt: new Date(),
+        // The invoice number is deliberately NOT allocated here — an order that
+        // is never paid would burn a number and leave a gap in a series that GST
+        // requires to be gap-free. It is allocated when the sale completes.
+        placeOfSupply: taxBreakup?.placeOfSupplyCode ?? null,
+        taxBreakup: (taxBreakup ?? undefined) as unknown as Prisma.InputJsonValue | undefined,
         requiresCall,
         items: {
           create: cart.lines.map((line) => {

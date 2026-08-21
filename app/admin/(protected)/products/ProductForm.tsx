@@ -17,7 +17,7 @@ export type ProductDefaults = Partial<{
   categoryId: string; pricingMode: string; metalId: string; purityId: string; metalColor: string;
   netWeight: string; grossWeight: string; wastagePct: string; makingChargeRuleId: string; fixedPrice: string;
   gstPercent: string; gstInclusive: boolean; fulfilmentType: string; leadTimeDays: string; advancePercent: string;
-  certification: string; isActive: boolean; isFeatured: boolean; isBestSeller: boolean; isNewArrival: boolean;
+  certification: string; hsnCode: string; isActive: boolean; isFeatured: boolean; isBestSeller: boolean; isNewArrival: boolean;
   occasion: string; tags: string; seoTitle: string; seoDescription: string;
 }>;
 
@@ -133,6 +133,13 @@ export default function ProductForm({
             </>
           )}
           <Field label="Certification"><input name="certification" defaultValue={defaults.certification} placeholder="BIS Hallmark 916 / IGI" className="inp" /></Field>
+          <Field label="HSN code">
+            <input name="hsnCode" defaultValue={defaults.hsnCode || '7113'} placeholder="7113" className="inp" />
+            <span className="mt-1 block text-xs text-ink-soft">
+              Printed on the GST invoice. 7113 covers articles of jewellery and is right for almost
+              everything here; change it only for a genuinely different classification.
+            </span>
+          </Field>
         </Grid>
       </Section>
 

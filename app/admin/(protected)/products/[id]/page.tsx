@@ -33,7 +33,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
     fixedPrice: product.fixedPrice?.toString() ?? '', gstPercent: product.gstPercent.toString(),
     gstInclusive: product.gstInclusive, fulfilmentType: product.fulfilmentType,
     leadTimeDays: product.leadTimeDays?.toString() ?? '', advancePercent: product.advancePercent?.toString() ?? '',
-    certification: product.certification ?? '', isActive: product.isActive, isFeatured: product.isFeatured,
+    certification: product.certification ?? '', hsnCode: product.hsnCode ?? '7113', isActive: product.isActive, isFeatured: product.isFeatured,
     isBestSeller: product.isBestSeller, isNewArrival: product.isNewArrival,
     occasion: product.occasion.join(', '), tags: product.tags.join(', '),
     seoTitle: product.seoTitle ?? '', seoDescription: product.seoDescription ?? '',
