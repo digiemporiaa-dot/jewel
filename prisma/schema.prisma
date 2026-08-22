@@ -352,6 +352,34 @@ model Redirect {
 ///
 /// Nothing here is brand-specific in code: every default is a column, so the
 /// same build redeployed for another jeweller only needs this row changed.
+/// Singleton configuration for the storefront rate ticker.
+///
+/// Deliberately holds no rate. Every number the ticker shows is read from the
+/// append-only `MetalRate` rows the shop already prices from — a second place to
+/// type a gold rate is how a store ends up advertising one price and charging
+/// another.
+model RateTickerSettings {
+  id String @id @default("default")
+
+  /// Off hides the strip entirely. A shop with stale rates is better showing
+  /// nothing than showing yesterday's number.
+  isEnabled     Boolean  @default(true)
+  /// Which purities to show, in this order. Empty means every active purity.
+  purityIds     String[] @default([])
+  /// Seconds for one full pass. Clamped on save — too fast is unreadable and
+  /// too slow reads as broken.
+  speedSeconds  Int      @default(40)
+  /// A design token name, validated against a closed list. Not free CSS.
+  background    String   @default("velvet")
+  /// "as on <time>". A rate with no time attached is a customer dispute waiting
+  /// to happen, so this defaults on.
+  showTimestamp Boolean  @default(true)
+  /// Optional line shown alongside the rates, e.g. a festival message.
+  message       String?
+
+  updatedAt DateTime @updatedAt
+}
+
 model SeoSettings {
   id String @id @default("default")
 
@@ -758,7 +786,7 @@ model Product {
   /// Never markup. The address an operator types is validated on save and the
   /// iframe is built in code from a fixed template, so this column cannot carry
   /// operator-supplied HTML onto a customer-facing page.
-  videoUrl    String?
+  videoUrl String?
 
   publishedAt DateTime?
   // HSN classification for the GST invoice. 7113 is "articles of jewellery and

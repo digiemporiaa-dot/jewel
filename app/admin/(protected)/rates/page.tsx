@@ -4,12 +4,14 @@ import { formatCurrency, formatDate } from '@/lib/utils/format';
 import PageHeader from '@/components/admin/PageHeader';
 import RateManager from './RateManager';
 import DiamondRateManager from './DiamondRateManager';
+import TickerSettingsForm from './TickerSettingsForm';
+import { getTickerData } from '@/lib/rates/ticker-settings';
 
 export const dynamic = 'force-dynamic';
 
 export default async function RatesPage() {
   await requirePermission('rates.manage');
-  const overview = await getRatesOverview();
+  const [overview, ticker] = await Promise.all([getRatesOverview(), getTickerData()]);
 
   return (
     <div>
@@ -34,6 +36,10 @@ export default async function RatesPage() {
       <div className="grid lg:grid-cols-2 gap-6">
         <RateManager rates={overview.current} />
         <DiamondRateManager rates={overview.diamondRates} />
+      </div>
+
+      <div className="mt-6">
+        <TickerSettingsForm settings={ticker.settings} available={ticker.available} />
       </div>
 
       {/* History */}

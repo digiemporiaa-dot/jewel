@@ -179,6 +179,20 @@ async function seedMetalsAndRates() {
     });
   }
 
+  // Rate ticker: gold first, then silver. The strip holds no rate of its own —
+  // it renders whichever MetalRate rows are current.
+  await prisma.rateTickerSettings.create({
+    data: {
+      id: 'default',
+      isEnabled: true,
+      purityIds: [g22.id, g18.id, s925.id],
+      speedSeconds: 40,
+      background: 'velvet',
+      showTimestamp: true,
+      message: 'BIS Hallmarked · Certified Diamonds · Pan-India Delivery',
+    },
+  });
+
   // Diamond rates (₹ per carat)
   const dVS = await prisma.diamondRate.create({
     data: { label: 'VS-GH-Round', clarity: 'VS', color: 'GH', shape: 'Round', ratePerCarat: '58000.00' },

@@ -28,15 +28,11 @@ export default async function Header() {
 
   return (
     <header className="relative z-40 bg-paper">
-      {/* Top bar — rate ticker + announcement */}
-      <div className="bg-velvet text-paper">
-        <div className="shell flex h-9 items-center justify-between gap-4">
-          <RateTicker />
-          <p className="hidden sm:block text-[0.7rem] tracking-[0.14em] uppercase text-paper/70">
-            BIS Hallmarked · Certified Diamonds · Pan-India Delivery
-          </p>
-        </div>
-      </div>
+      {/* Top bar — the rate strip owns its own full-width background and colour
+          now, because both are an admin choice. The announcement that used to
+          sit beside it is the ticker's optional message, so the two cannot
+          disagree about the colour they are printed on. */}
+      <RateTicker />
 
       {/* Main bar */}
       <div className="hairline">

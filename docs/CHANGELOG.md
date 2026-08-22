@@ -1,5 +1,72 @@
 # Changelog
 
+## Phase 3 · Item 10 — Live rate marquee · 2026-08-22
+
+A scrolling strip of current metal rates across the top of the site, with the
+time they were set.
+
+### It cannot hold a rate
+
+The one design decision that matters: `RateTickerSettings` has no rate column,
+and the settings form has no rate field. The strip renders whichever `MetalRate`
+rows are `isCurrent` — the same append-only rows the pricing engine prices from.
+A second place to type a gold rate is how a shop advertises one number and
+charges another, and the customer who notices is holding a screenshot. There is a
+test asserting no key matching `/rate/i` exists in the settings.
+
+### "As on" is the oldest rate, not the newest
+
+Taking the newest would let one freshly updated purity vouch for three stale ones
+sitting beside it. The timestamp travels along the strip with the rates rather
+than sitting in a corner, so whichever part is on screen has the time next to it.
+
+Past 48 hours the strip stops quoting numbers and says the rates are being
+updated. Every price on the site derives from these figures; a rate carrying last
+week's date undermines the whole catalogue.
+
+### A CSS animation, not `<marquee>`
+
+`<marquee>` is obsolete, cannot be paused, ignores reduced-motion and behaves
+differently in every browser. The track holds two identical copies and translates
+by exactly half its width, so the loop is seamless. The second copy is
+`aria-hidden`, so a screen reader hears the rates once.
+
+It pauses on hover and on focus-within — a rate nobody can read is decoration.
+Under `prefers-reduced-motion` the animation is stopped at the start rather than
+frozen mid-scroll (the site-wide reduced-motion rule collapses durations to
+nothing, which would have left it stuck), the duplicate copy is hidden and the
+strip scrolls by hand instead.
+
+The bar is a fixed 36px in every state — rates, no rates, or updating — so it
+cannot shift the page as content arrives. A CLS jump at the very top of the
+document is the worst place for one.
+
+### Admin control, without handing over CSS
+
+On/off, which purities and in what order, speed, background and an optional
+message. Background is a **token name** validated against a closed list, not a
+colour; speed is clamped to 15–180 seconds, because faster is unreadable and
+slower reads as broken. The operator's choice reaches the page as one number in a
+custom property.
+
+The header's hardcoded "BIS Hallmarked · Certified Diamonds · Pan-India Delivery"
+is now that optional message, seeded rather than compiled in — one less
+brand-specific string in the code for a resale deployment to find.
+
+### Caught in live verification, not by the tests
+
+`unstable_cache` stores its result as JSON, so a `Date` goes in and a string
+comes back. `effectiveFrom` was typed as `Date`, compiled cleanly, passed its
+unit tests, and threw `getTime is not a function` on the first real page load.
+The type now says ISO string, which is what actually crosses that boundary, and a
+test round-trips a row through `JSON.parse(JSON.stringify(...))` to keep it
+honest.
+
+Rates are read through a cache tag that a rate change busts, so the strip is
+current without the client polling for it.
+
+Tests: 28 new. 546 passing overall.
+
 ## Phase 3 · Item 9 — One image field, everywhere · 2026-08-22
 
 Uploading a picture used to be a product-editor privilege. The CMS, the blog, the

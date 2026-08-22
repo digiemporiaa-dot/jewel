@@ -164,3 +164,54 @@
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ── Rate marquee ──────────────────────────────────────────────────────────
+   A CSS animation, not the <marquee> element: <marquee> is obsolete, cannot be
+   paused, ignores reduced-motion and behaves differently in every browser.
+
+   The track holds two identical copies of the rates, so translating it by
+   exactly half its width lands back where it started and the loop is seamless.
+   Duration comes from `--rate-marquee-duration`, set inline from the admin's
+   chosen speed — a number of seconds is the only thing an operator's choice
+   reaches. */
+@keyframes rate-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.rate-marquee-track {
+  animation: rate-marquee var(--rate-marquee-duration, 40s) linear infinite;
+  will-change: transform;
+}
+
+/* Pause on hover so a rate can actually be read, and on focus so a keyboard
+   user is not chasing a moving link. */
+.rate-marquee:hover .rate-marquee-track,
+.rate-marquee:focus-within .rate-marquee-track {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The global reduced-motion rule collapses every animation to nothing, which
+     would leave this track frozen mid-scroll. Stop it deliberately at the start
+     instead and let the strip scroll by hand. */
+  .rate-marquee-track {
+    animation: none !important;
+    transform: none !important;
+  }
+  .rate-marquee {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .rate-marquee::-webkit-scrollbar {
+    display: none;
+  }
+  /* One copy is enough when it is not looping. */
+  .rate-marquee-track > [aria-hidden='true'] {
+    display: none;
+  }
+}
