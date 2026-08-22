@@ -1,7 +1,6 @@
 import 'server-only';
 import { prisma } from '@/lib/prisma';
-import { getStoreSettings } from '@/lib/store';
-import { sendEmail } from '@/lib/email';
+import { sendTemplate } from '@/lib/templates';
 import { decideReminder, stageLabel, DEFAULT_REMINDER_CONFIG, type ReminderConfig } from '@/lib/campaigns/schedule';
 import { formatCurrency } from '@/lib/utils/format';
 
@@ -24,17 +23,6 @@ async function reminderConfig(): Promise<{ enabled: boolean; config: ReminderCon
   };
 }
 
-/** Render a template body with {{placeholders}}. */
-export function renderTemplate(body: string, vars: Record<string, string>): string {
-  return body.replace(/\{\{(\w+)\}\}/g, (_, key: string) => vars[key] ?? '');
-}
-
-async function templateFor(key: string): Promise<{ subject: string; body: string } | null> {
-  const t = await prisma.messageTemplate.findUnique({ where: { key } });
-  if (!t || !t.isActive) return null;
-  return { subject: t.subject ?? '', body: t.body };
-}
-
 export type AbandonedCartResult = { scanned: number; markedAbandoned: number; remindersSent: number; skipped: number };
 
 /**
@@ -46,9 +34,6 @@ export async function runAbandonedCartCampaign(now = new Date()): Promise<Abando
   const { enabled, config } = await reminderConfig();
   const result: AbandonedCartResult = { scanned: 0, markedAbandoned: 0, remindersSent: 0, skipped: 0 };
   if (!enabled) return result;
-
-  const store = await getStoreSettings();
-  const template = await templateFor('abandoned_cart');
 
   const carts = await prisma.cart.findMany({
     where: { convertedOrderId: null, items: { some: {} } },
@@ -85,28 +70,17 @@ export async function runAbandonedCartCampaign(now = new Date()): Promise<Abando
     const email = cart.customer?.email;
     const first = cart.items[0];
     if (email && first) {
-      const vars = {
-        name: cart.customer?.name ?? 'there',
-        brand: store.brandName,
-        product: first.product.name,
-        price: formatCurrency(first.product.priceFrom?.toString() ?? null),
-        url: `${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/cart`,
-        stage: stageLabel(decision.stage, config.stageDelaysMinutes.length),
-      };
-      const html = template
-        ? `<div style="font-family:Arial,sans-serif;max-width:520px;color:#161513">${renderTemplate(template.body, vars)}</div>`
-        : `<div style="font-family:Arial,sans-serif;max-width:520px;color:#161513">
-             <h2 style="font-family:Georgia,serif;color:#17362C">${store.brandName}</h2>
-             <p>Hi ${vars.name}, you left <strong>${vars.product}</strong> in your bag.</p>
-             <p>Prices move with the daily metal rate — complete your order to secure today's price.</p>
-             <p><a href="${vars.url}" style="color:#A8813C">Return to your bag</a></p>
-           </div>`;
-      await sendEmail({
+      await sendTemplate({
+        key: 'abandoned_cart',
         to: email,
-        subject: template?.subject ? renderTemplate(template.subject, vars) : `You left something behind — ${store.brandName}`,
-        html,
         customerId: cart.customer?.id ?? null,
-        templateKey: 'abandoned_cart',
+        values: {
+          name: cart.customer?.name ?? 'there',
+          product: first.product.name,
+          price: formatCurrency(first.product.priceFrom?.toString() ?? null),
+          url: `${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/cart`,
+          stage: stageLabel(decision.stage, config.stageDelaysMinutes.length),
+        },
       });
     }
 
@@ -124,7 +98,6 @@ export type OccasionResult = { birthdays: number; anniversaries: number };
 
 /** Birthday / anniversary greetings for customers who opted into marketing. */
 export async function runOccasionCampaigns(now = new Date()): Promise<OccasionResult> {
-  const store = await getStoreSettings();
   const month = now.getMonth() + 1;
   const day = now.getDate();
   const result: OccasionResult = { birthdays: 0, anniversaries: 0 };
@@ -146,26 +119,16 @@ export async function runOccasionCampaigns(now = new Date()): Promise<OccasionRe
     const isAnniversary = c.anniversary && c.anniversary.getMonth() + 1 === month && c.anniversary.getDate() === day;
 
     if (isBirthday && (birthdayCampaign?.isActive ?? true)) {
-      await sendEmail({
-        to: c.email,
-        subject: `Happy birthday from ${store.brandName}`,
-        html: `<div style="font-family:Arial,sans-serif;max-width:520px;color:#161513">
-          <h2 style="font-family:Georgia,serif;color:#17362C">${store.brandName}</h2>
-          <p>Happy birthday, ${c.name ?? 'friend'}! Wishing you a wonderful year ahead.</p>
-        </div>`,
-        customerId: c.id, templateKey: 'birthday',
+      await sendTemplate({
+        key: 'birthday', to: c.email, customerId: c.id,
+        values: { name: c.name ?? 'friend' },
       });
       result.birthdays += 1;
     }
     if (isAnniversary && (anniversaryCampaign?.isActive ?? true)) {
-      await sendEmail({
-        to: c.email,
-        subject: `Happy anniversary from ${store.brandName}`,
-        html: `<div style="font-family:Arial,sans-serif;max-width:520px;color:#161513">
-          <h2 style="font-family:Georgia,serif;color:#17362C">${store.brandName}</h2>
-          <p>Happy anniversary, ${c.name ?? 'friend'}! Celebrate with something timeless.</p>
-        </div>`,
-        customerId: c.id, templateKey: 'anniversary',
+      await sendTemplate({
+        key: 'anniversary', to: c.email, customerId: c.id,
+        values: { name: c.name ?? 'friend' },
       });
       result.anniversaries += 1;
     }
@@ -174,13 +137,15 @@ export async function runOccasionCampaigns(now = new Date()): Promise<OccasionRe
   return result;
 }
 
-/** Admin: list campaigns and templates for configuration. */
+/**
+ * Admin: campaign on/off state and timing.
+ *
+ * Wording is not part of this — it lives under Marketing → Email Templates, so
+ * this no longer loads MessageTemplate rows.
+ */
 export async function getCampaignSettings() {
-  const [campaigns, templates] = await Promise.all([
-    prisma.campaign.findMany({ orderBy: { type: 'asc' } }),
-    prisma.messageTemplate.findMany({ orderBy: { key: 'asc' } }),
-  ]);
-  return { campaigns, templates };
+  const campaigns = await prisma.campaign.findMany({ orderBy: { type: 'asc' } });
+  return { campaigns };
 }
 
 /** Abandoned-cart stats for the admin view. */

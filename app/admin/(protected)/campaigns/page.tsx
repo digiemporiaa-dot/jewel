@@ -2,7 +2,8 @@ import { requirePermission } from '@/lib/auth/guard';
 import { getCampaignSettings, getAbandonedCartStats } from '@/lib/campaigns';
 import PageHeader from '@/components/admin/PageHeader';
 import StatCard from '@/components/admin/StatCard';
-import { CampaignCard, TemplateEditor } from './CampaignForms';
+import Link from 'next/link';
+import { CampaignCard } from './CampaignForms';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,11 +19,11 @@ const CAMPAIGN_TYPES: [string, string][] = [
 
 export default async function CampaignsPage() {
   await requirePermission('settings.manage');
-  const [{ campaigns, templates }, stats] = await Promise.all([getCampaignSettings(), getAbandonedCartStats()]);
+  const [{ campaigns }, stats] = await Promise.all([getCampaignSettings(), getAbandonedCartStats()]);
 
   return (
     <div>
-      <PageHeader title="Campaigns" description="Automation settings and editable message templates." />
+      <PageHeader title="Campaigns" description="When automated emails go out. Their wording lives under Marketing → Email Templates." />
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
         <StatCard label="Abandoned carts" value={String(stats.abandoned)} />
@@ -45,10 +46,18 @@ export default async function CampaignsPage() {
         </div>
 
         <div>
-          <h2 className="font-heading text-lg mb-4">Templates</h2>
-          <TemplateEditor
-            templates={templates.map((t) => ({ id: t.id, key: t.key, channel: t.channel, subject: t.subject, body: t.body, isActive: t.isActive }))}
-          />
+          <h2 className="font-heading text-lg mb-4">Wording</h2>
+          <div className="border border-line bg-white p-4 text-sm">
+            <p className="text-ink-soft">
+              The wording of every email — order confirmations, reminders, birthday greetings — is
+              edited under <strong>Marketing → Email Templates</strong>, where you can preview each
+              one and send yourself a test.
+            </p>
+            <Link href="/admin/marketing/templates" className="mt-3 inline-block btn-outline text-xs">
+              Edit email templates
+            </Link>
+          </div>
+
           <div className="mt-4 border border-line bg-white p-4 text-xs text-ink-soft">
             <p className="font-medium text-ink mb-1">Scheduled runs</p>
             <p>Abandoned cart: <code>POST /api/cron/abandoned-cart</code></p>

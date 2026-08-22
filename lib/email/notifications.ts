@@ -1,45 +1,62 @@
 import 'server-only';
 import { prisma } from '@/lib/prisma';
-import { getStoreSettings } from '@/lib/store';
-import { sendEmail } from '@/lib/email';
+import { sendTemplate } from '@/lib/templates';
+
+/**
+ * Order and payment emails.
+ *
+ * The copy lives in `MessageTemplate` rows (editable under Marketing →
+ * Templates) with the built-in text in `lib/templates/registry.ts` as the
+ * fallback. This file's job is only to gather the values a template may
+ * reference — nothing a customer reads is written here.
+ */
 
 function money(v: unknown): string {
   return `₹${Number(v ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function shell(brand: string, title: string, body: string): string {
-  return `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#161513">
-    <h2 style="font-family:Georgia,serif;color:#17362C">${brand}</h2>
-    <h3>${title}</h3>${body}
-    <p style="color:#5F5950;font-size:12px;margin-top:24px">Prices reflect the metal rate locked at purchase.</p>
-  </div>`;
+/** HTML-escape order text before it becomes markup in the items table. */
+function esc(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function orderUrl(): string {
+  return `${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/my-account/orders`;
 }
 
 /** Non-blocking order confirmation email. Safe to call after order creation. */
 export async function sendOrderConfirmation(orderId: string): Promise<void> {
   try {
-    const [order, store] = await Promise.all([
-      prisma.order.findUnique({ where: { id: orderId }, include: { items: true } }),
-      getStoreSettings(),
-    ]);
+    const order = await prisma.order.findUnique({ where: { id: orderId }, include: { items: true } });
     if (!order || !order.contactEmail) return;
 
-    const rows = order.items
-      .map((i) => `<tr><td style="padding:4px 0">${i.nameSnapshot} × ${i.quantity}</td><td align="right">${money(i.lineTotal)}</td></tr>`)
+    // Built here rather than in the template, so a product name containing
+    // angle brackets can never become markup: the registry marks items_table as
+    // html precisely because this code — not the operator — produced it.
+    const itemsTable = order.items
+      .map(
+        (i) =>
+          `<tr><td style="padding:4px 0">${esc(i.nameSnapshot)} × ${i.quantity}</td>` +
+          `<td align="right">${money(i.lineTotal)}</td></tr>`
+      )
       .join('');
-    const body = `
-      <p>Hi ${order.contactName}, thank you for your order <strong>${order.orderNumber}</strong>.</p>
-      <table style="width:100%;border-collapse:collapse;margin:12px 0">${rows}
-        <tr><td style="padding-top:8px;border-top:1px solid #E4DED4"><strong>Total</strong></td>
-            <td align="right" style="padding-top:8px;border-top:1px solid #E4DED4"><strong>${money(order.grandTotal)}</strong></td></tr>
-        <tr><td>Payment</td><td align="right">${order.paymentMethod}</td></tr>
-      </table>`;
-    await sendEmail({
+
+    await sendTemplate({
+      key: 'order_confirmation',
       to: order.contactEmail,
-      subject: `Order confirmed — ${order.orderNumber}`,
-      html: shell(store.brandName, 'Your order is confirmed', body),
       customerId: order.customerId,
-      templateKey: 'order_confirmation',
+      values: {
+        name: order.contactName,
+        order_number: order.orderNumber,
+        order_total: money(order.grandTotal),
+        payment_method: order.paymentMethod,
+        order_url: orderUrl(),
+        items_table: itemsTable,
+      },
     });
   } catch (e) {
     console.error('[email] order confirmation failed', e);
@@ -48,17 +65,19 @@ export async function sendOrderConfirmation(orderId: string): Promise<void> {
 
 export async function sendPaymentConfirmation(orderId: string): Promise<void> {
   try {
-    const [order, store] = await Promise.all([
-      prisma.order.findUnique({ where: { id: orderId } }),
-      getStoreSettings(),
-    ]);
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
     if (!order || !order.contactEmail) return;
-    await sendEmail({
+
+    await sendTemplate({
+      key: 'payment_confirmation',
       to: order.contactEmail,
-      subject: `Payment received — ${order.orderNumber}`,
-      html: shell(store.brandName, 'Payment received', `<p>We’ve received ${money(order.amountPaid)} for order <strong>${order.orderNumber}</strong>.</p>`),
       customerId: order.customerId,
-      templateKey: 'payment_confirmation',
+      values: {
+        name: order.contactName,
+        order_number: order.orderNumber,
+        amount_paid: money(order.amountPaid),
+        order_url: orderUrl(),
+      },
     });
   } catch (e) {
     console.error('[email] payment confirmation failed', e);

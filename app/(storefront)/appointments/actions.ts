@@ -5,8 +5,7 @@ import { getAvailableSlots, bookAppointment, AppointmentError } from '@/lib/appo
 import { getCustomerId } from '@/lib/customer-session';
 import { checkLimit, LIMITS } from '@/lib/rate-limit';
 import { getClientIp } from '@/lib/request-id';
-import { getStoreSettings } from '@/lib/store';
-import { sendEmail } from '@/lib/email';
+import { sendTemplate } from '@/lib/templates';
 import { prisma } from '@/lib/prisma';
 import { AppointmentType } from '@prisma/client';
 
@@ -55,17 +54,15 @@ export async function bookAppointmentAction(input: unknown): Promise<{ ok: boole
 
     // Confirmation email is best-effort — never fails the booking.
     if (d.email) {
-      const store = await getStoreSettings();
-      sendEmail({
+      void sendTemplate({
+        key: 'appointment_confirmation',
         to: d.email,
-        subject: `Appointment requested — ${store.brandName}`,
-        html: `<div style="font-family:Arial,sans-serif;max-width:520px;color:#161513">
-          <h2 style="font-family:Georgia,serif;color:#17362C">${store.brandName}</h2>
-          <p>Hi ${d.name}, we've received your ${d.type === 'VIDEO_CONSULTATION' ? 'video consultation' : 'showroom visit'} request for
-          <strong>${date.toDateString()}</strong> at <strong>${d.slot}</strong>.</p>
-          <p>Our team will confirm shortly${store.phone ? ` — or call us on ${store.phone}` : ''}.</p>
-        </div>`,
-        templateKey: 'appointment_confirmation',
+        values: {
+          name: d.name,
+          appointment_type: d.type === 'VIDEO_CONSULTATION' ? 'video consultation' : 'showroom visit',
+          appointment_date: date.toDateString(),
+          appointment_slot: d.slot,
+        },
       });
     }
     return { ok: true };

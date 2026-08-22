@@ -53,28 +53,8 @@ export async function saveCampaignAction(fd: FormData): Promise<Result> {
   return { ok: true };
 }
 
-const templateSchema = z.object({
-  key: z.string().trim().min(2).max(60),
-  channel: z.enum(['EMAIL', 'SMS', 'WHATSAPP', 'PUSH']),
-  subject: z.string().trim().max(160).optional().or(z.literal('')),
-  body: z.string().trim().min(5, 'Body is required').max(8000),
-  isActive: z.coerce.boolean(),
-});
-
-/** Create or update an editable message template (brief §41). */
-export async function saveTemplateAction(fd: FormData): Promise<Result> {
-  const staff = await assertPermission('settings.manage');
-  const raw = Object.fromEntries(fd.entries());
-  const parsed = templateSchema.safeParse({ ...raw, isActive: raw.isActive === 'on' || raw.isActive === 'true' });
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' };
-  const d = parsed.data;
-
-  await prisma.messageTemplate.upsert({
-    where: { key: d.key },
-    create: { key: d.key, channel: d.channel, subject: d.subject || null, body: d.body, isActive: d.isActive },
-    update: { channel: d.channel, subject: d.subject || null, body: d.body, isActive: d.isActive },
-  });
-  await writeAudit({ userId: staff.id, action: 'TEMPLATE_UPDATE', entity: 'MessageTemplate', entityId: d.key });
-  revalidatePath('/admin/campaigns');
-  return { ok: true };
-}
+// Message-template editing moved to Marketing → Email Templates
+// (app/admin/(protected)/marketing/templates). That editor sanitises the body on
+// save and validates placeholders against a fixed per-template whitelist; this
+// one accepted an arbitrary key and arbitrary markup, which is exactly the
+// free-form-markup vector the marketing-tag work ruled out.

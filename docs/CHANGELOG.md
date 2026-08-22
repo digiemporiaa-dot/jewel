@@ -1,5 +1,91 @@
 # Changelog
 
+## Phase 3 · Item 4 — Editable email templates · 2026-08-22
+
+Every word the shop emails a customer was hardcoded. Birthday and anniversary
+campaigns ran from `lib/campaigns/`, but the client could not change a syllable
+without a code edit — and the one `MessageTemplate` row that *was* seeded for
+birthdays was never read, so editing it did nothing.
+
+### What the client can now change
+
+Marketing → **Email Templates** lists all six emails the shop sends: order
+confirmation, payment received, abandoned-cart reminder, birthday, anniversary
+and appointment request. Each opens on its current wording, with a live preview,
+a click-to-insert list of the variables it may use, and a send-yourself-a-test
+box.
+
+### What it deliberately does not accept
+
+There is no "paste your script here" field, no custom `<head>` fragment, and no
+way for operator-typed text to become executable.
+
+- **Substitution is plain string replacement against a fixed per-template
+  whitelist.** No expression language, no `eval`, no `new Function`. `{{1+1}}`
+  is not a variable name and renders literally; `{{__proto__}}` resolves to
+  nothing. A substituted value is never re-scanned, so a customer cannot name
+  themselves `{{items_table}}` and pull in data the template never referenced.
+- **Values are HTML-escaped** unless the registry marks them as HTML, which only
+  `items_table` is — because this codebase builds it. A customer called
+  `<img onerror=…>` is text in the email and text in the admin preview.
+- **Bodies are sanitised on save**, not on send, so the database only ever holds
+  safe markup. Formatting, links and images survive; `<script>`, `<style>`,
+  `<iframe>`, `on*` handlers and `javascript:`/`data:` URLs do not. Saving
+  something that gets stripped says so rather than silently swallowing it.
+- **Unknown placeholders are rejected, not dropped.** An operator who types
+  `{{tracking_number}}` is told it will never resolve, instead of finding a
+  blank gap in a customer's inbox.
+- The preview renders in a **fully sandboxed iframe** through the same sanitiser
+  the save uses — a preview that shows what the save would strip is a preview
+  that lies.
+
+The old template editor on the Campaigns page has been **removed**. It accepted
+an arbitrary key and arbitrary markup with no sanitisation, which is exactly the
+free-form-markup vector the marketing-tag work ruled out.
+
+### Nothing goes silent
+
+A row is an *override* of built-in copy in `lib/templates/registry.ts`, never
+the only copy. Missing row, inactive row, row saved empty, database hiccup on
+lookup — all of them fall back to the built-in wording. A silent non-send on an
+order confirmation is worse than an unstyled email, so it cannot happen. For the
+same reason transactional emails can be reworded but not switched off.
+
+"Reset to default" **deletes** the override rather than rewriting it with
+today's default text, so a reset template tracks future improvements to the
+built-in copy instead of freezing this week's version into the database.
+
+### Two behaviour changes on deploy
+
+- The seeded `abandoned_cart` and `birthday` rows are now actually **read**. The
+  birthday email will use the seeded row's wording (no brand heading) rather
+  than the hardcoded version. Reset it from the admin to go back to the
+  built-in copy.
+- Fresh deployments seed **no** template rows at all, for the reason above.
+
+### Plain-text alternative
+
+Derived from the HTML when no plain-text version is authored: block boundaries
+become line breaks, table cells stay on one line separated by a space, and the
+entities the stripper produced are decoded — so a shop called "Ram & Co" reads
+as itself rather than as `Ram &amp; Co`.
+
+### Still needed from the operator
+
+`sendEmail` no-ops without SMTP. Templates can be written and previewed today,
+but nothing is delivered — and the test-send button says so plainly rather than
+reporting a success that did not happen — until `SMTP_HOST` and `SMTP_PORT` are
+set on the deployment.
+
+### Verified
+
+`tsc` clean, `next build` clean, lint clean, **277 tests across 21 files**. End
+to end against a production build: six templates listed, preview resolves every
+sample, `{{card_number}}` rejected by name, a pasted `<script>`/`onclick` body
+saved with the markup stripped and the harmless text kept, test-send refused
+honestly with no mail server, and reset restoring the built-in copy byte for
+byte.
+
 ## Phase 3 · Item 3 — EMI display · 2026-08-22
 
 A ₹70,000–₹4,00,000 order is hard to pay in one UPI transfer, and Indian

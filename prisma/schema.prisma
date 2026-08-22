@@ -1335,15 +1335,27 @@ model Campaign {
   @@index([type, isActive])
 }
 
+/// An operator-editable version of one of the emails the shop sends.
+///
+/// The catalogue of keys lives in code (lib/templates/registry.ts), not here: a
+/// row is an *override* of built-in copy, never the only copy. If a row is
+/// missing, inactive or malformed the sender falls back to the built-in text,
+/// because a silent non-send on ORDER_PLACED is worse than an unstyled email.
 model MessageTemplate {
-  id        String              @id @default(cuid())
-  key       String              @unique // order_confirmation, otp, shipment_confirmation...
-  channel   NotificationChannel
-  subject   String?
-  body      String
-  isActive  Boolean             @default(true)
-  createdAt DateTime            @default(now())
-  updatedAt DateTime            @updatedAt
+  id          String              @id @default(cuid())
+  key         String              @unique // order_confirmation, abandoned_cart, birthday...
+  channel     NotificationChannel
+  subject     String?
+  /// Sanitised on save — formatting, links and images only. Never raw markup.
+  body        String
+  /// Optional plain-text alternative for clients that refuse HTML.
+  bodyText    String?
+  isActive    Boolean             @default(true)
+  /// Staff user id of the last editor, for the audit trail. Not a relation:
+  /// the template must survive the staff member leaving.
+  lastEditedBy String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
 }
 
 model Notification {

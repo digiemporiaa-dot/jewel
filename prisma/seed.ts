@@ -688,20 +688,13 @@ async function seedCampaigns() {
     skipDuplicates: true,
   });
 
-  await prisma.messageTemplate.createMany({
-    data: [
-      {
-        key: 'abandoned_cart', channel: 'EMAIL',
-        subject: 'You left something behind at {{brand}}',
-        body: '<h2 style="font-family:Georgia,serif;color:#17362C">{{brand}}</h2><p>Hi {{name}}, you left <strong>{{product}}</strong> in your bag.</p><p>Prices move with the daily metal rate — complete your order to secure today’s price.</p><p><a href="{{url}}" style="color:#A8813C">Return to your bag</a></p>',
-      },
-      {
-        key: 'birthday', channel: 'EMAIL', subject: 'Happy birthday from {{brand}}',
-        body: '<p>Happy birthday, {{name}}! Wishing you a wonderful year ahead.</p>',
-      },
-    ],
-    skipDuplicates: true,
-  });
+  // No MessageTemplate rows are seeded on purpose.
+  //
+  // A row is an *override* of the built-in copy in lib/templates/registry.ts. A
+  // fresh shop starts with no overrides, so it picks up any later improvement to
+  // the built-in wording instead of being frozen on whatever this file said the
+  // day it was seeded. Marketing → Email Templates opens on the built-in text,
+  // and only writes a row once someone actually changes something.
 }
 
 async function main() {
