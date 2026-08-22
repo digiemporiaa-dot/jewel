@@ -3,9 +3,11 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { resolveStateCode } from '@/lib/tax/gst';
+import { parseTenures, DEFAULT_TENURES } from '@/lib/emi';
 import { assertPermission } from '@/lib/auth/guard';
 import { writeAudit } from '@/lib/audit';
 import { prisma } from '@/lib/prisma';
+import type { Prisma } from '@prisma/client';
 
 export type Result = { ok: boolean; error?: string };
 
@@ -23,6 +25,11 @@ const settingsSchema = z.object({
   state: z.string().trim().max(60).optional().or(z.literal('')),
   pincode: z.string().trim().max(10).optional().or(z.literal('')),
   gstin: z.string().trim().max(20).optional().or(z.literal('')),
+  emiEnabled: z.boolean().optional(),
+  emiMinAmount: z.string().trim().optional().or(z.literal('')),
+  // A textarea of "months@rate" lines. Parsed strictly and anything malformed
+  // is rejected rather than saved, so a bad row cannot reach a product page.
+  emiTenures: z.string().trim().optional().or(z.literal('')),
   // Two-digit GST state code. Validated against the real list, because an
   // unrecognised code makes every invoice's tax split underivable.
   sellerStateCode: z
@@ -80,6 +87,9 @@ export async function updateSettingsAction(fd: FormData): Promise<Result> {
       state: nullIfEmpty(d.state),
       pincode: nullIfEmpty(d.pincode),
       gstin: nullIfEmpty(d.gstin),
+      emiEnabled: d.emiEnabled === true,
+      emiMinAmount: nullIfEmpty(d.emiMinAmount),
+      emiTenures: parseEmiTenureLines(d.emiTenures),
       sellerStateCode: d.sellerStateCode ? resolveStateCode(d.sellerStateCode) : null,
       gstPercentDefault: d.gstPercentDefault,
       freeShippingAbove: nullIfEmpty(d.freeShippingAbove),
@@ -104,4 +114,28 @@ export async function updateSettingsAction(fd: FormData): Promise<Result> {
   revalidatePath('/admin/settings');
   revalidatePath('/', 'layout');
   return { ok: true };
+}
+
+
+/**
+ * Parse the EMI tenure textarea: one `months@annualRate` per line, e.g.
+ * `12@14`. Falls back to the shipped defaults when the field is left empty, so
+ * switching EMI on without configuring anything still produces sensible plans.
+ */
+function parseEmiTenureLines(raw: string | undefined): Prisma.InputJsonValue {
+  if (!raw || raw.trim() === '') return DEFAULT_TENURES as unknown as Prisma.InputJsonValue;
+
+  const rows = raw
+    .split(/[\n,]+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [months, rate] = line.split('@').map((v) => v.trim());
+      return { months: Number(months), annualRatePercent: Number(rate) };
+    });
+
+  // `parseTenures` drops anything malformed; if that leaves nothing usable, keep
+  // the defaults rather than saving an empty table that silently hides EMI.
+  const clean = parseTenures(rows);
+  return (clean.length > 0 ? clean : DEFAULT_TENURES) as unknown as Prisma.InputJsonValue;
 }

@@ -13,10 +13,16 @@ import PincodeCheck from './PincodeCheck';
 import { addToCartAction } from '@/app/(storefront)/cart/actions';
 import type { DetailVariant } from '@/lib/product-detail';
 import { trackEcommerce } from '@/lib/marketing/events';
+import EmiNote from '@/components/storefront/EmiNote';
+import { lowestEmi, allEmiOptions, type EmiTenure } from '@/lib/emi';
+
+export type EmiConfig = { enabled: boolean; minAmount: string | null; tenures: EmiTenure[] };
 
 export default function BuyBox({
   product,
+  emiConfig,
 }: {
+  emiConfig: EmiConfig;
   product: {
     id: string; name: string; sku: string; slug: string;
     variants: DetailVariant[]; defaultVariantId: string | null;
@@ -55,6 +61,18 @@ export default function BuyBox({
       }],
     });
   }, [variant?.sku, variant?.breakup, product.name, product.purityName]);
+
+  // Recomputed per selected variant: an 18K and a 22K version of the same ring
+  // are different money, and quoting the default variant's EMI against another
+  // variant's price would be wrong on screen.
+  const emiParams = {
+    amount: variant?.breakup?.unitTotal ?? '0',
+    enabled: emiConfig.enabled,
+    minAmount: emiConfig.minAmount,
+    tenures: emiConfig.tenures,
+  };
+  const emiBest = lowestEmi(emiParams);
+  const emiOptions = allEmiOptions(emiParams);
 
   const whatsappLink = buildWhatsAppLink({
     whatsappNumber: product.whatsappNumber,
@@ -170,6 +188,10 @@ export default function BuyBox({
         )}
       </div>
       {msg && <p className="text-sm text-ink-soft">{msg}</p>}
+
+      {/* EMI — renders nothing when disabled, unconfigured, or below the
+          bank's minimum, so it needs no guard of its own. */}
+      <EmiNote best={emiBest} options={emiOptions} className="mt-1" />
 
       {/* Price breakup */}
       {variant?.breakup && (

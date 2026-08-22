@@ -12,6 +12,7 @@ import { formatCurrency } from '@/lib/utils/format';
 import ProductGrid from '@/components/storefront/ProductGrid';
 import Gallery from './Gallery';
 import BuyBox from './BuyBox';
+import { parseTenures } from '@/lib/emi';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,6 +50,14 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
     getApprovedReviews(detail.id),
     canReview(customerId, detail.id),
   ]);
+
+  // EMI is store configuration, read once here and evaluated per variant inside
+  // the buy box rather than round-tripping for each selection.
+  const emiConfig = {
+    enabled: store.emiEnabled,
+    minAmount: store.emiMinAmount ? store.emiMinAmount.toString() : null,
+    tenures: parseTenures(store.emiTenures),
+  };
 
   const priceForSchema = detail.priceFrom ?? detail.variants.find((v) => v.breakup)?.breakup?.unitTotal ?? null;
   const inStock = detail.variants.some((v) => v.inStock);
@@ -117,6 +126,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
 
           <div className="mt-6">
             <BuyBox
+              emiConfig={emiConfig}
               product={{
                 id: detail.id, name: detail.name, sku: detail.sku, slug: detail.slug,
                 variants: detail.variants, defaultVariantId: detail.defaultVariantId,

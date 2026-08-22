@@ -2,6 +2,7 @@ import { requirePermission } from '@/lib/auth/guard';
 import { getStoreSettings, getSocialLinks } from '@/lib/store';
 import PageHeader from '@/components/admin/PageHeader';
 import SettingsForm from './SettingsForm';
+import { parseTenures } from '@/lib/emi';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,6 +30,9 @@ export default async function SettingsPage() {
           state: store.state ?? '',
           pincode: store.pincode ?? '',
           gstin: store.gstin ?? '',
+          emiEnabled: store.emiEnabled,
+          emiMinAmount: store.emiMinAmount ? store.emiMinAmount.toString() : '',
+          emiTenures: parseTenures(store.emiTenures).map((t) => `${t.months}@${t.annualRatePercent}`).join('\n'),
           sellerStateCode: store.sellerStateCode ?? '',
           gstPercentDefault: store.gstPercentDefault.toString(),
           freeShippingAbove: store.freeShippingAbove?.toString() ?? '',

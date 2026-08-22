@@ -1,5 +1,64 @@
 # Changelog
 
+## Phase 3 · Item 3 — EMI display · 2026-08-22
+
+A ₹70,000–₹4,00,000 order is hard to pay in one UPI transfer, and Indian
+jewellery shoppers expect to see a monthly figure.
+
+### What shows
+
+"EMI from ₹X/month" on the product page and in the bag, with the full tenure
+table behind a "View plans" disclosure. The headline is the **cheapest** monthly
+instalment across the configured tenures.
+
+Everywhere it appears it carries: *"Indicative only. Final EMI, tenure and
+interest are set by your bank at checkout."* Quoting a firm monthly figure the
+bank then refuses is a support problem and a trust problem, so the disclaimer
+lives in `lib/emi.ts` rather than being retyped per component.
+
+### Details that matter
+
+- **Recomputed per selected variant.** An 18K and a 22K version of the same ring
+  are different money; quoting the default variant's EMI against another
+  variant's price would be wrong on screen.
+- **Rounded up, never down.** Quoting a rupee less than the bank will charge is
+  the kind of small inaccuracy that becomes a support ticket.
+- **Hidden below a configurable minimum.** Banks impose their own floor, and
+  showing an EMI the shopper cannot get is worse than showing none.
+- **0% no-cost EMI does not divide by zero** — a common offer, and it degrades to
+  simple division.
+- **Malformed configuration is dropped, not rendered.** A bad tenure row would
+  otherwise produce `₹NaN/month`, which reads as a broken site.
+
+### Razorpay
+
+`method: { emi: true, cardless_emi: true }` on the checkout options, so the
+methods the messaging advertises are actually offered at payment.
+
+### Admin
+
+Settings gains an EMI section: on/off, minimum order value, and a plan table
+entered as `months@annualRate` per line. Left blank, it falls back to a shipped
+default set rather than saving an empty table that would silently hide EMI.
+
+### Verified
+
+`tsc` clean · `next build` clean · **233 tests** (19 new).
+
+Against a running production build:
+
+- **EMI off (the default): nothing rendered** — 0 occurrences on the product page.
+- **EMI on:** `EMI from ₹1,178/month` plus the disclaimer.
+- The figure was cross-checked against an independent calculation: the variant's
+  live price is ₹24,282.13, which over 24 months at 15% gives ₹1,177.36 exactly —
+  quoted as ₹1,178, i.e. rounded up as intended.
+- **Minimum raised above the item price: hidden again**, 0 occurrences.
+
+### Operator note
+
+EMI ships **off**. Turn it on in Settings once you have confirmed the tenures and
+rates your bank actually offers — the defaults are typical figures, not promises.
+
 ## Phase 3 · Item 2 — Jewellery-aware coupons · 2026-08-22
 
 In jewellery, discounts belong on **making charges**. Metal sells at the live

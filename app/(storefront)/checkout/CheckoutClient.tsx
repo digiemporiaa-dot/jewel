@@ -124,6 +124,10 @@ export default function CheckoutClient({
         name: brandName,
         order_id: res.razorpay.orderId,
         prefill: { name: res.prefill.name, email: res.prefill.email, contact: res.prefill.phone },
+        // EMI and cardless EMI are offered alongside the usual methods. The bank
+        // sets the actual tenure and rate here — the figures shown on the
+        // product page and in the bag are indicative only.
+        method: { emi: true, cardless_emi: true },
         handler: async (r: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => {
           const confirm = await confirmCheckoutPayment({ orderId: res.orderId, razorpayPaymentId: r.razorpay_payment_id, razorpayOrderId: r.razorpay_order_id, signature: r.razorpay_signature });
           if (confirm.ok) router.push(`/order/${confirm.orderNumber}`);

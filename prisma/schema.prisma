@@ -286,6 +286,15 @@ model StoreSetting {
   // Pricing behaviour
   rateLockMinutes  Int @default(15)
 
+  // EMI messaging. Indicative only — the bank decides the real tenure and rate,
+  // so nothing here is ever presented as a firm commitment.
+  emiEnabled   Boolean  @default(false)
+  // Banks impose their own minimums; below this the messaging is hidden rather
+  // than quoting an EMI the shopper cannot actually get.
+  emiMinAmount Decimal? @db.Decimal(12, 2)
+  // [{ months, annualRatePercent }] — the tenures the store wants to advertise.
+  emiTenures   Json?
+
   // Social + content
   socialLinks Json?   // { instagram, facebook, youtube, pinterest }
   footerNote  String?

@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { updateSettingsAction } from './actions';
 
-export type SettingsDefaults = Record<string, string | number | undefined>;
+export type SettingsDefaults = Record<string, string | number | boolean | undefined>;
 
 export default function SettingsForm({ defaults }: { defaults: SettingsDefaults }) {
   const router = useRouter();
@@ -50,6 +50,31 @@ export default function SettingsForm({ defaults }: { defaults: SettingsDefaults 
           <F label="State"><input name="state" defaultValue={v('state')} className="s-inp" /></F>
           <F label="Pincode"><input name="pincode" defaultValue={v('pincode')} className="s-inp" /></F>
           <F label="GSTIN"><input name="gstin" defaultValue={v('gstin')} className="s-inp" /></F>
+          <F label="EMI messaging">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="emiEnabled" defaultChecked={Boolean(defaults.emiEnabled)} />
+              <span>Show &ldquo;EMI from ₹X/month&rdquo; on product pages and the bag</span>
+            </label>
+            <span className="mt-1 block text-xs text-ink-soft">
+              The figure is indicative — the bank sets the real tenure and rate at checkout, and the
+              storefront says so wherever it appears.
+            </span>
+          </F>
+          <F label="EMI minimum order (₹)">
+            <input name="emiMinAmount" defaultValue={v('emiMinAmount')} inputMode="decimal" placeholder="Leave blank for no minimum" className="s-inp" />
+            <span className="mt-1 block text-xs text-ink-soft">
+              Below this, the messaging is hidden — banks have their own floor and quoting an EMI the
+              shopper cannot get is worse than quoting none.
+            </span>
+          </F>
+          <F label="EMI plans">
+            <textarea name="emiTenures" defaultValue={v('emiTenures')} rows={5} placeholder={'12@14\n24@15'} className="s-inp font-mono text-xs" />
+            <span className="mt-1 block text-xs text-ink-soft">
+              One plan per line as <code className="bg-paper-2 px-1">months@annualRate</code>, e.g.{' '}
+              <code className="bg-paper-2 px-1">12@14</code>. Leave blank to use the standard plans.
+            </span>
+          </F>
+
           <F label="GST state code">
             <input name="sellerStateCode" defaultValue={v('sellerStateCode')} placeholder="07" className="s-inp" />
             <span className="mt-1 block text-xs text-ink-soft">

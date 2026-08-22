@@ -5,6 +5,8 @@ import { getCart } from '@/lib/cart';
 import { getStoreSettings } from '@/lib/store';
 import { formatCurrency } from '@/lib/utils/format';
 import CartItemRow from './CartItemRow';
+import EmiNote from '@/components/storefront/EmiNote';
+import { emiFor } from '@/lib/emi-settings';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +18,7 @@ export const metadata: Metadata = {
 export default async function CartPage() {
   const token = await getSessionToken();
   const [cart, store] = await Promise.all([getCart(token), getStoreSettings()]);
+  const emi = await emiFor(cart.grandTotal);
 
   if (cart.lines.length === 0) {
     return (
@@ -62,6 +65,7 @@ export default async function CartPage() {
               <dd>{formatCurrency(cart.grandTotal)}</dd>
             </div>
           </dl>
+          <EmiNote best={emi.best} options={emi.options} className="mt-3" />
 
           <p className="mt-2 text-xs text-ink-soft">Prices calculated on today’s live metal rate. Inclusive of GST.</p>
 
