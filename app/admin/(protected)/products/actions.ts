@@ -18,7 +18,7 @@ function formToObject(fd: FormData): Record<string, unknown> {
   const obj: Record<string, unknown> = {};
   for (const [k, v] of fd.entries()) obj[k] = v;
   // Checkboxes: presence = true.
-  for (const key of ['gstInclusive', 'isActive', 'isFeatured', 'isBestSeller', 'isNewArrival']) {
+  for (const key of ['gstInclusive', 'isActive', 'isFeatured', 'isBestSeller', 'isNewArrival', 'noIndex']) {
     obj[key] = fd.get(key) === 'on' || fd.get(key) === 'true';
   }
   return obj;

@@ -20,6 +20,8 @@ export type SeoDefaults = {
   defaultTitle: string | null;
   defaultDescription: string | null;
   defaultOgImageUrl: string | null;
+  /** The shop's own handle, for `twitter:site`. */
+  twitterHandle: string | null;
   /** Master switch. Off means every page sends `noindex`. */
   indexingEnabled: boolean;
 };
@@ -112,6 +114,23 @@ export function resolveSeo(input: SeoInput, defaults: SeoDefaults): ResolvedSeo 
   };
 }
 
+/**
+ * Whether a stored canonical names a different host from this site's.
+ *
+ * `canonicalise` silently rewrites one to this origin, which is the safe
+ * behaviour but leaves the operator believing a value is in force that is not.
+ * The admin surfaces this so the discrepancy is visible rather than invisible.
+ */
+export function canonicalOffSite(value: string | null | undefined, siteUrl: string): boolean {
+  const trimmed = (value ?? '').trim();
+  if (trimmed === '' || trimmed.startsWith('/')) return false;
+  try {
+    return new URL(trimmed).host !== new URL(normaliseBase(siteUrl)).host;
+  } catch {
+    return false;
+  }
+}
+
 /** Normalise a stored canonical, which may be relative or absolute. */
 function canonicalise(value: string, siteUrl: string): string {
   const trimmed = value.trim();
@@ -143,9 +162,9 @@ export type SeoWarning = {
  */
 export function auditSeo(
   resolved: ResolvedSeo,
-  options: { isPublic?: boolean; brandName?: string } = {}
+  options: { isPublic?: boolean; brandName?: string; rejectedCanonical?: boolean } = {}
 ): SeoWarning[] {
-  const { isPublic = true, brandName } = options;
+  const { isPublic = true, brandName, rejectedCanonical = false } = options;
   const warnings: SeoWarning[] = [];
 
   // The template already appends the brand, so a title that names it too comes
@@ -186,6 +205,16 @@ export function auditSeo(
       field: 'ogImage',
       severity: 'warning',
       message: 'No social image. Shared on WhatsApp or Instagram this link will appear as plain text.',
+    });
+  }
+
+  // A canonical the resolver refused is worse than none: the operator believes
+  // it is set, and the page is quietly self-canonicalising instead.
+  if (rejectedCanonical) {
+    warnings.push({
+      field: 'canonical',
+      severity: 'error',
+      message: 'The canonical URL points at another site, so it was ignored. A canonical naming somebody else\'s domain tells Google this page is a copy of theirs.',
     });
   }
 

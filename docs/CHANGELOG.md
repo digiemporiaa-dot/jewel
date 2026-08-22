@@ -1,5 +1,51 @@
 # Changelog
 
+## Phase 3 · Item 6 completion — the SEO fields nothing could reach · 2026-08-22
+
+`ogImageUrl`, `canonicalUrl` and `noIndex` have been columns on Product,
+Category, Collection, CmsPage and BlogPost since they were added. The resolver
+read all three, the sitemap honoured `noIndex`, the OG fallback chain looked for
+`ogImageUrl` — and **no admin form could set any of them**. Half of item 6 was
+plumbing to a tap that did not exist.
+
+`components/admin/SeoPanel.tsx` is that tap: title with a 60-character counter,
+description with 160, social image through the shared uploader, canonical
+override and a hide-from-search checkbox. One component in all five editors,
+because the fields are identical and five copies would drift into five
+different validations.
+
+### Warnings where the mistake is made
+
+- **Off-site canonical.** `canonicalise` already rewrites one to this origin, so
+  the damage was never done — but the operator was left believing a value was in
+  force that was not. The panel says so as it is typed, and `auditSeo` reports it
+  on the SEO screen.
+- **Social image too small.** Measured in the browser from the preview that is
+  already loading: `naturalWidth`/`naturalHeight` against 1200×630. No server
+  round trip, and it catches the common case of a 400px product thumbnail reused
+  as a social card.
+- **Hidden but published.** Ticking noIndex on a live page warns immediately.
+  Silent deindexing costs months of traffic before anybody notices.
+
+`lib/validations/seo-fields.ts` holds the schema once. A blank field is stored as
+`null` rather than `''`, or the fallback chain — entity, then first product image
+or blog cover, then the site default — would never run. `canonicalUrl` and
+`ogImageUrl` both refuse `javascript:` and `data:`, because one ends up in a
+`<link rel="canonical">` and the other in an `<img src>`.
+
+### `twitterHandle`
+
+The last field the spec asked for and the schema lacked. Cards were being emitted
+with no site attribution. Pasting a profile URL or leaving off the `@` both
+normalise to `@handle` on save — a card attributed to
+`https://twitter.com/mayajewellers` is attributed to nothing.
+
+Verified live: a saved title, description and social image reach the storefront
+`<head>`; ticking noIndex produces `noindex, nofollow, nocache` and drops the page
+from `sitemap.xml`; and all five editors carry the panel.
+
+Tests: 8 new. 618 passing overall.
+
 ## Phase 3 · Item 13 — Delete, soft rather than literal · 2026-08-22
 
 | Entity | What happens |

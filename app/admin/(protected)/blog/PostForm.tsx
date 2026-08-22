@@ -3,12 +3,14 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import ImageUploadField from '@/components/admin/ImageUploadField';
+import SeoPanel from '@/components/admin/SeoPanel';
 import { createPostAction, updatePostAction, deletePostAction } from './actions';
 
 export type PostDefaults = {
   id?: string; title?: string; slug?: string; author?: string; category?: string; tags?: string;
   featuredImage?: string; excerpt?: string; content?: string; status?: string; publishedAt?: string;
   seoTitle?: string; seoDescription?: string;
+  ogImageUrl?: string; canonicalUrl?: string; noIndex?: boolean;
 };
 
 export default function PostForm({ defaults = {} }: { defaults?: PostDefaults }) {
@@ -53,10 +55,15 @@ export default function PostForm({ defaults = {} }: { defaults?: PostDefaults })
       />
       <L label="Excerpt"><textarea name="excerpt" defaultValue={defaults.excerpt} rows={2} className="p-inp" /></L>
       <L label="Content (one paragraph per line)"><textarea name="content" defaultValue={defaults.content} rows={12} required className="p-inp font-mono text-xs" /></L>
-      <div className="grid sm:grid-cols-2 gap-3">
-        <L label="SEO title"><input name="seoTitle" defaultValue={defaults.seoTitle} className="p-inp" /></L>
-        <L label="SEO description"><input name="seoDescription" defaultValue={defaults.seoDescription} className="p-inp" /></L>
-      </div>
+      <SeoPanel
+        prefix="blog"
+        publicPath={defaults.slug ? `/blog/${defaults.slug}` : undefined}
+        isPublished={defaults.status === 'PUBLISHED'}
+        defaults={{
+          seoTitle: defaults.seoTitle, seoDescription: defaults.seoDescription,
+          ogImageUrl: defaults.ogImageUrl, canonicalUrl: defaults.canonicalUrl, noIndex: defaults.noIndex,
+        }}
+      />
 
       {error && <p className="text-xs text-red-700">{error}</p>}
       {msg && <p className="text-xs text-ink-soft">{msg}</p>}

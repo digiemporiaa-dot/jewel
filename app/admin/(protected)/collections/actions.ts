@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { checkImageUrl } from '@/lib/uploads/constraints';
+import { seoFieldsSchema, seoFieldsFromForm, seoFieldsToData } from '@/lib/validations/seo-fields';
 import { assertPermission } from '@/lib/auth/guard';
 import { writeAudit } from '@/lib/audit';
 import { prisma } from '@/lib/prisma';
@@ -41,8 +42,7 @@ const schema = z.object({
     .optional(),
   order: z.coerce.number().int().min(0).max(9999).default(0),
   isActive: z.boolean().default(true),
-  seoTitle: z.string().max(200).nullable().optional(),
-  seoDescription: z.string().max(400).nullable().optional(),
+  ...seoFieldsSchema,
 });
 
 function readForm(fd: FormData) {
@@ -53,8 +53,7 @@ function readForm(fd: FormData) {
     imageUrl: nullable(fd.get('imageUrl')),
     order: fd.get('order') ?? 0,
     isActive: fd.get('isActive') === 'true' || fd.get('isActive') === 'on',
-    seoTitle: nullable(fd.get('seoTitle')),
-    seoDescription: nullable(fd.get('seoDescription')),
+    ...seoFieldsFromForm(fd),
   };
 }
 
@@ -78,8 +77,7 @@ export async function createCollectionAction(fd: FormData): Promise<ActionResult
       imageUrl: d.imageUrl ?? null,
       order: d.order,
       isActive: d.isActive,
-      seoTitle: d.seoTitle ?? null,
-      seoDescription: d.seoDescription ?? null,
+      ...seoFieldsToData(d),
     },
   });
 
@@ -120,8 +118,7 @@ export async function updateCollectionAction(id: string, fd: FormData): Promise<
       imageUrl: d.imageUrl ?? null,
       order: d.order,
       isActive: d.isActive,
-      seoTitle: d.seoTitle ?? null,
-      seoDescription: d.seoDescription ?? null,
+      ...seoFieldsToData(d),
     },
   });
 

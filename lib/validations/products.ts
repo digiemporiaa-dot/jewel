@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { checkImageUrl } from '@/lib/uploads/constraints';
+import { seoFieldsSchema } from '@/lib/validations/seo-fields';
 import { parseVideo } from '@/lib/video/parse';
 
 const optionalDecimal = z
@@ -66,8 +67,7 @@ export const productSchema = z
         const res = parseVideo(value);
         if (!res.ok) ctx.addIssue({ code: z.ZodIssueCode.custom, message: res.error });
       }),
-    seoTitle: z.string().trim().max(160).optional().nullable(),
-    seoDescription: z.string().trim().max(320).optional().nullable(),
+    ...seoFieldsSchema,
   })
   .superRefine((data, ctx) => {
     if (data.pricingMode === 'FIXED') {

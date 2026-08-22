@@ -23,6 +23,9 @@ export default async function CollectionsPage() {
     isActive: c.isActive,
     seoTitle: c.seoTitle,
     seoDescription: c.seoDescription,
+    ogImageUrl: c.ogImageUrl,
+    canonicalUrl: c.canonicalUrl,
+    noIndex: c.noIndex,
     productCount: c._count.products,
   }));
 

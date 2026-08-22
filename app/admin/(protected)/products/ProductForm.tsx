@@ -3,6 +3,7 @@
 import { useActionState, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import type { FormResult } from './actions';
+import SeoPanel from '@/components/admin/SeoPanel';
 
 type Opt = { id: string; name: string };
 type Refs = {
@@ -19,6 +20,7 @@ export type ProductDefaults = Partial<{
   gstPercent: string; gstInclusive: boolean; fulfilmentType: string; leadTimeDays: string; advancePercent: string;
   certification: string; hsnCode: string; isActive: boolean; isFeatured: boolean; isBestSeller: boolean; isNewArrival: boolean;
   occasion: string; tags: string; videoUrl: string; seoTitle: string; seoDescription: string;
+  ogImageUrl: string; canonicalUrl: string; noIndex: boolean;
 }>;
 
 function Submit({ label }: { label: string }) {
@@ -175,8 +177,17 @@ export default function ProductForm({
       </Section>
 
       <Section title="SEO">
-        <Field label="SEO title"><input name="seoTitle" defaultValue={defaults.seoTitle} className="inp" /></Field>
-        <Field label="SEO description"><textarea name="seoDescription" defaultValue={defaults.seoDescription} rows={2} className="inp" /></Field>
+        <div className="sm:col-span-2 lg:col-span-3">
+          <SeoPanel
+            prefix="products"
+            publicPath={defaults.slug ? `/p/${defaults.slug}` : undefined}
+            isPublished={defaults.isActive !== false}
+            defaults={{
+              seoTitle: defaults.seoTitle, seoDescription: defaults.seoDescription,
+              ogImageUrl: defaults.ogImageUrl, canonicalUrl: defaults.canonicalUrl, noIndex: defaults.noIndex,
+            }}
+          />
+        </div>
       </Section>
 
       <Submit label={submitLabel} />

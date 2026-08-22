@@ -38,6 +38,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
     occasion: product.occasion.join(', '), tags: product.tags.join(', '),
     videoUrl: product.videoUrl ?? '',
     seoTitle: product.seoTitle ?? '', seoDescription: product.seoDescription ?? '',
+    ogImageUrl: product.ogImageUrl ?? '', canonicalUrl: product.canonicalUrl ?? '', noIndex: product.noIndex,
   };
 
   const variants = product.variants.map((v) => ({

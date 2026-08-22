@@ -3,11 +3,13 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPageAction, updatePageAction, deletePageAction } from './actions';
+import SeoPanel from '@/components/admin/SeoPanel';
 
 export type PageDefaults = {
   id?: string;
   title?: string; slug?: string; status?: string; scheduledAt?: string;
   seoTitle?: string; seoDescription?: string;
+  ogImageUrl?: string; canonicalUrl?: string; noIndex?: boolean;
 };
 
 export default function PageForm({ defaults = {} }: { defaults?: PageDefaults }) {
@@ -49,8 +51,15 @@ export default function PageForm({ defaults = {} }: { defaults?: PageDefaults })
           <L label="Publish at"><input name="scheduledAt" type="datetime-local" defaultValue={defaults.scheduledAt} className="p-inp" /></L>
         )}
       </div>
-      <L label="SEO title"><input name="seoTitle" defaultValue={defaults.seoTitle} className="p-inp" /></L>
-      <L label="SEO description"><textarea name="seoDescription" defaultValue={defaults.seoDescription} rows={2} className="p-inp" /></L>
+      <SeoPanel
+        prefix="cms"
+        publicPath={defaults.slug ? `/pages/${defaults.slug}` : undefined}
+        isPublished={defaults.status === 'PUBLISHED'}
+        defaults={{
+          seoTitle: defaults.seoTitle, seoDescription: defaults.seoDescription,
+          ogImageUrl: defaults.ogImageUrl, canonicalUrl: defaults.canonicalUrl, noIndex: defaults.noIndex,
+        }}
+      />
 
       {error && <p className="text-xs text-red-700">{error}</p>}
       {msg && <p className="text-xs text-ink-soft">{msg}</p>}

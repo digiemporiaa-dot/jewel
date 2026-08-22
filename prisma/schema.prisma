@@ -394,6 +394,9 @@ model SeoSettings {
   defaultDescription String?
   /// Social card image for pages with nothing more specific.
   defaultOgImageUrl  String?
+  /// The shop's own handle, e.g. "@mayajewellers". Twitter cards name a site as
+  /// well as a page; without it the card is attributed to nobody.
+  twitterHandle      String?
 
   /// Master switch. Off means the whole site sends `noindex` and robots.txt
   /// disallows everything — correct while a shop is being set up, catastrophic

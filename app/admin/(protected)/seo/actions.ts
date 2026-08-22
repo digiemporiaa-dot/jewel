@@ -21,6 +21,20 @@ import { checkCanonical } from '@/lib/seo/url';
  *    disallowing everything.
  */
 
+/**
+ * `@mayajewellers`, however it was typed.
+ *
+ * Operators paste a profile URL or leave the `@` off; both are the same handle,
+ * and a card attributed to `https://twitter.com/mayajewellers` is attributed to
+ * nothing.
+ */
+function normaliseHandle(value: string): string | null {
+  const raw = value.trim();
+  if (raw === '') return null;
+  const name = raw.replace(/^https?:\/\/(www\.)?(twitter|x)\.com\//i, '').replace(/^@/, '').replace(/\/.*$/, '');
+  return name === '' ? null : `@${name}`;
+}
+
 export type Result = { ok: boolean; error?: string };
 
 const PERMISSION = 'settings.manage' as const;
@@ -95,6 +109,7 @@ export async function saveSeoSettingsAction(fd: FormData): Promise<Result> {
     defaultTitle: str(fd, 'defaultTitle') || null,
     defaultDescription: defaultDescription || null,
     defaultOgImageUrl: str(fd, 'defaultOgImageUrl') || null,
+    twitterHandle: normaliseHandle(str(fd, 'twitterHandle')),
     indexingEnabled: fd.get('indexingEnabled') === 'on',
     robotsDisallow: disallow.paths,
     localBusinessEnabled: fd.get('localBusinessEnabled') === 'on',

@@ -5,7 +5,11 @@ import {
 import {
   resolveSeo, applyTitleTemplate, auditSeo, duplicateTitles,
   TITLE_LIMIT, DESCRIPTION_LIMIT, type SeoDefaults,
+  canonicalOffSite,
 } from '@/lib/seo/resolve';
+
+import { z } from 'zod';
+import { seoFieldsSchema, seoFieldsFromForm } from '@/lib/validations/seo-fields';
 
 const SITE = 'https://mayajewellers.in';
 
@@ -16,6 +20,7 @@ const DEFAULTS: SeoDefaults = {
   defaultTitle: 'Maya Jewellers — Fine jewellery, crafted in Delhi',
   defaultDescription: 'Hallmarked gold and diamond jewellery from Delhi.',
   defaultOgImageUrl: '/og-default.jpg',
+  twitterHandle: null,
   indexingEnabled: true,
 };
 
@@ -331,5 +336,73 @@ describe('the brand appearing twice in a title', () => {
   it('says nothing when no brand name is supplied to check against', () => {
     const doubled = resolveSeo({ path: '/p/x', fallbackTitle: 'Ring — Maya Jewellers' }, DEFAULTS);
     expect(auditSeo(doubled).some((w) => w.message.includes('twice'))).toBe(false);
+  });
+});
+
+// ── Per-entity SEO fields ────────────────────────────────────────────────────
+
+describe('a canonical pointing at another site', () => {
+  it('is rewritten to this site rather than honoured', () => {
+    // Honouring it would tell Google this page is a copy of somebody else's,
+    // and the page drops out of results.
+    const resolved = resolveSeo(
+      { path: '/p/ring', fallbackTitle: 'Ring', canonicalUrl: 'https://competitor.example/rings/gold' },
+      DEFAULTS
+    );
+    expect(resolved.canonical.startsWith(SITE)).toBe(true);
+  });
+
+  it('is reported, so the operator is not left believing it took effect', () => {
+    expect(canonicalOffSite('https://competitor.example/x', SITE)).toBe(true);
+    const warnings = auditSeo(
+      resolveSeo({ path: '/p/ring', fallbackTitle: 'Ring' }, DEFAULTS),
+      { rejectedCanonical: true }
+    );
+    expect(warnings.some((w) => w.field === 'canonical' && w.severity === 'error')).toBe(true);
+  });
+
+  it('does not fire for a canonical on this site, or a path', () => {
+    expect(canonicalOffSite(`${SITE}/p/other-ring`, SITE)).toBe(false);
+    expect(canonicalOffSite('/p/other-ring', SITE)).toBe(false);
+    expect(canonicalOffSite('', SITE)).toBe(false);
+    expect(canonicalOffSite(null, SITE)).toBe(false);
+  });
+});
+
+describe('the per-entity SEO fields', () => {
+  it('accepts a social image address and a same-site canonical', () => {
+    const parsed = z.object(seoFieldsSchema).safeParse({
+      seoTitle: 'A ring', seoDescription: 'Lovely', ogImageUrl: '/og/ring.jpg',
+      canonicalUrl: '/p/ring', noIndex: false,
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('refuses a canonical that could execute', () => {
+    // This value ends up in a <link rel="canonical"> href.
+    const parsed = z.object(seoFieldsSchema).safeParse({ canonicalUrl: 'javascript:alert(1)' });
+    expect(parsed.success).toBe(false);
+  });
+
+  it('refuses a social image that could execute', () => {
+    expect(z.object(seoFieldsSchema).safeParse({ ogImageUrl: 'javascript:alert(1)' }).success).toBe(false);
+  });
+
+  it('treats a blank field as unset rather than as an empty string', () => {
+    // Otherwise an untouched field writes '' and the fallback chain — entity,
+    // then first image, then the site default — never runs.
+    const fd = new FormData();
+    fd.set('seoTitle', '   ');
+    fd.set('ogImageUrl', '');
+    const fields = seoFieldsFromForm(fd);
+    expect(fields.seoTitle).toBeNull();
+    expect(fields.ogImageUrl).toBeNull();
+    expect(fields.noIndex).toBe(false);
+  });
+
+  it('reads the noIndex checkbox, which posts "on" rather than a boolean', () => {
+    const fd = new FormData();
+    fd.set('noIndex', 'on');
+    expect(seoFieldsFromForm(fd).noIndex).toBe(true);
   });
 });

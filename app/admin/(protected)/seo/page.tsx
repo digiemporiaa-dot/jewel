@@ -43,6 +43,7 @@ export default async function SeoPage() {
           defaultTitle: settings.defaultTitle ?? '',
           defaultDescription: settings.defaultDescription ?? '',
           defaultOgImageUrl: settings.defaultOgImageUrl ?? '',
+          twitterHandle: settings.twitterHandle ?? '',
           indexingEnabled: settings.indexingEnabled,
           robotsDisallow: settings.robotsDisallow.join('\n'),
           localBusinessEnabled: settings.localBusinessEnabled,

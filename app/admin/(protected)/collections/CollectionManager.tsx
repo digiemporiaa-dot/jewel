@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils/cn';
 import ImageUploadField from '@/components/admin/ImageUploadField';
+import SeoPanel from '@/components/admin/SeoPanel';
 import { createCollectionAction, updateCollectionAction, deleteCollectionAction } from './actions';
 
 export type CollectionRow = {
@@ -16,6 +17,9 @@ export type CollectionRow = {
   isActive: boolean;
   seoTitle: string | null;
   seoDescription: string | null;
+  ogImageUrl: string | null;
+  canonicalUrl: string | null;
+  noIndex: boolean;
   productCount: number;
 };
 
@@ -83,12 +87,9 @@ function CreateForm() {
         <Field label="Description">
           <textarea name="description" rows={2} maxLength={2000} className={inputCls} />
         </Field>
-        <Field label="SEO title">
-          <input name="seoTitle" maxLength={200} className={inputCls} />
-        </Field>
-        <Field label="SEO description">
-          <textarea name="seoDescription" rows={2} maxLength={400} className={inputCls} />
-        </Field>
+        <div className="sm:col-span-2">
+          <SeoPanel prefix="collections" />
+        </div>
         <div className="flex items-center gap-3">
           <button disabled={pending} className="btn-primary text-xs">
             {pending ? 'Creating…' : 'Create collection'}
@@ -197,12 +198,17 @@ function CollectionRowItem({ collection }: { collection: CollectionRow }) {
           <Field label="Description">
             <textarea name="description" rows={2} defaultValue={collection.description ?? ''} maxLength={2000} className={inputCls} />
           </Field>
-          <Field label="SEO title">
-            <input name="seoTitle" defaultValue={collection.seoTitle ?? ''} maxLength={200} className={inputCls} />
-          </Field>
-          <Field label="SEO description">
-            <textarea name="seoDescription" rows={2} defaultValue={collection.seoDescription ?? ''} maxLength={400} className={inputCls} />
-          </Field>
+          <div className="sm:col-span-2">
+            <SeoPanel
+              prefix="collections"
+              publicPath={`/collection/${collection.slug}`}
+              isPublished={collection.isActive}
+              defaults={{
+                seoTitle: collection.seoTitle, seoDescription: collection.seoDescription,
+                ogImageUrl: collection.ogImageUrl, canonicalUrl: collection.canonicalUrl, noIndex: collection.noIndex,
+              }}
+            />
+          </div>
 
           <div className="sm:col-span-2 flex flex-wrap items-center gap-3 pt-1">
             <button disabled={pending} className="btn-primary text-xs">

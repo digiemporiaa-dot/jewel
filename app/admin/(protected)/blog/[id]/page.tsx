@@ -31,6 +31,7 @@ export default async function EditPostPage({ params }: { params: Promise<{ id: s
           content: post.content, status: post.status,
           publishedAt: toLocalInput(post.publishedAt),
           seoTitle: post.seoTitle ?? '', seoDescription: post.seoDescription ?? '',
+          ogImageUrl: post.ogImageUrl ?? '', canonicalUrl: post.canonicalUrl ?? '', noIndex: post.noIndex,
         }}
       />
     </div>

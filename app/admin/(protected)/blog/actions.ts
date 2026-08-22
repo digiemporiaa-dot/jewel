@@ -8,6 +8,7 @@ import { writeAudit } from '@/lib/audit';
 import { prisma } from '@/lib/prisma';
 import { PublishStatus } from '@prisma/client';
 import { recordSlugChange } from '@/lib/redirects';
+import { seoFieldsSchema, seoFieldsFromForm, seoFieldsToData } from '@/lib/validations/seo-fields';
 
 export type Result = { ok: boolean; error?: string };
 
@@ -22,8 +23,7 @@ const postSchema = z.object({
   content: z.string().trim().min(10, 'Content is required').max(40000),
   status: z.nativeEnum(PublishStatus),
   publishedAt: z.string().optional().or(z.literal('')),
-  seoTitle: z.string().trim().max(160).optional().or(z.literal('')),
-  seoDescription: z.string().trim().max(320).optional().or(z.literal('')),
+  ...seoFieldsSchema,
 });
 
 function toData(d: z.infer<typeof postSchema>) {
@@ -36,14 +36,13 @@ function toData(d: z.infer<typeof postSchema>) {
     content: d.content,
     status: d.status,
     publishedAt: d.status === PublishStatus.PUBLISHED ? (d.publishedAt ? new Date(d.publishedAt) : new Date()) : null,
-    seoTitle: d.seoTitle || null,
-    seoDescription: d.seoDescription || null,
+    ...seoFieldsToData(d),
   };
 }
 
 export async function createPostAction(fd: FormData): Promise<Result> {
   const staff = await assertPermission('blog.manage');
-  const parsed = postSchema.safeParse(Object.fromEntries(fd.entries()));
+  const parsed = postSchema.safeParse({ ...Object.fromEntries(fd.entries()), ...seoFieldsFromForm(fd) });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' };
 
   const exists = await prisma.blogPost.findUnique({ where: { slug: parsed.data.slug }, select: { id: true } });
@@ -58,7 +57,7 @@ export async function createPostAction(fd: FormData): Promise<Result> {
 
 export async function updatePostAction(id: string, fd: FormData): Promise<Result> {
   const staff = await assertPermission('blog.manage');
-  const parsed = postSchema.safeParse(Object.fromEntries(fd.entries()));
+  const parsed = postSchema.safeParse({ ...Object.fromEntries(fd.entries()), ...seoFieldsFromForm(fd) });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' };
 
   const clash = await prisma.blogPost.findFirst({ where: { slug: parsed.data.slug, id: { not: id } }, select: { id: true } });

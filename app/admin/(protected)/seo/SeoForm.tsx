@@ -10,6 +10,7 @@ export type SeoDefaultsForm = {
   defaultTitle: string;
   defaultDescription: string;
   defaultOgImageUrl: string;
+  twitterHandle: string;
   indexingEnabled: boolean;
   robotsDisallow: string;
   localBusinessEnabled: boolean;
@@ -104,6 +105,12 @@ export default function SeoForm({
         <p className="text-xs text-ink-soft">
           Used wherever a page has no description of its own. Without one, Google writes its own
           snippet from the page.
+        </p>
+        <L label="Social handle">
+          <input name="twitterHandle" defaultValue={defaults.twitterHandle} placeholder="@mayajewellers" className="c-inp" />
+        </L>
+        <p className="text-xs text-ink-soft">
+          Used to attribute the card when a link is shared on X. A profile URL works too.
         </p>
         <ImageUploadField
           name="defaultOgImageUrl"

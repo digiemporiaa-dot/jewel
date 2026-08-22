@@ -23,6 +23,7 @@ export type SeoSettingsRow = {
   defaultTitle: string | null;
   defaultDescription: string | null;
   defaultOgImageUrl: string | null;
+  twitterHandle: string | null;
   indexingEnabled: boolean;
   robotsDisallow: string[];
   localBusinessEnabled: boolean;
@@ -46,6 +47,7 @@ const FALLBACK: SeoSettingsRow = {
   defaultTitle: null,
   defaultDescription: null,
   defaultOgImageUrl: null,
+  twitterHandle: null,
   indexingEnabled: true,
   robotsDisallow: [],
   localBusinessEnabled: false,
@@ -67,6 +69,7 @@ const load = unstable_cache(
       defaultTitle: row.defaultTitle,
       defaultDescription: row.defaultDescription,
       defaultOgImageUrl: row.defaultOgImageUrl,
+      twitterHandle: row.twitterHandle,
       indexingEnabled: row.indexingEnabled,
       robotsDisallow: row.robotsDisallow,
       localBusinessEnabled: row.localBusinessEnabled,
@@ -126,6 +129,7 @@ export async function seoDefaults(): Promise<SeoDefaults> {
     defaultTitle: seo.defaultTitle ?? `${store.brandName} — ${store.tagline}`,
     defaultDescription: seo.defaultDescription ?? store.tagline,
     defaultOgImageUrl: seo.defaultOgImageUrl ?? store.logoUrl,
+    twitterHandle: seo.twitterHandle,
     indexingEnabled: seo.indexingEnabled,
   };
 }

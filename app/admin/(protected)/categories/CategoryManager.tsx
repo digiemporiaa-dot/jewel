@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils/cn';
 import ImageUploadField from '@/components/admin/ImageUploadField';
+import SeoPanel from '@/components/admin/SeoPanel';
 import { createCategoryAction, updateCategoryAction, deleteCategoryAction } from './actions';
 
 export type CategoryRow = {
@@ -18,6 +19,9 @@ export type CategoryRow = {
   parentName: string | null;
   seoTitle: string | null;
   seoDescription: string | null;
+  ogImageUrl: string | null;
+  canonicalUrl: string | null;
+  noIndex: boolean;
   productCount: number;
   childCount: number;
 };
@@ -98,12 +102,9 @@ function CreateForm({ categories }: { categories: CategoryRow[] }) {
         <Field label="Description">
           <textarea name="description" rows={2} maxLength={2000} className={inputCls} />
         </Field>
-        <Field label="SEO title">
-          <input name="seoTitle" maxLength={200} className={inputCls} />
-        </Field>
-        <Field label="SEO description">
-          <textarea name="seoDescription" rows={2} maxLength={400} className={inputCls} />
-        </Field>
+        <div className="sm:col-span-2">
+          <SeoPanel prefix="categories" />
+        </div>
         <div className="flex items-center gap-3">
           <button disabled={pending} className="btn-primary text-xs">
             {pending ? 'Creating…' : 'Create category'}
@@ -242,12 +243,17 @@ function CategoryRowItem({ category, categories }: { category: CategoryRow; cate
           <Field label="Description">
             <textarea name="description" rows={2} defaultValue={category.description ?? ''} maxLength={2000} className={inputCls} />
           </Field>
-          <Field label="SEO title">
-            <input name="seoTitle" defaultValue={category.seoTitle ?? ''} maxLength={200} className={inputCls} />
-          </Field>
-          <Field label="SEO description">
-            <textarea name="seoDescription" rows={2} defaultValue={category.seoDescription ?? ''} maxLength={400} className={inputCls} />
-          </Field>
+          <div className="sm:col-span-2">
+            <SeoPanel
+              prefix="categories"
+              publicPath={`/c/${category.slug}`}
+              isPublished={category.isActive}
+              defaults={{
+                seoTitle: category.seoTitle, seoDescription: category.seoDescription,
+                ogImageUrl: category.ogImageUrl, canonicalUrl: category.canonicalUrl, noIndex: category.noIndex,
+              }}
+            />
+          </div>
 
           <div className="sm:col-span-2 flex flex-wrap items-center gap-3 pt-1">
             <button disabled={pending} className="btn-primary text-xs">

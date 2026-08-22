@@ -10,6 +10,7 @@ import { parseBlockData, defaultBlockData } from '@/lib/cms/blocks';
 import { resolveBlockStyle, syncLegacyFields } from '@/lib/cms/style';
 import { CmsBlockType, PublishStatus, type Prisma } from '@prisma/client';
 import { recordSlugChange } from '@/lib/redirects';
+import { seoFieldsSchema, seoFieldsFromForm, seoFieldsToData } from '@/lib/validations/seo-fields';
 
 export type Result = { ok: boolean; error?: string };
 
@@ -20,13 +21,12 @@ const pageSchema = z.object({
   slug: z.string().trim().min(2).max(120).regex(slugRegex, 'Use lowercase letters, numbers and hyphens'),
   status: z.nativeEnum(PublishStatus),
   scheduledAt: z.string().optional().or(z.literal('')),
-  seoTitle: z.string().trim().max(160).optional().or(z.literal('')),
-  seoDescription: z.string().trim().max(320).optional().or(z.literal('')),
+  ...seoFieldsSchema,
 });
 
 export async function createPageAction(fd: FormData): Promise<Result> {
   const staff = await assertPermission('cms.manage');
-  const parsed = pageSchema.safeParse(Object.fromEntries(fd.entries()));
+  const parsed = pageSchema.safeParse({ ...Object.fromEntries(fd.entries()), ...seoFieldsFromForm(fd) });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' };
 
   const exists = await prisma.cmsPage.findUnique({ where: { slug: parsed.data.slug }, select: { id: true } });
@@ -39,8 +39,7 @@ export async function createPageAction(fd: FormData): Promise<Result> {
       status: parsed.data.status,
       scheduledAt: parsed.data.scheduledAt ? new Date(parsed.data.scheduledAt) : null,
       publishedAt: parsed.data.status === PublishStatus.PUBLISHED ? new Date() : null,
-      seoTitle: parsed.data.seoTitle || null,
-      seoDescription: parsed.data.seoDescription || null,
+      ...seoFieldsToData(parsed.data),
     },
   });
   await writeAudit({ userId: staff.id, action: 'CMS_PAGE_CREATE', entity: 'CmsPage', entityId: page.id, after: { slug: parsed.data.slug } });
@@ -50,7 +49,7 @@ export async function createPageAction(fd: FormData): Promise<Result> {
 
 export async function updatePageAction(id: string, fd: FormData): Promise<Result> {
   const staff = await assertPermission('cms.manage');
-  const parsed = pageSchema.safeParse(Object.fromEntries(fd.entries()));
+  const parsed = pageSchema.safeParse({ ...Object.fromEntries(fd.entries()), ...seoFieldsFromForm(fd) });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' };
 
   const clash = await prisma.cmsPage.findFirst({ where: { slug: parsed.data.slug, id: { not: id } }, select: { id: true } });
@@ -65,8 +64,7 @@ export async function updatePageAction(id: string, fd: FormData): Promise<Result
       status: parsed.data.status,
       scheduledAt: parsed.data.scheduledAt ? new Date(parsed.data.scheduledAt) : null,
       publishedAt: parsed.data.status === PublishStatus.PUBLISHED ? new Date() : null,
-      seoTitle: parsed.data.seoTitle || null,
-      seoDescription: parsed.data.seoDescription || null,
+      ...seoFieldsToData(parsed.data),
     },
   });
   await recordSlugChange({

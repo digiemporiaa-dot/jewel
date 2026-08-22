@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { checkImageUrl } from '@/lib/uploads/constraints';
+import { seoFieldsSchema, seoFieldsFromForm, seoFieldsToData } from '@/lib/validations/seo-fields';
 import { assertPermission } from '@/lib/auth/guard';
 import { writeAudit } from '@/lib/audit';
 import { prisma } from '@/lib/prisma';
@@ -46,8 +47,7 @@ const baseSchema = z.object({
   order: z.coerce.number().int().min(0).max(9999).default(0),
   isActive: z.boolean().default(true),
   parentId: z.string().nullable().optional(),
-  seoTitle: z.string().max(200).nullable().optional(),
-  seoDescription: z.string().max(400).nullable().optional(),
+  ...seoFieldsSchema,
 });
 
 function readForm(fd: FormData) {
@@ -59,8 +59,7 @@ function readForm(fd: FormData) {
     order: fd.get('order') ?? 0,
     isActive: fd.get('isActive') === 'true' || fd.get('isActive') === 'on',
     parentId: nullable(fd.get('parentId')),
-    seoTitle: nullable(fd.get('seoTitle')),
-    seoDescription: nullable(fd.get('seoDescription')),
+    ...seoFieldsFromForm(fd),
   };
 }
 
@@ -85,8 +84,7 @@ export async function createCategoryAction(fd: FormData): Promise<ActionResult> 
       order: d.order,
       isActive: d.isActive,
       parentId: d.parentId || null,
-      seoTitle: d.seoTitle ?? null,
-      seoDescription: d.seoDescription ?? null,
+      ...seoFieldsToData(d),
     },
   });
 
@@ -146,8 +144,7 @@ export async function updateCategoryAction(id: string, fd: FormData): Promise<Ac
       order: d.order,
       isActive: d.isActive,
       parentId,
-      seoTitle: d.seoTitle ?? null,
-      seoDescription: d.seoDescription ?? null,
+      ...seoFieldsToData(d),
     },
   });
 

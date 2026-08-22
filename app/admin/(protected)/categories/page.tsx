@@ -28,6 +28,9 @@ export default async function CategoriesPage() {
     parentName: c.parent?.name ?? null,
     seoTitle: c.seoTitle,
     seoDescription: c.seoDescription,
+    ogImageUrl: c.ogImageUrl,
+    canonicalUrl: c.canonicalUrl,
+    noIndex: c.noIndex,
     productCount: c._count.products,
     childCount: c._count.children,
   }));

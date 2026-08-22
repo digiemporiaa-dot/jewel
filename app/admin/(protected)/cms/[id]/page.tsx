@@ -30,6 +30,7 @@ export default async function EditCmsPage({ params }: { params: Promise<{ id: st
           id: page.id, title: page.title, slug: page.slug, status: page.status,
           scheduledAt: toLocalInput(page.scheduledAt),
           seoTitle: page.seoTitle ?? '', seoDescription: page.seoDescription ?? '',
+          ogImageUrl: page.ogImageUrl ?? '', canonicalUrl: page.canonicalUrl ?? '', noIndex: page.noIndex,
         }}
       />
 

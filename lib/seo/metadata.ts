@@ -42,6 +42,10 @@ export async function buildMetadata(
     },
     twitter: {
       card: seo.ogImage ? 'summary_large_image' : 'summary',
+      // The card names a site as well as a page. Without a handle it is
+      // attributed to nobody, which is how a shared link ends up looking like
+      // it came from a scraper.
+      ...(defaults.twitterHandle ? { site: defaults.twitterHandle, creator: defaults.twitterHandle } : {}),
       title: options.absoluteTitle ? seo.title : seo.fullTitle,
       description: seo.description ?? undefined,
       images: seo.ogImage ? [seo.ogImage] : undefined,

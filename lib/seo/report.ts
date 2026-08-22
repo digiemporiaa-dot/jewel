@@ -1,6 +1,6 @@
 import 'server-only';
 import { prisma } from '@/lib/prisma';
-import { resolveSeo, auditSeo, duplicateTitles, type SeoWarning } from '@/lib/seo/resolve';
+import { resolveSeo, auditSeo, duplicateTitles, canonicalOffSite, type SeoWarning } from '@/lib/seo/resolve';
 import { seoDefaults } from '@/lib/seo/settings';
 
 /**
@@ -87,7 +87,11 @@ export async function buildSeoReport(): Promise<SeoReport> {
     return {
       kind, path, label,
       title: resolved.fullTitle,
-      warnings: auditSeo(resolved, { isPublic: true, brandName: defaults.brandName }),
+      warnings: auditSeo(resolved, {
+        isPublic: true,
+        brandName: defaults.brandName,
+        rejectedCanonical: canonicalOffSite(input.canonicalUrl, defaults.siteUrl),
+      }),
     };
   };
 

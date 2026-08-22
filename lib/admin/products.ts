@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import type { Prisma, PricingMode } from '@prisma/client';
 import { productSchema, variantSchema, splitList, type ProductInput } from '@/lib/validations/products';
 import { parseVideo, toStored } from '@/lib/video/parse';
+import { seoFieldsToData } from '@/lib/validations/seo-fields';
 
 const PAGE_SIZE = 20;
 
@@ -134,8 +135,7 @@ function toData(input: ProductInput): Prisma.ProductCreateInput {
     // Stored canonically as `provider:id`, so nothing downstream re-parses a
     // URL and nothing but a validated id ever reaches the page.
     videoUrl: storeVideo(input.videoUrl),
-    seoTitle: input.seoTitle || null,
-    seoDescription: input.seoDescription || null,
+    ...seoFieldsToData(input),
     publishedAt: input.isActive ? new Date() : null,
   };
 }
