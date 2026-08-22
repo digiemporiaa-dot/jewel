@@ -8,6 +8,7 @@ import { parseBlockData } from '@/lib/cms/blocks';
 import { styleFor } from '@/lib/cms/style';
 import VideoEmbed from '@/components/storefront/VideoEmbed';
 import { fromStored } from '@/lib/video/parse';
+import Prose from '@/components/storefront/Prose';
 
 /**
  * Renders a CMS block. Content comes from typed fields only — never raw HTML —
@@ -92,9 +93,9 @@ export default async function BlockRenderer({ type, data }: { type: CmsBlockType
           <div className={s.inner}>
             <div className={cn('max-w-2xl', s.align, s.style.align === 'center' && 'mx-auto')}>
               {b.heading && <h2 className={cn('text-3xl mb-4', s.heading)}>{b.heading}</h2>}
-              {b.body.split('\n').filter(Boolean).map((para, i) => (
-                <p key={i} className={cn('leading-relaxed mb-3', s.muted)}>{para}</p>
-              ))}
+              {/* Same rule as the blog: a line that is nothing but a video
+                  address becomes a player, everything else is a paragraph. */}
+              <Prose content={b.body} title={b.heading || 'Video'} paragraphClassName={s.muted} />
             </div>
           </div>
         </section>

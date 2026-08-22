@@ -6,6 +6,7 @@ import { getStoreSettings } from '@/lib/store';
 import { formatDate } from '@/lib/utils/format';
 import ProductImage from '@/components/storefront/ProductImage';
 import { buildMetadata } from '@/lib/seo/metadata';
+import Prose from '@/components/storefront/Prose';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,11 +82,14 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
           </div>
         )}
 
-        <div className="mt-8">
-          {post.content.split('\n').filter(Boolean).map((para, i) => (
-            <p key={i} className="text-ink-soft leading-relaxed mb-4">{para}</p>
-          ))}
-        </div>
+        {/* A line that is nothing but a YouTube or Vimeo address becomes a
+            player; everything else stays a paragraph. */}
+        <Prose
+          content={post.content}
+          title={post.title}
+          className="mt-8"
+          paragraphClassName="text-ink-soft"
+        />
 
         {post.tags.length > 0 && (
           <div className="mt-8 flex flex-wrap gap-2">

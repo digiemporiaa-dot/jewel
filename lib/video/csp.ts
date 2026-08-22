@@ -1,6 +1,7 @@
 import 'server-only';
 import { prisma } from '@/lib/prisma';
 import { VIDEO_FRAME_HOSTS, fromStored, type VideoProvider } from '@/lib/video/parse';
+import { proseVideos } from '@/lib/video/prose';
 
 /**
  * Which video hosts this shop actually needs in `frame-src`.
@@ -15,7 +16,7 @@ import { VIDEO_FRAME_HOSTS, fromStored, type VideoProvider } from '@/lib/video/p
  */
 export async function videoFrameHosts(): Promise<string[]> {
   try {
-    const [products, blocks] = await Promise.all([
+    const [products, blocks, posts] = await Promise.all([
       prisma.product.findMany({
         where: { isActive: true, deletedAt: null, videoUrl: { not: null } },
         select: { videoUrl: true },
@@ -23,9 +24,17 @@ export async function videoFrameHosts(): Promise<string[]> {
         // handful of rows is enough to discover both.
         take: 50,
       }),
+      // RICH_TEXT as well as VIDEO: a video address on its own line inside
+      // written content is an embed too, and a frame-src that does not know
+      // about it means the player is blocked with nothing to explain why.
       prisma.cmsBlock.findMany({
-        where: { type: 'VIDEO', isActive: true },
-        select: { data: true },
+        where: { type: { in: ['VIDEO', 'RICH_TEXT'] }, isActive: true },
+        select: { type: true, data: true },
+        take: 50,
+      }),
+      prisma.blogPost.findMany({
+        where: { status: 'PUBLISHED' },
+        select: { content: true },
         take: 50,
       }),
     ]);
@@ -38,9 +47,16 @@ export async function videoFrameHosts(): Promise<string[]> {
     }
 
     for (const block of blocks) {
-      const data = block.data as { videoUrl?: unknown } | null;
+      const data = block.data as { videoUrl?: unknown; body?: unknown } | null;
       const video = typeof data?.videoUrl === 'string' ? fromStored(data.videoUrl) : null;
       if (video) providers.add(video.provider);
+      if (typeof data?.body === 'string') {
+        for (const embedded of proseVideos(data.body)) providers.add(embedded.provider);
+      }
+    }
+
+    for (const post of posts) {
+      for (const embedded of proseVideos(post.content)) providers.add(embedded.provider);
     }
 
     return [...providers].map((p) => VIDEO_FRAME_HOSTS[p]);

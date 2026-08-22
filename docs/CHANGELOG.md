@@ -1,5 +1,45 @@
 # Changelog
 
+## Phase 3 · Item 8 completion — video inside written content · 2026-08-22
+
+The spec asked for video in the standalone block **and inside RICH_TEXT blocks
+and blog bodies**. Only the block shipped, so a journal post about a collection
+could not show the collection moving.
+
+### A line that is nothing but an address
+
+Both surfaces are plain text, one paragraph per line, and deliberately so: there
+is no HTML editor anywhere in this admin, because a free-form markup field on a
+site that also processes checkout is the card-skimming vector this whole feature
+was built to avoid.
+
+So a video is a line containing **only** its address. Nothing new is accepted —
+the line goes through the same `parseVideo` as the product field and the VIDEO
+block, and the iframe is still built in code. The only thing added is *where* an
+address may appear.
+
+A paragraph that mentions a link in passing stays a paragraph. Otherwise a
+sentence about a video becomes an unexplained player dropped into the middle of
+the prose, and the sentence disappears.
+
+A pasted embed snippet is a paragraph containing angle brackets, printed as the
+text it is. Verified live: the `<iframe …>` a shopper sees on the page is
+literally that text, and there is no frame in the DOM.
+
+### The CSP had to learn about them
+
+`videoFrameHosts` scanned products and VIDEO blocks. A video inside a blog body
+is an embed too, and a `frame-src` that does not know about it means the player
+is blocked with nothing on screen to explain why. The scan now covers RICH_TEXT
+block bodies and published post bodies as well — confirmed by the live run, where
+the blog-body video played with no CSP violation.
+
+`components/storefront/Prose.tsx` is shared by both surfaces so they cannot
+disagree about what a line means, and `splitProse` is pure, so the renderer and
+the CSP scan read the same content the same way.
+
+Tests: 8 new. 640 passing overall.
+
 ## Phase 3 · Item 4 completion — the five templates that were never built · 2026-08-22
 
 The spec named ten template keys. Six shipped. The missing five —

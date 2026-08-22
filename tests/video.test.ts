@@ -4,6 +4,7 @@ import {
   VIDEO_FRAME_HOSTS,
 } from '@/lib/video/parse';
 import { parseBlockData, BLOCK_LABELS } from '@/lib/cms/blocks';
+import { splitProse, proseVideos } from '@/lib/video/prose';
 
 const YT = 'dQw4w9WgXcQ';
 const VM = '148751763';
@@ -230,5 +231,56 @@ describe('the video block schema', () => {
 
   it('is offered to operators as a block type', () => {
     expect(BLOCK_LABELS.VIDEO).toBe('Video');
+  });
+});
+
+// ── Video inside written content ─────────────────────────────────────────────
+
+describe('a video in a blog body or a rich-text block', () => {
+  it('turns a line that is nothing but an address into a player', () => {
+    const blocks = splitProse(`An opening paragraph.\nhttps://youtu.be/${YT}\nA closing paragraph.`);
+    expect(blocks.map((b) => b.kind)).toEqual(['paragraph', 'video', 'paragraph']);
+  });
+
+  it('leaves a paragraph that merely mentions a link as a paragraph', () => {
+    // Otherwise a sentence about a video becomes an unexplained player dropped
+    // into the middle of the prose.
+    const blocks = splitProse(`Watch it here: https://youtu.be/${YT} and tell us what you think.`);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]!.kind).toBe('paragraph');
+  });
+
+  it('accepts a bare id on its own line', () => {
+    expect(splitProse(YT).map((b) => b.kind)).toEqual(['video']);
+  });
+
+  it('refuses an embed snippet here too, and prints it as text', () => {
+    // The whole reason this feature exists. Written content is plain text; a
+    // pasted iframe is a paragraph containing angle brackets, never markup.
+    const blocks = splitProse(`<iframe src="https://www.youtube.com/embed/${YT}"></iframe>`);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]!.kind).toBe('paragraph');
+  });
+
+  it('does not turn a bare non-video URL into a player', () => {
+    const blocks = splitProse('https://example.test/some-page');
+    expect(blocks[0]!.kind).toBe('paragraph');
+  });
+
+  it('drops blank lines rather than rendering empty paragraphs', () => {
+    expect(splitProse('One.\n\n\nTwo.')).toHaveLength(2);
+  });
+
+  it('finds every video in a body, for the CSP host scan', () => {
+    // A frame-src that does not know about an embed means the player is blocked
+    // with nothing on screen to explain it.
+    const found = proseVideos(`Intro.\nhttps://youtu.be/${YT}\nMiddle.\nhttps://vimeo.com/${VM}`);
+    expect(found.map((v) => v.provider)).toEqual(['youtube', 'vimeo']);
+  });
+
+  it('finds nothing in content with no video, and copes with nothing at all', () => {
+    expect(proseVideos('Just words.')).toEqual([]);
+    expect(proseVideos(null)).toEqual([]);
+    expect(proseVideos('')).toEqual([]);
   });
 });
