@@ -4,6 +4,8 @@ import { listOrders } from '@/lib/admin/orders';
 import { formatCurrency, formatDate } from '@/lib/utils/format';
 import { cn } from '@/lib/utils/cn';
 import PageHeader from '@/components/admin/PageHeader';
+import DateRangeFilter from '@/components/admin/DateRangeFilter';
+import { resolveRange, withParams } from '@/lib/admin/date-range';
 import { OrderStatus } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
@@ -11,32 +13,66 @@ export const dynamic = 'force-dynamic';
 export default async function AdminOrdersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; q?: string; page?: string }>;
+  searchParams: Promise<{ status?: string; q?: string; page?: string; preset?: string; from?: string; to?: string }>;
 }) {
   await requirePermission('orders.view');
   const sp = await searchParams;
+  const range = resolveRange({ preset: sp.preset, from: sp.from, to: sp.to });
   const result = await listOrders({
     status: sp.status && sp.status in OrderStatus ? (sp.status as OrderStatus) : undefined,
     q: sp.q,
     page: sp.page ? Number(sp.page) : 1,
+    range,
   });
+
+  // Every filter currently in the URL, so links built below keep them.
+  const current = {
+    status: sp.status, q: sp.q,
+    preset: range.preset === 'all' ? undefined : range.preset,
+    from: range.fromKey ?? undefined, to: range.toKey ?? undefined,
+  };
 
   return (
     <div>
       <PageHeader title="Orders" description={`${result.total} orders`} />
 
-      <form className="mb-4 flex flex-wrap gap-2 text-sm" action="/admin/orders">
+      <form className="mb-3 flex flex-wrap gap-2 text-sm" action="/admin/orders">
         <input name="q" defaultValue={sp.q} placeholder="Order # / phone / name" className="border border-line px-3 py-2 outline-none focus:border-brass min-w-[200px]" />
         <select name="status" defaultValue={sp.status ?? ''} className="border border-line px-3 py-2 outline-none focus:border-brass">
           <option value="">All statuses</option>
           {Object.values(OrderStatus).map((s) => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
         </select>
+        {/* The date range survives a search, and vice versa. */}
+        {range.preset !== 'all' && <input type="hidden" name="preset" value={range.preset} />}
+        {range.fromKey && <input type="hidden" name="from" value={range.fromKey} />}
+        {range.toKey && <input type="hidden" name="to" value={range.toKey} />}
         <button className="btn-outline text-xs">Filter</button>
       </form>
 
+      <DateRangeFilter basePath="/admin/orders" range={range} params={current}>
+        <span className="flex flex-wrap items-baseline gap-x-3">
+          <span>
+            <strong className="font-medium">{result.total}</strong> order{result.total === 1 ? '' : 's'}
+            {' · '}
+            <strong className="font-medium">{formatCurrency(result.gross)}</strong>
+          </span>
+          {result.voidedCount > 0 && (
+            // Said out loud rather than folded silently into the headline: a
+            // month's takings that quietly include four cancellations is the
+            // figure somebody forwards to their accountant.
+            <span className="text-xs text-ink-soft">
+              includes {formatCurrency(result.voided)} from {result.voidedCount} cancelled or returned
+            </span>
+          )}
+          <a href={`/api/admin/orders/export${withParams(current, {})}`} className="text-xs underline decoration-line-strong underline-offset-4 hover:text-brass">
+            Export CSV
+          </a>
+        </span>
+      </DateRangeFilter>
+
       {result.items.length === 0 ? (
         <div className="border border-line bg-white p-10 text-center">
-          <p className="font-heading text-lg">No orders yet</p>
+          <p className="font-heading text-lg">No orders {range.preset === 'all' ? 'yet' : `in ${range.label.toLowerCase()}`}</p>
         </div>
       ) : (
         <div className="border border-line bg-white overflow-x-auto">
@@ -78,8 +114,11 @@ export default async function AdminOrdersPage({
         <div className="mt-4 flex justify-between text-sm">
           <span className="text-ink-soft">Page {result.page} of {result.totalPages}</span>
           <div className="flex gap-2">
-            {result.page > 1 && <Link href={`/admin/orders?page=${result.page - 1}`} className="btn-outline text-xs">Previous</Link>}
-            {result.page < result.totalPages && <Link href={`/admin/orders?page=${result.page + 1}`} className="btn-outline text-xs">Next</Link>}
+            {/* Filters carried across the page turn. Written as `?page=2` and
+                nothing else, these used to drop the status, the search and the
+                dates, so page two disagreed with the total above it. */}
+            {result.page > 1 && <a href={`/admin/orders${withParams(current, { page: result.page - 1 })}`} className="btn-outline text-xs">Previous</a>}
+            {result.page < result.totalPages && <a href={`/admin/orders${withParams(current, { page: result.page + 1 })}`} className="btn-outline text-xs">Next</a>}
           </div>
         </div>
       )}

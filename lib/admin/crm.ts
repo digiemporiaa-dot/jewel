@@ -1,4 +1,5 @@
 import 'server-only';
+import { rangeFilter, type ResolvedRange } from '@/lib/admin/date-range';
 import { prisma } from '@/lib/prisma';
 import { LeadStatus, FollowUpStatus, type Prisma } from '@prisma/client';
 
@@ -25,9 +26,9 @@ export async function getPipelineCounts(scope: CrmScope): Promise<Record<LeadSta
   return base;
 }
 
-export async function listLeads(scope: CrmScope, params: { status?: LeadStatus; q?: string; page?: number }) {
-  const page = Math.max(1, params.page ?? 1);
-  const size = 20;
+export type LeadListParams = { status?: LeadStatus; q?: string; page?: number; range?: ResolvedRange };
+
+export function leadListWhere(scope: CrmScope, params: LeadListParams): Prisma.LeadWhereInput {
   const where: Prisma.LeadWhereInput = { ...scopeWhere(scope) };
   if (params.status) where.status = params.status;
   if (params.q) {
@@ -37,8 +38,20 @@ export async function listLeads(scope: CrmScope, params: { status?: LeadStatus; 
       { email: { contains: params.q, mode: 'insensitive' } },
     ];
   }
+  // `createdAt`, not `updatedAt`: "leads this month" means leads that arrived
+  // this month. Filtering on the touch date would pull in a two-year-old lead
+  // somebody rang yesterday and quietly inflate every acquisition figure.
+  const range = params.range ? rangeFilter(params.range) : undefined;
+  if (range) where.createdAt = range;
+  return where;
+}
 
-  const [items, total] = await Promise.all([
+export async function listLeads(scope: CrmScope, params: LeadListParams) {
+  const page = Math.max(1, params.page ?? 1);
+  const size = 20;
+  const where = leadListWhere(scope, params);
+
+  const [items, total, sum, valued] = await Promise.all([
     prisma.lead.findMany({
       where, orderBy: [{ updatedAt: 'desc' }], skip: (page - 1) * size, take: size,
       include: {
@@ -48,8 +61,36 @@ export async function listLeads(scope: CrmScope, params: { status?: LeadStatus; 
       },
     }),
     prisma.lead.count({ where }),
+    prisma.lead.aggregate({ where, _sum: { estimatedValue: true } }),
+    // How many of them carry a figure at all. A pipeline value covering three
+    // of forty leads is not a pipeline value, and the screen should say so
+    // rather than let it be read as the total.
+    prisma.lead.count({ where: { ...where, estimatedValue: { not: null } } }),
   ]);
-  return { items, total, page, totalPages: Math.max(1, Math.ceil(total / size)) };
+
+  return {
+    items,
+    total,
+    page,
+    totalPages: Math.max(1, Math.ceil(total / size)),
+    estimatedValue: sum._sum.estimatedValue?.toString() ?? '0',
+    valuedCount: valued,
+  };
+}
+
+/** Every lead in the filtered range, for CSV export. Capped, not paginated. */
+export const LEAD_EXPORT_LIMIT = 5000;
+
+export async function leadsForExport(scope: CrmScope, params: LeadListParams) {
+  return prisma.lead.findMany({
+    where: leadListWhere(scope, params),
+    orderBy: [{ createdAt: 'desc' }],
+    take: LEAD_EXPORT_LIMIT,
+    include: {
+      assignedTo: { select: { name: true } },
+      product: { select: { name: true } },
+    },
+  });
 }
 
 export async function getLead(id: string, scope: CrmScope) {

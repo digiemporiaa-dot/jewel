@@ -3,12 +3,26 @@ import { prisma } from '@/lib/prisma';
 import { releaseStock } from '@/lib/inventory';
 import { ALLOWED_TRANSITIONS, canTransition } from '@/lib/order-status';
 import { OrderStatus, PaymentStatus, type Prisma } from '@prisma/client';
+import { rangeFilter, type ResolvedRange } from '@/lib/admin/date-range';
 
 export { ALLOWED_TRANSITIONS, canTransition };
 
-export async function listOrders(params: { status?: OrderStatus; q?: string; page?: number }) {
-  const page = Math.max(1, params.page ?? 1);
-  const size = 20;
+export type OrderListParams = {
+  status?: OrderStatus;
+  q?: string;
+  page?: number;
+  range?: ResolvedRange;
+};
+
+/** Orders that never became revenue, and should not be summed as if they had. */
+const VOID_STATUSES: OrderStatus[] = [
+  OrderStatus.CANCELLED,
+  OrderStatus.REFUNDED,
+  OrderStatus.REFUND_PENDING,
+  OrderStatus.RTO,
+];
+
+export function orderListWhere(params: OrderListParams): Prisma.OrderWhereInput {
   const where: Prisma.OrderWhereInput = {};
   if (params.status) where.status = params.status;
   if (params.q) {
@@ -18,14 +32,66 @@ export async function listOrders(params: { status?: OrderStatus; q?: string; pag
       { contactName: { contains: params.q, mode: 'insensitive' } },
     ];
   }
-  const [items, total] = await Promise.all([
+  // `placedAt` rather than `createdAt`: it is the column the list is sorted and
+  // read by, and a filter that disagrees with the visible date column is a bug
+  // report waiting to be filed.
+  const range = params.range ? rangeFilter(params.range) : undefined;
+  if (range) where.placedAt = range;
+  return where;
+}
+
+export async function listOrders(params: OrderListParams) {
+  const page = Math.max(1, params.page ?? 1);
+  const size = 20;
+  const where = orderListWhere(params);
+
+  const [items, total, sum, voidSum] = await Promise.all([
     prisma.order.findMany({
       where, orderBy: { placedAt: 'desc' }, skip: (page - 1) * size, take: size,
       include: { _count: { select: { items: true } } },
     }),
     prisma.order.count({ where }),
+    prisma.order.aggregate({ where, _sum: { grandTotal: true } }),
+    // Summed separately so the headline figure can say what it excludes.
+    // "₹4.2 lakh this month" that quietly includes three cancellations is the
+    // number somebody forwards to their accountant.
+    prisma.order.aggregate({
+      where: { ...where, status: { in: VOID_STATUSES } },
+      _sum: { grandTotal: true },
+      _count: true,
+    }),
   ]);
-  return { items, total, page, totalPages: Math.max(1, Math.ceil(total / size)) };
+
+  const gross = sum._sum.grandTotal?.toString() ?? '0';
+  const voided = voidSum._sum.grandTotal?.toString() ?? '0';
+
+  return {
+    items,
+    total,
+    page,
+    totalPages: Math.max(1, Math.ceil(total / size)),
+    gross,
+    voided,
+    voidedCount: voidSum._count,
+  };
+}
+
+/**
+ * Every order in the filtered range, for CSV export.
+ *
+ * Deliberately not paginated — an export of page one is not an export — but
+ * capped, because a request for "all time" on a shop with years of history
+ * should not try to build a 200MB string in memory.
+ */
+export const EXPORT_LIMIT = 5000;
+
+export async function ordersForExport(params: OrderListParams) {
+  return prisma.order.findMany({
+    where: orderListWhere(params),
+    orderBy: { placedAt: 'desc' },
+    take: EXPORT_LIMIT,
+    include: { _count: { select: { items: true } } },
+  });
 }
 
 export async function getOrderAdmin(id: string) {

@@ -1,5 +1,75 @@
 # Changelog
 
+## Phase 3 · Item 12 — Date filters for orders and leads · 2026-08-22
+
+From/to filtering on the orders and CRM lists, with presets, totals and CSV
+export. Everything lives in the URL, so "last month's orders" is a link a
+manager can send to somebody rather than a screenshot.
+
+### The whole point is the timezone
+
+The database stores UTC. A naive `createdAt <= '2026-08-22'` drops everything
+placed after 6:30pm IST on the last day of the range — five and a half hours of
+orders, on the busiest part of the busiest day. The client does not report it as
+a bug; they report it as "yesterday's orders are missing", usually a week later,
+usually while looking at a figure they have already sent to their accountant.
+
+So a day here is an **IST day**: `2026-08-22` runs from `2026-08-21T18:30:00Z` up
+to, but not including, `2026-08-22T18:30:00Z`. The bound is exclusive rather than
+`23:59:59.999`, which silently drops the last millisecond. India has no daylight
+saving, so the offset is a constant and nothing depends on the server's timezone
+or its ICU data. There is a test for an order placed at 11:45pm IST, and the live
+run confirmed it lands inside "Today".
+
+Presets follow IST too: at 8pm UTC — 1:30am IST the next day — "Today" is
+tomorrow's date, which is what the evening shift needs it to be.
+
+### Totals that say what they include
+
+Orders show count and value for the range, and separately how much of it came
+from cancelled or returned orders. "₹4.2 lakh this month" that quietly includes
+three cancellations is the figure somebody forwards to their accountant. Leads
+show the pipeline value and, when only some carry an estimate, how many of them
+it covers — a figure standing for three of forty leads is not a pipeline value.
+
+Orders filter on `placedAt` and leads on `createdAt`: leads-this-month means
+leads that *arrived* this month, and filtering on the touch date would drag in a
+two-year-old lead somebody rang yesterday.
+
+### Filters survive each other
+
+`withParams` rebuilds the query string keeping everything already in it. The
+pagination links were previously written as `?page=2` and nothing else, so
+turning a page dropped the status and the search — the total said one thing and
+page two showed another. Changing the range always returns to page one, since
+landing on page 7 of a two-page range shows an empty table that reads as "no
+orders".
+
+CSV export honours the same filters and is capped rather than paginated: an
+export of page one is not an export. Leads keep their ownership scope, so a sales
+executive exports only their own — an export route that forgets the scope is a
+way to read the whole pipeline through a URL. Both write an audit entry, because
+both carry customer names and phone numbers out of the system. Dates are exported
+as ISO, which sorts correctly in a spreadsheet and cannot be reinterpreted by
+somebody else's locale.
+
+### A pre-existing fault this feature ran into
+
+Clicking a preset did nothing perhaps a third of the time. Soft navigation to the
+**same route with different search params** intermittently aborts its RSC stream
+here, leaving the router on the old URL. It is not new: the CRM pipeline cards,
+which shipped long before this work, fail the same way — measured at 4 of 6
+clicks landing. `prefetch={false}` did not fix it.
+
+The filter links, the pipeline cards and the pagination links are now plain
+`<a>` elements, so the browser navigates normally. A full page load in an admin
+table costs nothing worth having; a filter that ignores a click costs trust in
+the numbers. Fifteen consecutive navigations landed after the change, against
+roughly two in three before it. The underlying router behaviour is worth a
+separate look.
+
+Tests: 28 new. 598 passing overall.
+
 ## Phase 3 · Item 11 — Hallmark, certificate and size guide · 2026-08-22
 
 ### The certification was stored and never really shown

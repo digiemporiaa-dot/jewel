@@ -5,6 +5,8 @@ import { getPipelineCounts, listLeads, getDueFollowUps, getSalesStaff } from '@/
 import { formatCurrency, formatDate } from '@/lib/utils/format';
 import { cn } from '@/lib/utils/cn';
 import PageHeader from '@/components/admin/PageHeader';
+import DateRangeFilter from '@/components/admin/DateRangeFilter';
+import { resolveRange, withParams } from '@/lib/admin/date-range';
 import NewLeadForm from './NewLeadForm';
 import { LeadStatus } from '@prisma/client';
 import { leadTitle, leadContact } from '@/lib/admin/lead-display';
@@ -14,7 +16,7 @@ export const dynamic = 'force-dynamic';
 export default async function CrmPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; q?: string; page?: string }>;
+  searchParams: Promise<{ status?: string; q?: string; page?: string; preset?: string; from?: string; to?: string }>;
 }) {
   const staff = await requirePermission('crm.access');
   const sp = await searchParams;
@@ -22,12 +24,19 @@ export default async function CrmPage({
   const scope = { userId: staff.id, assignedOnly: !can(staff.role, 'orders.manage') };
 
   const status = sp.status && sp.status in LeadStatus ? (sp.status as LeadStatus) : undefined;
+  const range = resolveRange({ preset: sp.preset, from: sp.from, to: sp.to });
   const [counts, leads, due, salesStaff] = await Promise.all([
     getPipelineCounts(scope),
-    listLeads(scope, { status, q: sp.q, page: sp.page ? Number(sp.page) : 1 }),
+    listLeads(scope, { status, q: sp.q, page: sp.page ? Number(sp.page) : 1, range }),
     getDueFollowUps(scope),
     getSalesStaff(),
   ]);
+
+  const current = {
+    status: sp.status, q: sp.q,
+    preset: range.preset === 'all' ? undefined : range.preset,
+    from: range.fromKey ?? undefined, to: range.toKey ?? undefined,
+  };
 
   return (
     <div>
@@ -35,13 +44,15 @@ export default async function CrmPage({
 
       <div className="mb-5"><NewLeadForm staff={salesStaff} /></div>
 
-      {/* Pipeline */}
+      {/* Pipeline. Plain anchors, like the date presets: soft navigation to the
+          same route with a different query aborts often enough here that these
+          cards used to ignore roughly one click in three. */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 mb-5">
         {Object.values(LeadStatus).map((s) => (
-          <Link key={s} href={`/admin/crm?status=${s}`} className={cn('border p-3 hover:border-brass transition-colors', status === s ? 'border-brass bg-paper-2' : 'border-line bg-white')}>
+          <a key={s} href={`/admin/crm${withParams(current, { status: s, page: null })}`} className={cn('border p-3 hover:border-brass transition-colors', status === s ? 'border-brass bg-paper-2' : 'border-line bg-white')}>
             <p className="text-[0.65rem] tracking-[0.1em] uppercase text-ink-soft">{s.replace('_', ' ')}</p>
             <p className="mt-1 font-heading text-xl">{counts[s]}</p>
-          </Link>
+          </a>
         ))}
       </div>
 
@@ -51,8 +62,28 @@ export default async function CrmPage({
           <form className="mb-3 flex gap-2 text-sm" action="/admin/crm">
             <input name="q" defaultValue={sp.q} placeholder="Search name / phone / email" className="border border-line px-3 py-2 outline-none focus:border-brass flex-1" />
             {status && <input type="hidden" name="status" value={status} />}
+            {range.preset !== 'all' && <input type="hidden" name="preset" value={range.preset} />}
+            {range.fromKey && <input type="hidden" name="from" value={range.fromKey} />}
+            {range.toKey && <input type="hidden" name="to" value={range.toKey} />}
             <button className="btn-outline text-xs">Search</button>
           </form>
+
+          <DateRangeFilter basePath="/admin/crm" range={range} params={current}>
+            <span className="flex flex-wrap items-baseline gap-x-3">
+              <span>
+                <strong className="font-medium">{leads.total}</strong> lead{leads.total === 1 ? '' : 's'}
+                {leads.valuedCount > 0 && <> · <strong className="font-medium">{formatCurrency(leads.estimatedValue)}</strong></>}
+              </span>
+              {/* A pipeline figure covering three of forty leads is not a
+                  pipeline figure, so the screen says what it covers. */}
+              {leads.valuedCount > 0 && leads.valuedCount < leads.total && (
+                <span className="text-xs text-ink-soft">estimated on {leads.valuedCount} of {leads.total}</span>
+              )}
+              <a href={`/api/admin/leads/export${withParams(current, {})}`} className="text-xs underline decoration-line-strong underline-offset-4 hover:text-brass">
+                Export CSV
+              </a>
+            </span>
+          </DateRangeFilter>
 
           {leads.items.length === 0 ? (
             <div className="border border-line bg-white p-10 text-center">
@@ -89,8 +120,8 @@ export default async function CrmPage({
             <div className="mt-3 flex justify-between text-sm">
               <span className="text-ink-soft">Page {leads.page} of {leads.totalPages}</span>
               <div className="flex gap-2">
-                {leads.page > 1 && <Link href={`/admin/crm?page=${leads.page - 1}`} className="btn-outline text-xs">Previous</Link>}
-                {leads.page < leads.totalPages && <Link href={`/admin/crm?page=${leads.page + 1}`} className="btn-outline text-xs">Next</Link>}
+                {leads.page > 1 && <a href={`/admin/crm${withParams(current, { page: leads.page - 1 })}`} className="btn-outline text-xs">Previous</a>}
+                {leads.page < leads.totalPages && <a href={`/admin/crm${withParams(current, { page: leads.page + 1 })}`} className="btn-outline text-xs">Next</a>}
               </div>
             </div>
           )}
