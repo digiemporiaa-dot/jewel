@@ -126,7 +126,7 @@ async function seedCategories() {
         name: name!,
         slug: slug!,
         order: i,
-        seoTitle: `${name} Jewellery — Maya Jewellers`,
+        seoTitle: `${name} Jewellery`,
         seoDescription: `Shop ${name} jewellery at Maya Jewellers.`,
       },
     });
@@ -544,7 +544,7 @@ async function seedProducts(
         occasion: p.occasion ?? [],
         tags: p.tags ?? [],
         publishedAt: new Date(),
-        seoTitle: `${p.name} — Maya Jewellers`,
+        seoTitle: p.name,
         seoDescription: p.shortDescription,
         images: {
           create: [
@@ -627,7 +627,7 @@ async function seedContent() {
   const about = await prisma.cmsPage.create({
     data: {
       slug: 'about', title: 'Our Story', status: 'PUBLISHED', publishedAt: new Date(),
-      seoTitle: 'Our Story — Maya Jewellers',
+      seoTitle: 'Our Story',
       seoDescription: 'Three generations of Delhi jewellers, crafting hallmarked gold and certified diamonds.',
     },
   });

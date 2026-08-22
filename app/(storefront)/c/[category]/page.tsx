@@ -4,6 +4,7 @@ import { getCategoryListing, getFilterFacets, parseListingParams } from '@/lib/s
 import { getSessionToken } from '@/lib/session';
 import { getWishlistProductIds } from '@/lib/wishlist';
 import ListingView from '@/components/storefront/ListingView';
+import { buildMetadata } from '@/lib/seo/metadata';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,12 +14,18 @@ type Search = Record<string, string | undefined>;
 export async function generateMetadata({ params }: { params: Promise<Params> }): Promise<Metadata> {
   const { category } = await params;
   const listing = await getCategoryListing(category, {});
-  if (!listing) return { title: 'Not found' };
-  return {
-    title: listing.title,
-    description: listing.description ?? `Shop ${listing.title} at Maya Jewellers.`,
-    alternates: { canonical: `/c/${category}` },
-  };
+  if (!listing) return { title: 'Not found', robots: { index: false, follow: false } };
+  return buildMetadata({
+    path: `/c/${category}`,
+    fallbackTitle: listing.title,
+    seoTitle: listing.seo.seoTitle,
+    seoDescription: listing.seo.seoDescription,
+    fallbackDescription: listing.description,
+    ogImageUrl: listing.seo.ogImageUrl,
+    fallbackImage: listing.seo.image,
+    canonicalUrl: listing.seo.canonicalUrl,
+    noIndex: listing.seo.noIndex,
+  });
 }
 
 export default async function CategoryPage({

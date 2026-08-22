@@ -3,13 +3,11 @@ import Link from 'next/link';
 import { getCurrentCustomer } from '@/lib/customer-session';
 import AccountLogin from './AccountLogin';
 import { logoutAction } from './actions';
+import { privateMetadata } from '@/lib/seo/metadata';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'My Account',
-  robots: { index: false, follow: false },
-};
+export const metadata: Metadata = privateMetadata('My Account');
 
 export default async function AccountPage() {
   const customer = await getCurrentCustomer();

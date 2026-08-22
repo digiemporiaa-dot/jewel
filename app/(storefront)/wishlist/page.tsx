@@ -3,13 +3,11 @@ import Link from 'next/link';
 import { getSessionToken } from '@/lib/session';
 import { getWishlist } from '@/lib/wishlist';
 import WishlistCard from './WishlistCard';
+import { privateMetadata } from '@/lib/seo/metadata';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'Wishlist',
-  robots: { index: false, follow: false },
-};
+export const metadata: Metadata = privateMetadata('Wishlist');
 
 export default async function WishlistPage() {
   const token = await getSessionToken();

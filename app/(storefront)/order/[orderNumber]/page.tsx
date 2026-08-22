@@ -9,13 +9,11 @@ import { cn } from '@/lib/utils/cn';
 import { getTagConfig } from '@/lib/marketing/config';
 import { claimPurchaseTracking, sendMetaCapiPurchase } from '@/lib/marketing/purchase';
 import PurchaseTracker from '@/components/marketing/PurchaseTracker';
+import { privateMetadata } from '@/lib/seo/metadata';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'Order',
-  robots: { index: false, follow: false },
-};
+export const metadata: Metadata = privateMetadata('Order');
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING_PAYMENT: 'Awaiting payment',

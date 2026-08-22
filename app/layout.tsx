@@ -3,6 +3,7 @@ import { Bodoni_Moda, Jost } from 'next/font/google';
 import './globals.css';
 import { getStoreSettings } from '@/lib/store';
 import { getTagConfig } from '@/lib/marketing/config';
+import { seoDefaults, getSeoSettings } from '@/lib/seo/settings';
 import TagScripts from '@/components/marketing/TagScripts';
 import ConsentBanner from '@/components/marketing/ConsentBanner';
 
@@ -22,27 +23,42 @@ const jost = Jost({
 });
 
 export async function generateMetadata(): Promise<Metadata> {
-  const [store, tags] = await Promise.all([getStoreSettings(), getTagConfig()]);
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+  const [defaults, seo, tags] = await Promise.all([seoDefaults(), getSeoSettings(), getTagConfig()]);
+
+  // The title template is applied by Next from here, which is why `buildMetadata`
+  // returns each page's own untemplated title — applying it in both places would
+  // suffix the brand name twice.
+  const template = defaults.titleTemplate?.includes('%s') ? defaults.titleTemplate : '%s';
+
   return {
-    metadataBase: new URL(siteUrl),
-    title: {
-      default: `${store.brandName} — ${store.tagline}`,
-      template: `%s · ${store.brandName}`,
-    },
-    description: store.tagline,
+    metadataBase: new URL(defaults.siteUrl),
+    title: { default: defaults.defaultTitle ?? defaults.brandName, template },
+    description: defaults.defaultDescription ?? undefined,
     openGraph: {
-      title: store.brandName,
-      description: store.tagline,
+      title: defaults.defaultTitle ?? defaults.brandName,
+      description: defaults.defaultDescription ?? undefined,
+      siteName: defaults.brandName,
       type: 'website',
       locale: 'en_IN',
+      ...(defaults.defaultOgImageUrl ? { images: [{ url: defaults.defaultOgImageUrl }] } : {}),
     },
-    robots: { index: true, follow: true },
-    // Search Console ownership. A meta tag, not a script — Next renders it into
-    // <head> for us, so the stored value never touches executable markup.
-    ...(tags.googleSiteVerification
-      ? { verification: { google: tags.googleSiteVerification } }
-      : {}),
+    // The site-wide switch. A shop still being set up should not be indexed, and
+    // this is the one place that can turn the whole site off.
+    robots: defaults.indexingEnabled
+      ? { index: true, follow: true }
+      : { index: false, follow: false, nocache: true },
+    // Ownership verification. Meta tags, not scripts — Next renders them into
+    // <head> for us, so a stored value never touches executable markup.
+    verification: {
+      ...(tags.googleSiteVerification ? { google: tags.googleSiteVerification } : {}),
+      // Both go in one `other` map. Spreading two `other` keys would silently
+      // drop the first, so a shop that verified with Bing and Pinterest would
+      // lose one of them.
+      other: {
+        ...(seo.bingVerification ? { 'msvalidate.01': seo.bingVerification } : {}),
+        ...(seo.pinterestVerification ? { 'p:domain_verify': seo.pinterestVerification } : {}),
+      },
+    },
   };
 }
 

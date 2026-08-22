@@ -1,5 +1,95 @@
 # Changelog
 
+## Phase 3 · Item 6a — SEO foundations · 2026-08-22
+
+Every page already emitted a title, a description and a canonical. None of it
+was editable: the wording came from code, the fallbacks named "Maya Jewellers"
+in string literals, and sixteen routes each assembled their own `Metadata`
+object — so the canonical, the social image fallback and the robots directive
+were re-decided, and re-got-wrong, sixteen times.
+
+### One builder, sixteen routes
+
+`buildMetadata()` now serves every public route, and `privateMetadata()` every
+private one. A route describes its page; the shared code decides what that
+means. A new page cannot ship with no description by omission.
+
+Making them private is a separate function rather than a flag, so the bag,
+checkout, the account area and order pages can never accidentally inherit the
+site-wide indexing switch and become crawlable.
+
+### The inheritance chain
+
+Page value → the entity it describes → the site default. A product uses its own
+`seoDescription`, else its short description, else the site default; its social
+card uses its own image, else the first product photo, else the site default —
+because a product photo makes a better card than a logo.
+
+### What the client can now control
+
+`SeoSettings` (a singleton, like the other config rows) holds the title
+template, default title and description, default social image, the indexing
+master switch, extra robots disallow paths, LocalBusiness details, and Bing and
+Pinterest verification. Every content model gained `ogImageUrl`, `canonicalUrl`
+and `noIndex` alongside the `seoTitle` and `seoDescription` it already had.
+
+`noIndex` defaults to false and `indexingEnabled` to true, so nothing already
+published drops out of search the moment this deploys.
+
+### Canonicals are validated, not trusted
+
+A canonical tag tells a search engine which URL owns a piece of content, so a
+free-text field pointing anywhere is a way for a shop to hand its rankings to
+somebody else — and operators do it by accident, pasting from a listing they were
+comparing against. `checkCanonical()` accepts a path on this site or an absolute
+URL on this site's own origin, and refuses everything else: other domains,
+protocol-relative `//host` URLs, non-http schemes, and hostnames that merely
+start the same (`mayajewellers.in.evil.example`).
+
+Computed canonicals drop the query string and fragment, so `?variant=22k` and
+`?utm_source=meta` do not become separate URLs competing for one product's
+ranking. Variant choice lives in component state rather than the URL precisely
+so that stays true.
+
+### Three defects found by looking at the rendered head
+
+- **Titles said the brand twice.** Seeded `seoTitle` values ended in
+  "— Maya Jewellers" and the template appended it again:
+  `22K Gold Floral Ring — Maya Jewellers · Maya Jewellers`. Fixed in the seed,
+  fixed in the dev database, and `auditSeo` now warns when a title contains the
+  brand name more than once.
+- **The home page had no canonical.** It inherited a title and description from
+  the root layout but no `<link rel="canonical">`, leaving `/` and every
+  `?utm_source=…` variant of the busiest page on the site separately indexable.
+- **The site URL could not be corrected without a rebuild.** `NEXT_PUBLIC_*`
+  values are inlined into the bundle at build time, so a shop that changed
+  domain — or a resale deployment pointed at a new one — would keep emitting
+  canonicals naming the old host. `SITE_URL` is now checked first and read at
+  runtime.
+
+Two hardcoded "Maya Jewellers" fallbacks in route code are also gone; the brand
+name comes from `StoreSetting` everywhere.
+
+### Warnings written for the operator
+
+`auditSeo` reports what a problem costs, not what rule it breaks: *"Google will
+write its own snippet from the page, and it is rarely the one you would
+choose"*, *"Shared on WhatsApp or Instagram this link will appear as plain
+text"*. `duplicateTitles` looks across pages for the most common self-inflicted
+catalogue problem — twenty rings all called "Gold Ring", competing with each
+other, invisible unless something compares pages rather than inspecting one.
+
+### Verified
+
+`tsc` clean, `next build` clean, lint clean, **377 tests across 26 files** (49
+new). Against a production build: `/` canonicalises `?utm_source=meta` away,
+product and category titles carry the brand exactly once, the bag and checkout
+send `noindex, nofollow, nocache`, and a runtime `SITE_URL` changes every
+canonical without a rebuild.
+
+Still to come in 6b: Product/Organization/LocalBusiness/breadcrumb JSON-LD,
+robots and sitemap driven by the settings row, and the admin screen.
+
 ## Fix · Checkout summary · 2026-08-22
 
 ### The bug

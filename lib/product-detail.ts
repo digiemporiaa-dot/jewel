@@ -42,6 +42,9 @@ export type ProductDetail = {
   defaultVariantId: string | null;
   seoTitle: string | null;
   seoDescription: string | null;
+  ogImageUrl: string | null;
+  canonicalUrl: string | null;
+  noIndex: boolean;
   reviewCount: number;
   reviewAverage: number | null;
 };
@@ -114,6 +117,9 @@ export async function getProductDetail(slug: string): Promise<ProductDetail | nu
     defaultVariantId: defaultVariant?.id ?? null,
     seoTitle: product.seoTitle,
     seoDescription: product.seoDescription,
+    ogImageUrl: product.ogImageUrl,
+    canonicalUrl: product.canonicalUrl,
+    noIndex: product.noIndex,
     reviewCount: reviewAgg._count,
     reviewAverage: reviewAgg._avg.rating,
   };

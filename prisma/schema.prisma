@@ -246,45 +246,45 @@ enum OtpPurpose {
 
 // Singleton row (id = "default"). NOTHING store-specific is hardcoded in code.
 model StoreSetting {
-  id           String @id @default("default")
-  brandName    String @default("Maya Jewellers")
-  tagline      String @default("Fine jewellery, crafted in Delhi")
-  logoUrl      String?
-  faviconUrl   String?
+  id         String  @id @default("default")
+  brandName  String  @default("Maya Jewellers")
+  tagline    String  @default("Fine jewellery, crafted in Delhi")
+  logoUrl    String?
+  faviconUrl String?
 
   // Contact
-  phone         String?
+  phone          String?
   whatsappNumber String?
-  email         String?
-  supportEmail  String?
+  email          String?
+  supportEmail   String?
 
   // Address
-  addressLine  String?
-  city         String?
-  state        String?
-  pincode      String?
-  country      String @default("India")
-  gstin        String?
+  addressLine     String?
+  city            String?
+  state           String?
+  pincode         String?
+  country         String  @default("India")
+  gstin           String?
   // GST state code of the place of business, e.g. "07" for Delhi. Determines
   // whether a sale is intra-state (CGST+SGST) or inter-state (IGST); without it
   // the split cannot be derived at all.
   sellerStateCode String?
 
   // Commerce config
-  currency            String  @default("INR")
-  locale              String  @default("en-IN")
-  gstPercentDefault   Decimal @default(3) @db.Decimal(5, 2)
-  freeShippingAbove   Decimal? @db.Decimal(12, 2)
-  flatShippingFee     Decimal @default(0) @db.Decimal(12, 2)
+  currency          String   @default("INR")
+  locale            String   @default("en-IN")
+  gstPercentDefault Decimal  @default(3) @db.Decimal(5, 2)
+  freeShippingAbove Decimal? @db.Decimal(12, 2)
+  flatShippingFee   Decimal  @default(0) @db.Decimal(12, 2)
 
   // Risk / verification thresholds
   codMaxOrderValue      Decimal? @db.Decimal(12, 2)
-  codTokenAmount        Decimal @default(0) @db.Decimal(12, 2)
+  codTokenAmount        Decimal  @default(0) @db.Decimal(12, 2)
   verificationCallAbove Decimal? @db.Decimal(12, 2)
   panThreshold          Decimal? @db.Decimal(12, 2)
 
   // Pricing behaviour
-  rateLockMinutes  Int @default(15)
+  rateLockMinutes Int @default(15)
 
   // EMI messaging. Indicative only — the bank decides the real tenure and rate,
   // so nothing here is ever presented as a firm commitment.
@@ -296,9 +296,61 @@ model StoreSetting {
   emiTenures   Json?
 
   // Social + content
-  socialLinks Json?   // { instagram, facebook, youtube, pinterest }
-  footerNote  String?
+  socialLinks  Json? // { instagram, facebook, youtube, pinterest }
+  footerNote   String?
   returnPolicy String?
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+}
+
+/// Site-wide SEO configuration.
+///
+/// Separate from StoreSetting because it is edited by whoever runs marketing,
+/// not whoever runs the shop, and because the two change on completely different
+/// cadences. Singleton row (id = "default"), like the others.
+///
+/// Nothing here is brand-specific in code: every default is a column, so the
+/// same build redeployed for another jeweller only needs this row changed.
+model SeoSettings {
+  id String @id @default("default")
+
+  /// Appended to every page title, e.g. "%s · Maya Jewellers". `%s` is the
+  /// page's own title; a template without it is rejected on save, since it
+  /// would give every page in the site an identical title.
+  titleTemplate      String?
+  /// Title for the home page, which has no parent to inherit from.
+  defaultTitle       String?
+  /// Used wherever a page has no description of its own. Search engines write
+  /// their own snippet when this is missing, and it is rarely the one you want.
+  defaultDescription String?
+  /// Social card image for pages with nothing more specific.
+  defaultOgImageUrl  String?
+
+  /// Master switch. Off means the whole site sends `noindex` and robots.txt
+  /// disallows everything — correct while a shop is being set up, catastrophic
+  /// if left off after launch, so the admin warns loudly about it.
+  indexingEnabled Boolean  @default(true)
+  /// Extra paths to keep crawlers out of, beyond the built-in private areas.
+  robotsDisallow  String[] @default([])
+
+  /// LocalBusiness / JewelryStore structured data. A jeweller with a showroom
+  /// wants to appear in local results; an online-only seller does not, and
+  /// publishing an address they do not have would be worse than publishing none.
+  localBusinessEnabled Boolean  @default(false)
+  /// schema.org type, e.g. "JewelryStore".
+  businessType         String?  @default("JewelryStore")
+  /// Google's price-range hint, e.g. "₹₹₹".
+  priceRange           String?
+  latitude             Decimal? @db.Decimal(10, 7)
+  longitude            Decimal? @db.Decimal(10, 7)
+  /// [{ days: ["Monday"], opens: "11:00", closes: "20:00" }]
+  openingHours         Json?
+
+  /// Ownership verification meta tags. Google's lives in MarketingTags with the
+  /// other Google properties; these are the ones with no other home.
+  bingVerification      String?
+  pinterestVerification String?
 
   updatedAt DateTime @updatedAt
   createdAt DateTime @default(now())
@@ -319,16 +371,16 @@ model NavMenu {
 }
 
 model NavItem {
-  id       String  @id @default(cuid())
+  id       String    @id @default(cuid())
   menuId   String
-  menu     NavMenu @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  menu     NavMenu   @relation(fields: [menuId], references: [id], onDelete: Cascade)
   label    String
   href     String
-  order    Int     @default(0)
+  order    Int       @default(0)
   parentId String?
   parent   NavItem?  @relation("NavItemChildren", fields: [parentId], references: [id], onDelete: Cascade)
   children NavItem[] @relation("NavItemChildren")
-  isActive Boolean @default(true)
+  isActive Boolean   @default(true)
 
   @@index([menuId, order])
   @@index([parentId, order])
@@ -337,53 +389,53 @@ model NavItem {
 // ─── Identity: staff & customers ─────────────────────────────────────────────
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
+  id           String    @id @default(cuid())
+  email        String    @unique
   phone        String?
   name         String
   passwordHash String
-  role         Role     @default(SALES_EXECUTIVE)
-  isActive     Boolean  @default(true)
+  role         Role      @default(SALES_EXECUTIVE)
+  isActive     Boolean   @default(true)
   lastLoginAt  DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  assignedLeads     Lead[]         @relation("LeadAssignee")
-  followUps         FollowUp[]     @relation("FollowUpAssignee")
-  callLogs          CallLog[]
-  auditLogs         AuditLog[]
-  verifiedOrders    Order[]        @relation("OrderVerifier")
-  rateChanges       MetalRate[]    @relation("RateChangedBy")
+  assignedLeads      Lead[]        @relation("LeadAssignee")
+  followUps          FollowUp[]    @relation("FollowUpAssignee")
+  callLogs           CallLog[]
+  auditLogs          AuditLog[]
+  verifiedOrders     Order[]       @relation("OrderVerifier")
+  rateChanges        MetalRate[]   @relation("RateChangedBy")
   diamondRateChanges DiamondRate[] @relation("DiamondRateChangedBy")
-  approvedReviews   Review[]       @relation("ReviewApprover")
-  appointments      Appointment[]  @relation("AppointmentStaff")
-  orderNotes        OrderNote[]
+  approvedReviews    Review[]      @relation("ReviewApprover")
+  appointments       Appointment[] @relation("AppointmentStaff")
+  orderNotes         OrderNote[]
 
   @@index([role])
   @@index([isActive])
 }
 
 model Customer {
-  id            String    @id @default(cuid())
-  phone         String    @unique
-  email         String?   @unique
-  name          String?
-  gender        String?
-  dob           DateTime?
-  anniversary   DateTime?
-  marketingOptIn Boolean  @default(false)
-  phoneVerified Boolean   @default(false)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  phone          String    @unique
+  email          String?   @unique
+  name           String?
+  gender         String?
+  dob            DateTime?
+  anniversary    DateTime?
+  marketingOptIn Boolean   @default(false)
+  phoneVerified  Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  addresses    Address[]
-  orders       Order[]
-  carts        Cart[]
-  wishlist     WishlistItem[]
-  reviews      Review[]
-  appointments Appointment[]
-  leads        Lead[]
-  callLogs     CallLog[]
+  addresses     Address[]
+  orders        Order[]
+  carts         Cart[]
+  wishlist      WishlistItem[]
+  reviews       Review[]
+  appointments  Appointment[]
+  leads         Lead[]
+  callLogs      CallLog[]
   notifications Notification[]
 
   @@index([email])
@@ -391,21 +443,21 @@ model Customer {
 }
 
 model Otp {
-  id        String     @id @default(cuid())
-  target    String     // phone or email
-  codeHash  String
-  purpose   OtpPurpose
-  attempts  Int        @default(0)
-  expiresAt DateTime
+  id         String     @id @default(cuid())
+  target     String // phone or email
+  codeHash   String
+  purpose    OtpPurpose
+  attempts   Int        @default(0)
+  expiresAt  DateTime
   consumedAt DateTime?
-  createdAt DateTime   @default(now())
+  createdAt  DateTime   @default(now())
 
   @@index([target, purpose])
   @@index([expiresAt])
 }
 
 model Address {
-  id         String  @id @default(cuid())
+  id         String   @id @default(cuid())
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   label      String? // Home / Office
@@ -416,8 +468,8 @@ model Address {
   city       String
   state      String
   pincode    String
-  country    String  @default("India")
-  isDefault  Boolean @default(false)
+  country    String   @default("India")
+  isDefault  Boolean  @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -427,21 +479,29 @@ model Address {
 // ─── Catalog taxonomy ────────────────────────────────────────────────────────
 
 model Category {
-  id          String  @id @default(cuid())
+  id          String     @id @default(cuid())
   name        String
-  slug        String  @unique
+  slug        String     @unique
   description String?
   imageUrl    String?
-  order       Int     @default(0)
-  isActive    Boolean @default(true)
+  order       Int        @default(0)
+  isActive    Boolean    @default(true)
   parentId    String?
   parent      Category?  @relation("CategoryTree", fields: [parentId], references: [id])
   children    Category[] @relation("CategoryTree")
 
   seoTitle       String?
   seoDescription String?
+  /// Social preview image. Falls back to the entity's own image, then the
+  /// site-wide default — a link with no card looks broken when shared.
+  ogImageUrl     String?
+  /// Overrides the computed canonical. Validated on save: an operator who
+  /// pastes a competitor's URL here would hand them the ranking.
+  canonicalUrl   String?
+  /// Keep this page out of search results while leaving it reachable by link.
+  noIndex        Boolean @default(false)
 
-  products         Product[]
+  products          Product[]
   makingChargeRules MakingChargeRule[]
 
   createdAt DateTime @default(now())
@@ -463,6 +523,14 @@ model Collection {
 
   seoTitle       String?
   seoDescription String?
+  /// Social preview image. Falls back to the entity's own image, then the
+  /// site-wide default — a link with no card looks broken when shared.
+  ogImageUrl     String?
+  /// Overrides the computed canonical. Validated on save: an operator who
+  /// pastes a competitor's URL here would hand them the ranking.
+  canonicalUrl   String?
+  /// Keep this page out of search results while leaving it reachable by link.
+  noIndex        Boolean @default(false)
 
   products ProductCollection[]
 
@@ -476,15 +544,15 @@ model Collection {
 // ─── Metals, purities & rates ────────────────────────────────────────────────
 
 model Metal {
-  id        String    @id @default(cuid())
-  name      String    // Gold, Silver
-  type      MetalType
-  symbol    String?   // Au, Ag
-  order     Int       @default(0)
-  isActive  Boolean   @default(true)
+  id       String    @id @default(cuid())
+  name     String // Gold, Silver
+  type     MetalType
+  symbol   String? // Au, Ag
+  order    Int       @default(0)
+  isActive Boolean   @default(true)
 
-  purities Purity[]
-  products Product[]
+  purities          Purity[]
+  products          Product[]
   makingChargeRules MakingChargeRule[]
 
   @@unique([type])
@@ -495,14 +563,14 @@ model Purity {
   id       String  @id @default(cuid())
   metalId  String
   metal    Metal   @relation(fields: [metalId], references: [id], onDelete: Cascade)
-  name     String  // 24K, 22K, 18K, 925 Silver
+  name     String // 24K, 22K, 18K, 925 Silver
   // fineness as a fraction of pure metal, e.g. 22K = 0.9166. Decimal, never float.
   fineness Decimal @db.Decimal(6, 4)
   order    Int     @default(0)
   isActive Boolean @default(true)
 
-  rates    MetalRate[]
-  products Product[]
+  rates             MetalRate[]
+  products          Product[]
   makingChargeRules MakingChargeRule[]
 
   @@unique([metalId, name])
@@ -511,35 +579,35 @@ model Purity {
 
 // Rate history — never destructive. `isCurrent` marks the live rate per purity.
 model MetalRate {
-  id          String   @id @default(cuid())
-  purityId    String
-  purity      Purity   @relation(fields: [purityId], references: [id], onDelete: Cascade)
-  ratePerGram Decimal  @db.Decimal(12, 2)
-  previousRate Decimal? @db.Decimal(12, 2)
-  isCurrent   Boolean  @default(true)
+  id            String   @id @default(cuid())
+  purityId      String
+  purity        Purity   @relation(fields: [purityId], references: [id], onDelete: Cascade)
+  ratePerGram   Decimal  @db.Decimal(12, 2)
+  previousRate  Decimal? @db.Decimal(12, 2)
+  isCurrent     Boolean  @default(true)
   effectiveFrom DateTime @default(now())
-  changedById String?
-  changedBy   User?    @relation("RateChangedBy", fields: [changedById], references: [id])
-  note        String?
-  createdAt   DateTime @default(now())
+  changedById   String?
+  changedBy     User?    @relation("RateChangedBy", fields: [changedById], references: [id])
+  note          String?
+  createdAt     DateTime @default(now())
 
   @@index([purityId, isCurrent])
   @@index([effectiveFrom])
 }
 
 model DiamondRate {
-  id          String   @id @default(cuid())
-  label       String   // e.g. "VS-GH-Round"
-  clarity     String?
-  color       String?
-  shape       String?
-  ratePerCarat Decimal @db.Decimal(12, 2)
-  previousRate Decimal? @db.Decimal(12, 2)
-  isCurrent   Boolean  @default(true)
+  id            String   @id @default(cuid())
+  label         String // e.g. "VS-GH-Round"
+  clarity       String?
+  color         String?
+  shape         String?
+  ratePerCarat  Decimal  @db.Decimal(12, 2)
+  previousRate  Decimal? @db.Decimal(12, 2)
+  isCurrent     Boolean  @default(true)
   effectiveFrom DateTime @default(now())
-  changedById String?
-  changedBy   User?    @relation("DiamondRateChangedBy", fields: [changedById], references: [id])
-  createdAt   DateTime @default(now())
+  changedById   String?
+  changedBy     User?    @relation("DiamondRateChangedBy", fields: [changedById], references: [id])
+  createdAt     DateTime @default(now())
 
   productDiamonds ProductDiamond[]
 
@@ -578,10 +646,10 @@ model MakingChargeRule {
 // ─── Products ────────────────────────────────────────────────────────────────
 
 model Product {
-  id               String      @id @default(cuid())
+  id               String  @id @default(cuid())
   name             String
-  slug             String      @unique
-  sku              String      @unique
+  slug             String  @unique
+  sku              String  @unique
   shortDescription String?
   description      String?
 
@@ -614,7 +682,7 @@ model Product {
   // Fulfilment
   fulfilmentType FulfilmentType @default(READY_TO_SHIP)
   leadTimeDays   Int?
-  advancePercent Decimal? @db.Decimal(5, 2) // made-to-order advance
+  advancePercent Decimal?       @db.Decimal(5, 2) // made-to-order advance
 
   certification String?
   hasDiamond    Boolean @default(false)
@@ -636,27 +704,35 @@ model Product {
   // SEO
   seoTitle       String?
   seoDescription String?
+  /// Social preview image. Falls back to the entity's own image, then the
+  /// site-wide default — a link with no card looks broken when shared.
+  ogImageUrl     String?
+  /// Overrides the computed canonical. Validated on save: an operator who
+  /// pastes a competitor's URL here would hand them the ranking.
+  canonicalUrl   String?
+  /// Keep this page out of search results while leaving it reachable by link.
+  noIndex        Boolean @default(false)
 
   publishedAt DateTime?
   // HSN classification for the GST invoice. 7113 is "articles of jewellery and
   // parts thereof" — correct for almost everything a jeweller sells, so it is
   // the default rather than a field someone must remember to fill in.
-  hsnCode String? @default("7113")
+  hsnCode     String?   @default("7113")
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  images      ProductImage[]
-  variants    ProductVariant[]
-  diamonds    ProductDiamond[]
-  stones      ProductStone[]
-  collections ProductCollection[]
-  reviews     Review[]
+  images        ProductImage[]
+  variants      ProductVariant[]
+  diamonds      ProductDiamond[]
+  stones        ProductStone[]
+  collections   ProductCollection[]
+  reviews       Review[]
   wishlistItems WishlistItem[]
-  cartItems   CartItem[]
-  orderItems  OrderItem[]
-  appointments Appointment[]
-  leads       Lead[]
+  cartItems     CartItem[]
+  orderItems    OrderItem[]
+  appointments  Appointment[]
+  leads         Lead[]
 
   @@index([slug])
   @@index([sku])
@@ -695,13 +771,13 @@ model ProductImage {
 }
 
 model ProductVariant {
-  id        String  @id @default(cuid())
-  productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  sku       String  @unique
-  label     String? // "22K / Size 12"
+  id         String  @id @default(cuid())
+  productId  String
+  product    Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sku        String  @unique
+  label      String? // "22K / Size 12"
   metalColor String?
-  size      String?
+  size       String?
 
   // Optional per-variant overrides of product-level attributes.
   netWeight   Decimal? @db.Decimal(10, 3)
@@ -729,9 +805,9 @@ model ProductVariant {
 }
 
 model ProductDiamond {
-  id        String  @id @default(cuid())
+  id        String          @id @default(cuid())
   productId String?
-  product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product   Product?        @relation(fields: [productId], references: [id], onDelete: Cascade)
   variantId String?
   variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
 
@@ -755,15 +831,15 @@ model ProductDiamond {
 }
 
 model ProductStone {
-  id        String  @id @default(cuid())
+  id        String          @id @default(cuid())
   productId String?
-  product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product   Product?        @relation(fields: [productId], references: [id], onDelete: Cascade)
   variantId String?
   variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
 
   name        String
   type        String? // gemstone / kundan / pearl
-  pieces      Int     @default(1)
+  pieces      Int      @default(1)
   weightCarat Decimal? @db.Decimal(8, 3)
   ratePerUnit Decimal? @db.Decimal(12, 2)
   value       Decimal? @db.Decimal(12, 2) // flat value if not rate-based
@@ -775,12 +851,12 @@ model ProductStone {
 // ─── Inventory ───────────────────────────────────────────────────────────────
 
 model Inventory {
-  id                String @id @default(cuid())
-  variantId         String @unique
+  id                String         @id @default(cuid())
+  variantId         String         @unique
   variant           ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
-  stockQty          Int    @default(0)
-  reservedQty       Int    @default(0)
-  lowStockThreshold Int    @default(2)
+  stockQty          Int            @default(0)
+  reservedQty       Int            @default(0)
+  lowStockThreshold Int            @default(2)
   // available = stockQty - reservedQty (computed in app; never negative-oversold)
 
   updatedAt DateTime @updatedAt
@@ -791,14 +867,14 @@ model Inventory {
 }
 
 model InventoryLedger {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   inventoryId String
   inventory   Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
   delta       Int
-  reason      String   // ORDER_RESERVE, ORDER_RELEASE, RESTOCK, ADJUSTMENT, SALE
+  reason      String // ORDER_RESERVE, ORDER_RELEASE, RESTOCK, ADJUSTMENT, SALE
   orderId     String?
   note        String?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
   @@index([inventoryId, createdAt])
 }
@@ -806,17 +882,17 @@ model InventoryLedger {
 // ─── Cart & wishlist ─────────────────────────────────────────────────────────
 
 model Cart {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   customerId   String?
   customer     Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  sessionToken String?  @unique // guest cart identifier
+  sessionToken String?   @unique // guest cart identifier
   couponCode   String?
-  currency     String   @default("INR")
+  currency     String    @default("INR")
 
   // Abandoned cart automation
-  abandonedAt    DateTime?
-  remindersSent  Int      @default(0)
-  lastReminderAt DateTime?
+  abandonedAt      DateTime?
+  remindersSent    Int       @default(0)
+  lastReminderAt   DateTime?
   convertedOrderId String?
 
   createdAt DateTime @default(now())
@@ -829,34 +905,34 @@ model Cart {
 }
 
 model CartItem {
-  id        String  @id @default(cuid())
-  cartId    String
-  cart      Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  productId String
-  product   Product @relation(fields: [productId], references: [id])
-  variantId String?
-  variant   ProductVariant? @relation(fields: [variantId], references: [id])
-  quantity  Int     @default(1)
+  id            String          @id @default(cuid())
+  cartId        String
+  cart          Cart            @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId     String
+  product       Product         @relation(fields: [productId], references: [id])
+  variantId     String?
+  variant       ProductVariant? @relation(fields: [variantId], references: [id])
+  quantity      Int             @default(1)
   // Snapshot of the price breakup at add-time (advisory only; server always recomputes).
   priceSnapshot Json?
-  addedAt   DateTime @default(now())
+  addedAt       DateTime        @default(now())
 
   @@unique([cartId, productId, variantId])
   @@index([cartId])
 }
 
 model WishlistItem {
-  id           String  @id @default(cuid())
-  customerId   String?
-  customer     Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  sessionToken String?
-  productId    String
-  product      Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id                String    @id @default(cuid())
+  customerId        String?
+  customer          Customer? @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  sessionToken      String?
+  productId         String
+  product           Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
   // For price-drop / back-in-stock notifications.
-  notifyPriceDrop  Boolean @default(false)
-  notifyBackInStock Boolean @default(false)
-  priceAtAdd    Decimal? @db.Decimal(12, 2)
-  createdAt     DateTime @default(now())
+  notifyPriceDrop   Boolean   @default(false)
+  notifyBackInStock Boolean   @default(false)
+  priceAtAdd        Decimal?  @db.Decimal(12, 2)
+  createdAt         DateTime  @default(now())
 
   @@unique([customerId, productId])
   @@unique([sessionToken, productId])
@@ -881,23 +957,23 @@ model Coupon {
   isActive     Boolean    @default(true)
 
   // What the discount is calculated on. See CouponScope.
-  appliesTo    CouponScope @default(MAKING_CHARGES)
+  appliesTo CouponScope @default(MAKING_CHARGES)
 
   // Scoping filters. Empty array = no restriction on that dimension. A line must
   // match every non-empty filter to be eligible, and the discount is computed
   // only from the lines that match.
-  categoryIds   String[]
-  collectionIds String[]
-  metalTypes    String[]   // GOLD, SILVER, PLATINUM …
-  purities      String[]   // 22K, 18K, 925 …
-  minWeightGrams Decimal?  @db.Decimal(10, 3)
-  maxWeightGrams Decimal?  @db.Decimal(10, 3)
+  categoryIds    String[]
+  collectionIds  String[]
+  metalTypes     String[] // GOLD, SILVER, PLATINUM …
+  purities       String[] // 22K, 18K, 925 …
+  minWeightGrams Decimal? @db.Decimal(10, 3)
+  maxWeightGrams Decimal? @db.Decimal(10, 3)
 
-  excludeDiscounted Boolean @default(false)
-  firstOrderOnly    Boolean @default(false)
-  stackable         Boolean @default(false)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  excludeDiscounted Boolean  @default(false)
+  firstOrderOnly    Boolean  @default(false)
+  stackable         Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   orders Order[]
 
@@ -928,14 +1004,14 @@ model Order {
   fulfilmentType FulfilmentType @default(READY_TO_SHIP)
 
   // Money (all Decimal)
-  subtotal     Decimal @db.Decimal(12, 2)
-  makingTotal  Decimal @default(0) @db.Decimal(12, 2)
+  subtotal      Decimal @db.Decimal(12, 2)
+  makingTotal   Decimal @default(0) @db.Decimal(12, 2)
   discountTotal Decimal @default(0) @db.Decimal(12, 2)
-  gstTotal     Decimal @default(0) @db.Decimal(12, 2)
+  gstTotal      Decimal @default(0) @db.Decimal(12, 2)
   shippingTotal Decimal @default(0) @db.Decimal(12, 2)
-  grandTotal   Decimal @db.Decimal(12, 2)
-  amountPaid   Decimal @default(0) @db.Decimal(12, 2)
-  currency     String  @default("INR")
+  grandTotal    Decimal @db.Decimal(12, 2)
+  amountPaid    Decimal @default(0) @db.Decimal(12, 2)
+  currency      String  @default("INR")
 
   couponId   String?
   coupon     Coupon? @relation(fields: [couponId], references: [id])
@@ -956,10 +1032,10 @@ model Order {
   rateLockedAt DateTime?
 
   // High-value verification
-  requiresCall Boolean   @default(false)
-  verifiedById String?
-  verifiedBy   User?     @relation("OrderVerifier", fields: [verifiedById], references: [id])
-  verifiedAt   DateTime?
+  requiresCall       Boolean   @default(false)
+  verifiedById       String?
+  verifiedBy         User?     @relation("OrderVerifier", fields: [verifiedById], references: [id])
+  verifiedAt         DateTime?
   verificationResult String?
   verificationNotes  String?
 
@@ -971,13 +1047,13 @@ model Order {
   placedAt  DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  items     OrderItem[]
-  payments  Payment[]
-  refunds   Refund[]
-  shipment  Shipment?
-  events    OrderEvent[]
-  notes     OrderNote[]
-  reviews   Review[]
+  items    OrderItem[]
+  payments Payment[]
+  refunds  Refund[]
+  shipment Shipment?
+  events   OrderEvent[]
+  notes    OrderNote[]
+  reviews  Review[]
 
   @@index([customerId])
   @@index([status])
@@ -988,18 +1064,18 @@ model Order {
 }
 
 model OrderItem {
-  id        String  @id @default(cuid())
+  id        String          @id @default(cuid())
   orderId   String
-  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order     Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productId String?
-  product   Product? @relation(fields: [productId], references: [id])
+  product   Product?        @relation(fields: [productId], references: [id])
   variantId String?
   variant   ProductVariant? @relation(fields: [variantId], references: [id])
 
   // Immutable product snapshot at purchase time.
-  nameSnapshot String
-  skuSnapshot  String
-  imageSnapshot String?
+  nameSnapshot   String
+  skuSnapshot    String
+  imageSnapshot  String?
   weightSnapshot Decimal? @db.Decimal(10, 3)
   metalSnapshot  String?
   puritySnapshot String?
@@ -1009,7 +1085,7 @@ model OrderItem {
   lineTotal Decimal @db.Decimal(12, 2)
 
   // Full price breakup + rate used, frozen at purchase.
-  priceBreakup Json
+  priceBreakup  Json
   metalRateUsed Decimal? @db.Decimal(12, 2)
 
   @@index([orderId])
@@ -1021,20 +1097,20 @@ model OrderEvent {
   order     Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
   status    OrderStatus?
   message   String
-  actor     String?      // "system", staff name/email
+  actor     String? // "system", staff name/email
   createdAt DateTime     @default(now())
 
   @@index([orderId, createdAt])
 }
 
 model OrderNote {
-  id        String @id @default(cuid())
+  id        String   @id @default(cuid())
   orderId   String
-  order     Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   authorId  String?
-  author    User?  @relation(fields: [authorId], references: [id])
+  author    User?    @relation(fields: [authorId], references: [id])
   body      String
-  internal  Boolean @default(true)
+  internal  Boolean  @default(true)
   createdAt DateTime @default(now())
 
   @@index([orderId])
@@ -1043,21 +1119,21 @@ model OrderNote {
 // ─── Payments ────────────────────────────────────────────────────────────────
 
 model Payment {
-  id              String        @id @default(cuid())
-  orderId         String
-  order           Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  provider        String        @default("razorpay")
-  providerOrderId String?
-  providerPaymentId String?     @unique
-  method          PaymentMethod
-  type            PaymentType   @default(FULL)
-  amount          Decimal       @db.Decimal(12, 2)
-  currency        String        @default("INR")
-  status          PaymentStatus @default(PENDING)
-  rawPayload      Json?
-  capturedAt      DateTime?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id                String        @id @default(cuid())
+  orderId           String
+  order             Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  provider          String        @default("razorpay")
+  providerOrderId   String?
+  providerPaymentId String?       @unique
+  method            PaymentMethod
+  type              PaymentType   @default(FULL)
+  amount            Decimal       @db.Decimal(12, 2)
+  currency          String        @default("INR")
+  status            PaymentStatus @default(PENDING)
+  rawPayload        Json?
+  capturedAt        DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
   refunds Refund[]
 
@@ -1084,17 +1160,17 @@ model Refund {
 
 // Idempotent, signature-verified, reprocessable webhook log.
 model WebhookEvent {
-  id            String        @id @default(cuid())
-  provider      String        // razorpay / shiprocket
-  eventId       String        // provider event / delivery id
-  eventType     String
-  status        WebhookStatus @default(RECEIVED)
-  signatureValid Boolean      @default(false)
-  payload       Json
-  error         String?
-  attempts      Int           @default(0)
-  receivedAt    DateTime      @default(now())
-  processedAt   DateTime?
+  id             String        @id @default(cuid())
+  provider       String // razorpay / shiprocket
+  eventId        String // provider event / delivery id
+  eventType      String
+  status         WebhookStatus @default(RECEIVED)
+  signatureValid Boolean       @default(false)
+  payload        Json
+  error          String?
+  attempts       Int           @default(0)
+  receivedAt     DateTime      @default(now())
+  processedAt    DateTime?
 
   @@unique([provider, eventId])
   @@index([provider, eventType])
@@ -1109,20 +1185,20 @@ model Shipment {
   order    Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
   provider String @default("shiprocket")
 
-  providerOrderId String?
+  providerOrderId    String?
   providerShipmentId String?
-  awb      String?
-  courier  String?
-  status   ShipmentStatus @default(PENDING)
-  trackingUrl String?
-  labelUrl String?
-  manifestUrl String?
+  awb                String?
+  courier            String?
+  status             ShipmentStatus @default(PENDING)
+  trackingUrl        String?
+  labelUrl           String?
+  manifestUrl        String?
 
   pickupScheduledAt DateTime?
-  shippedAt   DateTime?
-  deliveredAt DateTime?
-  ndrReason   String?
-  rtoInitiatedAt DateTime?
+  shippedAt         DateTime?
+  deliveredAt       DateTime?
+  ndrReason         String?
+  rtoInitiatedAt    DateTime?
 
   raw Json?
 
@@ -1135,9 +1211,9 @@ model Shipment {
 
 // 24h serviceability cache.
 model PincodeServiceability {
-  pincode      String  @id
+  pincode      String   @id
   serviceable  Boolean
-  codAvailable Boolean @default(false)
+  codAvailable Boolean  @default(false)
   etaDays      Int?
   raw          Json?
   cachedAt     DateTime @default(now())
@@ -1148,23 +1224,23 @@ model PincodeServiceability {
 // ─── Reviews ─────────────────────────────────────────────────────────────────
 
 model Review {
-  id         String       @id @default(cuid())
-  productId  String
-  product    Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
-  customerId String
-  customer   Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  orderId    String?
-  order      Order?       @relation(fields: [orderId], references: [id])
-  rating     Int
-  title      String?
-  body       String?
-  images     Json?
-  status     ReviewStatus @default(PENDING)
-  verifiedPurchase Boolean @default(false)
-  approvedById String?
-  approvedBy   User?      @relation("ReviewApprover", fields: [approvedById], references: [id])
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+  id               String       @id @default(cuid())
+  productId        String
+  product          Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  customerId       String
+  customer         Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  orderId          String?
+  order            Order?       @relation(fields: [orderId], references: [id])
+  rating           Int
+  title            String?
+  body             String?
+  images           Json?
+  status           ReviewStatus @default(PENDING)
+  verifiedPurchase Boolean      @default(false)
+  approvedById     String?
+  approvedBy       User?        @relation("ReviewApprover", fields: [approvedById], references: [id])
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
   @@unique([productId, customerId, orderId])
   @@index([productId, status])
@@ -1197,12 +1273,12 @@ model Appointment {
 }
 
 model AppointmentSlot {
-  id        String  @id @default(cuid())
-  dayOfWeek Int?    // 0-6 recurring, or use `date`
+  id        String    @id @default(cuid())
+  dayOfWeek Int? // 0-6 recurring, or use `date`
   date      DateTime?
-  slot      String  // "11:00-11:30"
-  capacity  Int     @default(1)
-  isBlocked Boolean @default(false)
+  slot      String // "11:00-11:30"
+  capacity  Int       @default(1)
+  isBlocked Boolean   @default(false)
 
   @@index([date])
 }
@@ -1210,38 +1286,38 @@ model AppointmentSlot {
 // ─── CRM ─────────────────────────────────────────────────────────────────────
 
 model Lead {
-  id           String     @id @default(cuid())
-  source       LeadSource @default(WEBSITE)
-  status       LeadStatus @default(NEW)
+  id              String     @id @default(cuid())
+  source          LeadSource @default(WEBSITE)
+  status          LeadStatus @default(NEW)
   /// Null for an enquiry captured before the shopper identified themselves —
   /// a WhatsApp click from a signed-out visitor is a real lead with no name yet.
-  name         String?
+  name            String?
   /// Null for the same reason. A WhatsApp click-to-chat never tells the site the
   /// visitor's number; it arrives when they actually send the message.
-  phone        String?
-  email        String?
-  customerId   String?
-  customer     Customer?  @relation(fields: [customerId], references: [id])
-  productId    String?
-  product      Product?   @relation(fields: [productId], references: [id])
-  estimatedValue Decimal? @db.Decimal(12, 2)
-  notes        String?
-  assignedToId String?
-  assignedTo   User?      @relation("LeadAssignee", fields: [assignedToId], references: [id])
+  phone           String?
+  email           String?
+  customerId      String?
+  customer        Customer?  @relation(fields: [customerId], references: [id])
+  productId       String?
+  product         Product?   @relation(fields: [productId], references: [id])
+  estimatedValue  Decimal?   @db.Decimal(12, 2)
+  notes           String?
+  assignedToId    String?
+  assignedTo      User?      @relation("LeadAssignee", fields: [assignedToId], references: [id])
   lastContactedAt DateTime?
   /// Guest session that produced an auto-captured lead, so repeat clicks from
   /// one anonymous visitor collapse into one lead rather than twenty.
-  sessionToken String?
+  sessionToken    String?
   /// How many times this enquiry has been repeated — a shopper who clicks
   /// Enquire on the same piece four days running is a warmer lead than one who
   /// clicked once, and that is invisible if repeats are simply discarded.
-  touchCount   Int        @default(1)
+  touchCount      Int        @default(1)
   /// Uniqueness key for automatic capture, e.g. `whatsapp:<who>:<product>:<day>`
   /// or `cart:<cartId>`. Postgres enforces it, so two simultaneous clicks cannot
   /// both create a lead. Null for anything a person entered by hand.
-  dedupeKey    String?    @unique
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  dedupeKey       String?    @unique
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
 
   followUps FollowUp[]
   callLogs  CallLog[]
@@ -1270,16 +1346,16 @@ model FollowUp {
 }
 
 model CallLog {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   leadId     String?
-  lead       Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  lead       Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
   customerId String?
   customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   staffId    String?
-  staff      User?    @relation(fields: [staffId], references: [id])
+  staff      User?     @relation(fields: [staffId], references: [id])
   outcome    String?
   notes      String?
-  calledAt   DateTime @default(now())
+  calledAt   DateTime  @default(now())
 
   @@index([leadId])
   @@index([customerId])
@@ -1288,16 +1364,24 @@ model CallLog {
 // ─── CMS & content ───────────────────────────────────────────────────────────
 
 model CmsPage {
-  id          String        @id @default(cuid())
-  slug        String        @unique
-  title       String
-  status      PublishStatus @default(DRAFT)
-  publishedAt DateTime?
-  scheduledAt DateTime?
+  id             String        @id @default(cuid())
+  slug           String        @unique
+  title          String
+  status         PublishStatus @default(DRAFT)
+  publishedAt    DateTime?
+  scheduledAt    DateTime?
   seoTitle       String?
   seoDescription String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  /// Social preview image. Falls back to the entity's own image, then the
+  /// site-wide default — a link with no card looks broken when shared.
+  ogImageUrl     String?
+  /// Overrides the computed canonical. Validated on save: an operator who
+  /// pastes a competitor's URL here would hand them the ranking.
+  canonicalUrl   String?
+  /// Keep this page out of search results while leaving it reachable by link.
+  noIndex        Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   blocks CmsBlock[]
 
@@ -1318,21 +1402,29 @@ model CmsBlock {
 }
 
 model BlogPost {
-  id            String        @id @default(cuid())
-  slug          String        @unique
-  title         String
-  author        String
-  featuredImage String?
-  category      String?
-  tags          String[]      @default([])
-  excerpt       String?
-  content       String
-  status        PublishStatus @default(DRAFT)
-  publishedAt   DateTime?
+  id             String        @id @default(cuid())
+  slug           String        @unique
+  title          String
+  author         String
+  featuredImage  String?
+  category       String?
+  tags           String[]      @default([])
+  excerpt        String?
+  content        String
+  status         PublishStatus @default(DRAFT)
+  publishedAt    DateTime?
   seoTitle       String?
   seoDescription String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  /// Social preview image. Falls back to the entity's own image, then the
+  /// site-wide default — a link with no card looks broken when shared.
+  ogImageUrl     String?
+  /// Overrides the computed canonical. Validated on save: an operator who
+  /// pastes a competitor's URL here would hand them the ranking.
+  canonicalUrl   String?
+  /// Keep this page out of search results while leaving it reachable by link.
+  noIndex        Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   @@index([slug])
   @@index([status, publishedAt])
@@ -1342,10 +1434,10 @@ model BlogPost {
 
 model Campaign {
   id        String   @id @default(cuid())
-  type      String   // BIRTHDAY, ANNIVERSARY, ABANDONED_CART, NEW_CUSTOMER, BACK_IN_STOCK, PRICE_DROP, ORDER_UPDATE
+  type      String // BIRTHDAY, ANNIVERSARY, ABANDONED_CART, NEW_CUSTOMER, BACK_IN_STOCK, PRICE_DROP, ORDER_UPDATE
   name      String
   isActive  Boolean  @default(true)
-  config    Json?    // delays, thresholds
+  config    Json? // delays, thresholds
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1359,34 +1451,34 @@ model Campaign {
 /// missing, inactive or malformed the sender falls back to the built-in text,
 /// because a silent non-send on ORDER_PLACED is worse than an unstyled email.
 model MessageTemplate {
-  id          String              @id @default(cuid())
-  key         String              @unique // order_confirmation, abandoned_cart, birthday...
-  channel     NotificationChannel
-  subject     String?
+  id           String              @id @default(cuid())
+  key          String              @unique // order_confirmation, abandoned_cart, birthday...
+  channel      NotificationChannel
+  subject      String?
   /// Sanitised on save — formatting, links and images only. Never raw markup.
-  body        String
+  body         String
   /// Optional plain-text alternative for clients that refuse HTML.
-  bodyText    String?
-  isActive    Boolean             @default(true)
+  bodyText     String?
+  isActive     Boolean             @default(true)
   /// Staff user id of the last editor, for the audit trail. Not a relation:
   /// the template must survive the staff member leaving.
   lastEditedBy String?
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
 }
 
 model Notification {
-  id         String             @id @default(cuid())
-  customerId String?
-  customer   Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  channel    NotificationChannel
+  id          String              @id @default(cuid())
+  customerId  String?
+  customer    Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  channel     NotificationChannel
   templateKey String?
-  target     String
-  payload    Json?
-  status     NotificationStatus @default(QUEUED)
-  error      String?
-  sentAt     DateTime?
-  createdAt  DateTime           @default(now())
+  target      String
+  payload     Json?
+  status      NotificationStatus  @default(QUEUED)
+  error       String?
+  sentAt      DateTime?
+  createdAt   DateTime            @default(now())
 
   @@index([status])
   @@index([customerId])
@@ -1409,7 +1501,7 @@ model SearchLog {
 // Provider-agnostic analytics event queue (GA4 etc. consume later).
 model AnalyticsEvent {
   id           String   @id @default(cuid())
-  name         String   // view_item, add_to_cart, purchase...
+  name         String // view_item, add_to_cart, purchase...
   sessionToken String?
   customerId   String?
   payload      Json?
@@ -1424,7 +1516,7 @@ model AuditLog {
   id        String   @id @default(cuid())
   userId    String?
   user      User?    @relation(fields: [userId], references: [id])
-  action    String   // RATE_UPDATE, PRODUCT_DELETE, ORDER_CANCEL...
+  action    String // RATE_UPDATE, PRODUCT_DELETE, ORDER_CANCEL...
   entity    String
   entityId  String?
   before    Json?
@@ -1481,7 +1573,6 @@ model MarketingTags {
   updatedAt DateTime @updatedAt
 }
 
-
 // Gap-free invoice sequence, one row per financial year.
 //
 // A GST invoice series must be sequential with no gaps, so the number cannot be
@@ -1491,7 +1582,7 @@ model MarketingTags {
 // number.
 model InvoiceCounter {
   id            String   @id @default(cuid())
-  financialYear String   @unique  // "2026-27"
+  financialYear String   @unique // "2026-27"
   lastNumber    Int      @default(0)
   updatedAt     DateTime @updatedAt
 }

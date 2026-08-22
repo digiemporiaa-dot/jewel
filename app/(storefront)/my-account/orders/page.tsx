@@ -4,13 +4,11 @@ import { getCurrentCustomer } from '@/lib/customer-session';
 import { getCustomerOrders } from '@/lib/order-detail';
 import { formatCurrency, formatDate } from '@/lib/utils/format';
 import AccountLogin from '../AccountLogin';
+import { privateMetadata } from '@/lib/seo/metadata';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'My Orders',
-  robots: { index: false, follow: false },
-};
+export const metadata: Metadata = privateMetadata('My Orders');
 
 export default async function MyOrdersPage() {
   const customer = await getCurrentCustomer();

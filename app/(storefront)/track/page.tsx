@@ -2,13 +2,17 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getOrderForView } from '@/lib/order-detail';
 import { formatDate } from '@/lib/utils/format';
+import { buildMetadata } from '@/lib/seo/metadata';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'Track Order',
-  description: 'Track your Maya Jewellers order.',
-};
+export function generateMetadata(): Promise<Metadata> {
+  return buildMetadata({
+    path: '/track',
+    fallbackTitle: 'Track Order',
+    fallbackDescription: 'Track your order.',
+  });
+}
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING_PAYMENT: 'Awaiting payment', CONFIRMED: 'Confirmed', IN_MAKING: 'In making',

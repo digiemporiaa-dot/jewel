@@ -9,13 +9,11 @@ import EmiNote from '@/components/storefront/EmiNote';
 import OrderSummary from '@/components/storefront/OrderSummary';
 import { resolvePayable } from '@/lib/checkout/totals';
 import { emiFor } from '@/lib/emi-settings';
+import { privateMetadata } from '@/lib/seo/metadata';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'Your Bag',
-  robots: { index: false, follow: false },
-};
+export const metadata: Metadata = privateMetadata('Your Bag');
 
 export default async function CartPage() {
   const token = await getSessionToken();

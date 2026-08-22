@@ -2,18 +2,23 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { getPublishedPage } from '@/lib/cms';
 import BlockRenderer from '@/components/cms/BlockRenderer';
+import { buildMetadata } from '@/lib/seo/metadata';
 
 export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const page = await getPublishedPage(slug);
-  if (!page) return { title: 'Not found' };
-  return {
-    title: page.seoTitle ?? page.title,
-    description: page.seoDescription ?? undefined,
-    alternates: { canonical: `/pages/${slug}` },
-  };
+  if (!page) return { title: 'Not found', robots: { index: false, follow: false } };
+  return buildMetadata({
+    path: `/pages/${slug}`,
+    fallbackTitle: page.title,
+    seoTitle: page.seoTitle,
+    seoDescription: page.seoDescription,
+    ogImageUrl: page.ogImageUrl,
+    canonicalUrl: page.canonicalUrl,
+    noIndex: page.noIndex,
+  });
 }
 
 export default async function CmsPageRoute({ params }: { params: Promise<{ slug: string }> }) {

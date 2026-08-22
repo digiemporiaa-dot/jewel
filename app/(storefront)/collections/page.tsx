@@ -2,14 +2,17 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getActiveCollections } from '@/lib/catalog';
 import ProductImage from '@/components/storefront/ProductImage';
+import { buildMetadata } from '@/lib/seo/metadata';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'Collections',
-  description: 'Curated jewellery collections from Maya Jewellers.',
-  alternates: { canonical: '/collections' },
-};
+export function generateMetadata(): Promise<Metadata> {
+  return buildMetadata({
+    path: '/collections',
+    fallbackTitle: 'Collections',
+    fallbackDescription: 'Curated jewellery collections.',
+  });
+}
 
 export default async function CollectionsPage() {
   const collections = await getActiveCollections(24);

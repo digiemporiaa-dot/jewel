@@ -3,14 +3,17 @@ import Link from 'next/link';
 import { listPublishedPosts } from '@/lib/cms';
 import { formatDate } from '@/lib/utils/format';
 import ProductImage from '@/components/storefront/ProductImage';
+import { buildMetadata } from '@/lib/seo/metadata';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'Journal',
-  description: 'Jewellery guides, craft stories and buying advice from Maya Jewellers.',
-  alternates: { canonical: '/blog' },
-};
+export function generateMetadata(): Promise<Metadata> {
+  return buildMetadata({
+    path: '/blog',
+    fallbackTitle: 'Journal',
+    fallbackDescription: 'Jewellery guides, craft stories and buying advice.',
+  });
+}
 
 export default async function BlogIndex() {
   const posts = await listPublishedPosts(24);

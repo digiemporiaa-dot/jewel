@@ -13,6 +13,7 @@ import ProductGrid from '@/components/storefront/ProductGrid';
 import Gallery from './Gallery';
 import BuyBox from './BuyBox';
 import { parseTenures } from '@/lib/emi';
+import { buildMetadata } from '@/lib/seo/metadata';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,20 +22,22 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const p = await getProductDetail(slug);
-  if (!p) return { title: 'Not found' };
-  const title = p.seoTitle ?? p.name;
-  const description = p.seoDescription ?? p.shortDescription ?? `${p.name} — ${p.categoryName} at Maya Jewellers.`;
-  const image = p.images[0]?.url;
-  return {
-    title,
-    description,
-    alternates: { canonical: `/p/${slug}` },
-    openGraph: {
-      title, description, type: 'website', url: `${SITE_URL}/p/${slug}`,
-      images: image ? [{ url: image }] : undefined,
-    },
-    twitter: { card: 'summary_large_image', title, description },
-  };
+  if (!p) return { title: 'Not found', robots: { index: false, follow: false } };
+
+  // The canonical is always the bare product path. Variant choice lives in
+  // component state rather than the URL, so one product is one canonical and
+  // its ranking is never split across `?variant=` permutations.
+  return buildMetadata({
+    path: `/p/${slug}`,
+    fallbackTitle: p.name,
+    seoTitle: p.seoTitle,
+    seoDescription: p.seoDescription,
+    fallbackDescription: p.shortDescription ?? `${p.name} — ${p.categoryName}.`,
+    ogImageUrl: p.ogImageUrl,
+    fallbackImage: p.images[0]?.url ?? null,
+    canonicalUrl: p.canonicalUrl,
+    noIndex: p.noIndex,
+  });
 }
 
 export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {

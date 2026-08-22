@@ -5,6 +5,7 @@ import { getPublishedPost } from '@/lib/cms';
 import { getStoreSettings } from '@/lib/store';
 import { formatDate } from '@/lib/utils/format';
 import ProductImage from '@/components/storefront/ProductImage';
+import { buildMetadata } from '@/lib/seo/metadata';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,17 +14,31 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const post = await getPublishedPost(slug);
-  if (!post) return { title: 'Not found' };
+  if (!post) return { title: 'Not found', robots: { index: false, follow: false } };
+
+  const meta = await buildMetadata({
+    path: `/blog/${slug}`,
+    fallbackTitle: post.title,
+    seoTitle: post.seoTitle,
+    seoDescription: post.seoDescription,
+    fallbackDescription: post.excerpt,
+    ogImageUrl: post.ogImageUrl,
+    fallbackImage: post.featuredImage,
+    canonicalUrl: post.canonicalUrl,
+    noIndex: post.noIndex,
+  });
+
+  // An article carries a publication date and an author; the shared builder
+  // only knows about pages, so those are layered on here rather than adding a
+  // per-type branch to something every route depends on.
   return {
-    title: post.seoTitle ?? post.title,
-    description: post.seoDescription ?? post.excerpt ?? undefined,
-    alternates: { canonical: `/blog/${slug}` },
+    ...meta,
     openGraph: {
-      title: post.title,
-      description: post.excerpt ?? undefined,
+      ...meta.openGraph,
       type: 'article',
       publishedTime: post.publishedAt?.toISOString(),
-      images: post.featuredImage ? [{ url: post.featuredImage }] : undefined,
+      modifiedTime: post.updatedAt.toISOString(),
+      authors: post.author ? [post.author] : undefined,
     },
   };
 }

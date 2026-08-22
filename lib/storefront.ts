@@ -123,9 +123,27 @@ function toCard(p: Prisma.ProductGetPayload<{ include: { category: { select: { n
   };
 }
 
+/** The SEO fields an entity carries, for `buildMetadata`. */
+export type ListingSeo = {
+  seoTitle: string | null;
+  seoDescription: string | null;
+  ogImageUrl: string | null;
+  canonicalUrl: string | null;
+  noIndex: boolean;
+  /** The entity's own image, a better social card than the site default. */
+  image: string | null;
+};
+
+/** A listing with no backing row — a virtual category, or search. */
+const NO_SEO: ListingSeo = {
+  seoTitle: null, seoDescription: null, ogImageUrl: null,
+  canonicalUrl: null, noIndex: false, image: null,
+};
+
 export type Listing = {
   title: string;
   description: string | null;
+  seo: ListingSeo;
   items: ProductCardData[];
   total: number;
   page: number;
@@ -135,7 +153,7 @@ export type Listing = {
 async function runListing(
   baseWhere: Prisma.ProductWhereInput,
   params: ListingParams,
-  meta: { title: string; description?: string | null }
+  meta: { title: string; description?: string | null; seo?: ListingSeo }
 ): Promise<Listing> {
   const page = Math.max(1, params.page ?? 1);
   const where: Prisma.ProductWhereInput = {
@@ -156,6 +174,7 @@ async function runListing(
   return {
     title: meta.title,
     description: meta.description ?? null,
+    seo: meta.seo ?? NO_SEO,
     items: items.map(toCard),
     total,
     page,
@@ -176,6 +195,14 @@ export async function getCategoryListing(slug: string, params: ListingParams): P
   return runListing({ categoryId: { in: categoryIds } }, params, {
     title: category.name,
     description: category.description,
+    seo: {
+      seoTitle: category.seoTitle,
+      seoDescription: category.seoDescription,
+      ogImageUrl: category.ogImageUrl,
+      canonicalUrl: category.canonicalUrl,
+      noIndex: category.noIndex,
+      image: category.imageUrl,
+    },
   });
 }
 
@@ -185,6 +212,14 @@ export async function getCollectionListing(slug: string, params: ListingParams):
   return runListing({ collections: { some: { collectionId: collection.id } } }, params, {
     title: collection.name,
     description: collection.description,
+    seo: {
+      seoTitle: collection.seoTitle,
+      seoDescription: collection.seoDescription,
+      ogImageUrl: collection.ogImageUrl,
+      canonicalUrl: collection.canonicalUrl,
+      noIndex: collection.noIndex,
+      image: collection.imageUrl,
+    },
   });
 }
 

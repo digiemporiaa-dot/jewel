@@ -2,14 +2,17 @@ import type { Metadata } from 'next';
 import { getStoreSettings } from '@/lib/store';
 import { getInterestProducts } from './actions';
 import AppointmentForm from './AppointmentForm';
+import { buildMetadata } from '@/lib/seo/metadata';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'Book an Appointment',
-  description: 'Book a showroom visit or a video consultation with our jewellery consultants.',
-  alternates: { canonical: '/appointments' },
-};
+export function generateMetadata(): Promise<Metadata> {
+  return buildMetadata({
+    path: '/appointments',
+    fallbackTitle: 'Book an Appointment',
+    fallbackDescription: 'Book a showroom visit or a video consultation with our jewellery consultants.',
+  });
+}
 
 export default async function AppointmentsPage({
   searchParams,

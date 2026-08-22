@@ -1,4 +1,6 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
+import { buildMetadata } from '@/lib/seo/metadata';
 import { getStoreSettings } from '@/lib/store';
 import {
   getTopCategories, getActiveCollections,
@@ -9,6 +11,19 @@ import { getWishlistProductIds } from '@/lib/wishlist';
 import ProductRow from '@/components/storefront/ProductRow';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * The home page needs its own metadata for one reason: the canonical.
+ *
+ * Inheriting from the root layout gave it a title and a description but no
+ * `<link rel="canonical">`, so `/`, `/?utm_source=…` and any other query string
+ * were all indexable as separate URLs of the busiest page on the site.
+ */
+export function generateMetadata(): Promise<Metadata> {
+  // `absoluteTitle` because the site default title already names the brand;
+  // letting the template add it again gives "Maya Jewellers — … · Maya Jewellers".
+  return buildMetadata({ path: '/', fallbackTitle: '' }, { absoluteTitle: true });
+}
 
 export default async function HomePage() {
   const [store, categories, collections, featured, newArrivals, bestSellers, savedIds] = await Promise.all([

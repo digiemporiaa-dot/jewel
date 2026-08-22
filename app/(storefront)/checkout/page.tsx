@@ -6,13 +6,11 @@ import { getCart } from '@/lib/cart';
 import { getStoreSettings } from '@/lib/store';
 import { getCurrentCustomer } from '@/lib/customer-session';
 import CheckoutClient from './CheckoutClient';
+import { privateMetadata } from '@/lib/seo/metadata';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata: Metadata = {
-  title: 'Checkout',
-  robots: { index: false, follow: false },
-};
+export const metadata: Metadata = privateMetadata('Checkout');
 
 export default async function CheckoutPage() {
   const token = await getSessionToken();
