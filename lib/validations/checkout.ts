@@ -18,6 +18,9 @@ export const addressSchema = z.object({
 });
 
 export const placeOrderSchema = z.object({
+  // A code only. The discount is computed server-side; a browser-sent amount is
+  // never trusted (RULE 1).
+  couponCode: z.string().trim().max(40).optional().or(z.literal('')),
   contactName: z.string().trim().min(2, 'Name is required').max(80),
   contactPhone: phoneSchema,
   contactEmail: z.string().trim().email('Enter a valid email').optional().or(z.literal('')),

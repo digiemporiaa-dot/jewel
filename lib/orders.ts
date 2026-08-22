@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { getCart, type CartSummary } from '@/lib/cart';
 import { getStoreSettings } from '@/lib/store';
 import { buildTaxBreakup, resolveStateCode, type TaxLineInput } from '@/lib/tax/gst';
+import { evaluateCoupon, claimCouponUse, applyDiscountToTotals } from '@/lib/coupons/apply';
 import { getCurrentRates } from '@/lib/rates';
 import { reserveStock, releaseStock, OutOfStockError } from '@/lib/inventory';
 import { isRateLockValid } from '@/lib/pricing';
@@ -27,6 +28,8 @@ export type CreateOrderInput = {
   shippingAddress: AddressInput;
   billingAddress?: AddressInput;
   paymentMethod: PaymentMethod;
+  /** A code only — never a discount amount. The server decides what it is worth. */
+  couponCode?: string | null;
   // NOTE: no amounts are accepted from the caller. Totals are always recomputed.
 };
 
@@ -77,7 +80,27 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
   const priceless = cart.lines.find((l) => l.error || !l.breakup);
   if (priceless) throw new CheckoutError('Some items could not be priced. Please review your bag.');
 
-  const grandTotal = new Decimal(cart.grandTotal);
+  // ── Coupon ───────────────────────────────────────────────────────────────────
+  //
+  // Re-validated here even though the checkout page already checked it: rates
+  // move, carts sit open for hours, and another shopper may have taken the last
+  // use in between. The browser sends a code and nothing else — a client-supplied
+  // discount is the same class of bug as a client-supplied price (RULE 1).
+  //
+  // The claim itself happens inside the transaction below; this is the read that
+  // decides whether the order can proceed at all.
+  const couponResult = input.couponCode
+    ? await evaluateCoupon({ code: input.couponCode, cart, customerId: input.customerId ?? null })
+    : null;
+  if (input.couponCode && couponResult && !couponResult.ok) {
+    throw new CheckoutError(couponResult.error);
+  }
+  const couponCalc = couponResult?.ok ? couponResult.calculation : null;
+  const totals = applyDiscountToTotals(cart, couponCalc);
+
+  // Thresholds are measured against what the customer actually pays, so a
+  // coupon can move an order below the COD ceiling or the verification limit.
+  const grandTotal = new Decimal(totals.grandTotal);
 
   // ── Rules ──────────────────────────────────────────────────────────────────
   const requiresCall =
@@ -179,9 +202,14 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
         lines: cart.lines.map<TaxLineInput>((line) => {
           const v = line.variantId ? vmap.get(line.variantId) : null;
           const perUnitTaxable = new Decimal(line.breakup?.taxable ?? '0');
+          // Net of any coupon: GST is charged on the discounted value, so the
+          // invoice's tax must be computed from the same base.
+          const lineDiscount = new Decimal(
+            couponCalc?.perLine.find((l) => l.itemId === line.itemId)?.discount ?? '0'
+          );
           return {
             hsnCode: v?.product.hsnCode ?? '',
-            taxableValue: perUnitTaxable.times(line.quantity).toFixed(2),
+            taxableValue: Decimal.max(perUnitTaxable.times(line.quantity).minus(lineDiscount), 0).toFixed(2),
             gstRate: line.breakup?.gstPercent ?? store.gstPercentDefault.toString(),
           };
         }),
@@ -190,6 +218,17 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
 
   // ── Persist in a transaction; reserve inventory for ready-to-ship lines. ──────
   const created = await prisma.$transaction(async (tx) => {
+    // Claim the redemption first. Two shoppers taking the last use of a code at
+    // the same moment must not both succeed — at these order values one leaked
+    // redemption is a ₹50,000 mistake. Failing here aborts the whole
+    // transaction, so no order exists claiming a discount the store refused.
+    if (couponResult?.ok) {
+      const claimed = await claimCouponUse(tx, couponResult.couponId);
+      if (!claimed) {
+        throw new CheckoutError('That code was fully redeemed while you were checking out');
+      }
+    }
+
     const order = await tx.order.create({
       data: {
         orderNumber,
@@ -202,17 +241,34 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
         shippingAddress: input.shippingAddress as unknown as Prisma.InputJsonValue,
         billingAddress: (input.billingAddress ?? input.shippingAddress) as unknown as Prisma.InputJsonValue,
         fulfilmentType,
-        subtotal: cart.taxableTotal,
+        subtotal: totals.taxableTotal,
         makingTotal: cart.makingTotal,
-        discountTotal: '0',
-        gstTotal: cart.gstTotal,
-        shippingTotal: cart.shipping,
-        grandTotal: cart.grandTotal,
+        discountTotal: totals.discountTotal,
+        gstTotal: totals.gstTotal,
+        shippingTotal: totals.shipping,
+        grandTotal: totals.grandTotal,
+        couponId: couponResult?.ok ? couponResult.couponId : null,
+        couponCode: couponResult?.ok ? couponResult.code : null,
         amountPaid: '0',
         currency: cart.currency,
         paymentMethod: input.paymentMethod,
         paymentStatus: PaymentStatus.PENDING,
-        rateSnapshot: rateSnapshot as unknown as Prisma.InputJsonValue,
+        rateSnapshot: {
+          ...rateSnapshot,
+          // Frozen alongside the rates: what the coupon was worth, on which
+          // component, and against which lines. A later change to the coupon
+          // must not alter what this order was charged.
+          coupon: couponCalc
+            ? {
+                code: couponResult?.ok ? couponResult.code : null,
+                appliesTo: couponCalc.appliesTo,
+                discountTotal: couponCalc.discountTotal,
+                eligibleBase: couponCalc.eligibleBase,
+                freeShipping: couponCalc.freeShipping,
+                perLine: couponCalc.perLine,
+              }
+            : null,
+        } as unknown as Prisma.InputJsonValue,
         rateLockedAt: new Date(),
         // The invoice number is deliberately NOT allocated here — an order that
         // is never paid would burn a number and leave a gap in a series that GST

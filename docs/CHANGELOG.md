@@ -1,5 +1,100 @@
 # Changelog
 
+## Phase 3 · Item 2 — Jewellery-aware coupons · 2026-08-22
+
+In jewellery, discounts belong on **making charges**. Metal sells at the live
+rate with effectively no margin, so "10% off the order total" on a ₹4,00,000
+necklace gives away ₹40,000 that is overwhelmingly gold sold at cost.
+
+Measured on the live site with two coupons that differ only in scope, on a
+₹24,432 ring:
+
+| Same 10% coupon | Discount |
+| --- | --- |
+| `MAKING_CHARGES` | **₹161** |
+| `ORDER_TOTAL` | **₹2,357** |
+
+Fourteen times the giveaway, for the same headline offer.
+
+### Schema
+
+`CouponScope` enum and, on `Coupon`: `appliesTo` (default `MAKING_CHARGES`),
+`categoryIds`, `collectionIds`, `metalTypes`, `purities`, `minWeightGrams`,
+`maxWeightGrams`, `excludeDiscounted`, `firstOrderOnly`, `stackable`. Existing
+coupons default to `MAKING_CHARGES` — the conservative direction, so no code
+suddenly gives away more than it used to.
+
+### Calculation
+
+`lib/coupons/calculate.ts` is pure and fully tested. **Computed per eligible
+line, on one named component** — never as a percentage of the bag total.
+
+- Filters narrow, never widen: an empty list means no restriction, and a line
+  must match **every** list that is set.
+- Weight bounds compare **per piece**: "above 10g" means a 10g piece, not two 5g
+  ones that add up.
+- A flat coupon spreads across eligible lines in proportion to their base and
+  never exceeds it — ₹5,000 off ₹1,000 of making charges would otherwise pay the
+  shopper.
+- `maxDiscount` scales the per-line parts down together so they still sum to the
+  capped total.
+- The discount comes off the **taxable value**, so GST is charged on the reduced
+  amount. Discounting after tax would have the store remitting GST on money it
+  never received.
+
+### Redemption safety
+
+`usageCount` is claimed by a conditional `updateMany` **inside the order
+transaction**, before anything else commits. Two shoppers taking the last use at
+the same moment cannot both succeed; at these order values one leaked redemption
+is a ₹50,000 mistake. If the claim fails the whole transaction aborts, so no
+order can exist holding a discount the store refused.
+
+Validity is re-checked at order creation, not only when the code is entered —
+rates move, carts sit open for hours, and the last use may go in between. The
+browser sends a **code and nothing else**; a client-supplied discount is the same
+class of bug as a client-supplied price.
+
+The applied discount is frozen into the order's price snapshot next to the rate
+lock, with the per-line detail, so a later edit to the coupon cannot change what
+a past order was charged.
+
+### Admin
+
+The coupon section was a placeholder; it is now a real list plus create and edit
+screens. The scope selector carries the trade-off in plain terms, and
+`ORDER_TOTAL` / `METAL_VALUE` show a warning with the actual arithmetic.
+Deactivate rather than delete — orders reference the coupon they were placed
+with, and refunds surface months later. `usageCount` is deliberately not
+editable.
+
+### Verified
+
+`tsc` clean · `next build` clean · **214 tests** (32 new).
+
+A complete checkout was driven through the browser against a running production
+build, ending in a real order:
+
+```
+couponCode        LIVEMAKING
+discountTotal     161.20        (10% of ₹1,612 making charges)
+subtotal(taxable) 23,413.68     (reduced by the discount)
+gstTotal            702.41      (3% of the DISCOUNTED base)
+tax split         INTRA_STATE cgst=351.21 sgst=351.20
+usageCount        0 → 1
+```
+
+Concurrency: ten simultaneous claims on a coupon with one use left produced
+**exactly one** winner; forty claims on a limit of five produced exactly five.
+Those tests need a real database — they run against Postgres when reachable and
+skip cleanly when not.
+
+### Operator note
+
+Coupons default to discounting **making charges only**. If a campaign genuinely
+needs to discount metal, the scope has to be changed deliberately, and the admin
+will warn you.
+
 ## Phase 3 · Item 1 — HSN codes and a GST-correct invoice · 2026-08-21
 
 An invoice missing HSN or the wrong tax split is what gets flagged in a GST

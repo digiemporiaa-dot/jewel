@@ -81,6 +81,19 @@ enum CouponType {
   FREE_SHIPPING
 }
 
+/// What a coupon discounts.
+///
+/// Defaults to MAKING_CHARGES because in jewellery that is where the margin is.
+/// Metal sells at the live rate with effectively no markup, so a discount on
+/// ORDER_TOTAL is mostly given away on gold sold at cost — 10% off a ₹4,00,000
+/// necklace is ₹40,000, almost none of which is margin.
+enum CouponScope {
+  MAKING_CHARGES
+  METAL_VALUE
+  STONE_VALUE
+  ORDER_TOTAL
+}
+
 enum OrderStatus {
   PENDING_PAYMENT
   PAYMENT_CONFIRMED
@@ -857,6 +870,23 @@ model Coupon {
   startsAt     DateTime?
   endsAt       DateTime?
   isActive     Boolean    @default(true)
+
+  // What the discount is calculated on. See CouponScope.
+  appliesTo    CouponScope @default(MAKING_CHARGES)
+
+  // Scoping filters. Empty array = no restriction on that dimension. A line must
+  // match every non-empty filter to be eligible, and the discount is computed
+  // only from the lines that match.
+  categoryIds   String[]
+  collectionIds String[]
+  metalTypes    String[]   // GOLD, SILVER, PLATINUM …
+  purities      String[]   // 22K, 18K, 925 …
+  minWeightGrams Decimal?  @db.Decimal(10, 3)
+  maxWeightGrams Decimal?  @db.Decimal(10, 3)
+
+  excludeDiscounted Boolean @default(false)
+  firstOrderOnly    Boolean @default(false)
+  stackable         Boolean @default(false)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 

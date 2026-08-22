@@ -10,6 +10,8 @@ import { checkLimit, LIMITS } from '@/lib/rate-limit';
 import { getClientIp } from '@/lib/request-id';
 import { phoneSchema, placeOrderSchema } from '@/lib/validations/checkout';
 import { createOrder, confirmPayment, markPaymentFailed, CheckoutError } from '@/lib/orders';
+import { getCart } from '@/lib/cart';
+import { evaluateCoupon, applyDiscountToTotals } from '@/lib/coupons/apply';
 import { createRazorpayOrder, verifyRazorpayPayment, publicKeyId } from '@/lib/payments/razorpay';
 import { sendOrderConfirmation, sendPaymentConfirmation } from '@/lib/email/notifications';
 
@@ -86,6 +88,7 @@ export async function placeOrder(input: unknown): Promise<PlaceResult> {
       pan: d.pan || undefined,
       shippingAddress: d.shippingAddress,
       paymentMethod: d.paymentMethod,
+      couponCode: d.couponCode || null,
     });
 
     // Persist the contact/address on the customer for reuse (best-effort).
@@ -150,4 +153,42 @@ export async function confirmCheckoutPayment(params: {
 
 export async function abandonPayment(orderId: string): Promise<void> {
   await markPaymentFailed(orderId, 'abandoned by customer');
+}
+
+
+export type CouponPreview =
+  | { ok: true; code: string; discount: string; freeShipping: boolean; appliesTo: string; grandTotal: string }
+  | { ok: false; error: string };
+
+/**
+ * Check a code against the current bag and show what it would take off.
+ *
+ * Purely a preview: nothing is reserved and no usage is claimed. The
+ * authoritative check runs again at order creation, because a cart can sit open
+ * for hours and another shopper may take the last use in between.
+ */
+export async function previewCouponAction(code: string): Promise<CouponPreview> {
+  const sessionToken = await getSessionToken();
+  if (!sessionToken) return { ok: false, error: 'Your bag session expired' };
+
+  // Coupon codes are guessable, so an unlimited preview endpoint is a way to
+  // enumerate them.
+  const rl = await checkLimit(`coupon:${await getClientIp()}`, LIMITS.publicAction);
+  if (!rl.allowed) return { ok: false, error: 'Too many attempts. Please wait a moment.' };
+
+  const [cart, customerId] = await Promise.all([getCart(sessionToken), getCustomerId()]);
+  if (cart.lines.length === 0) return { ok: false, error: 'Your bag is empty' };
+
+  const result = await evaluateCoupon({ code, cart, customerId });
+  if (!result.ok) return { ok: false, error: result.error };
+
+  const totals = applyDiscountToTotals(cart, result.calculation);
+  return {
+    ok: true,
+    code: result.code,
+    discount: totals.discountTotal,
+    freeShipping: result.calculation.freeShipping,
+    appliesTo: result.calculation.appliesTo,
+    grandTotal: totals.grandTotal,
+  };
 }
