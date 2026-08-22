@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import ImageUploadField from '@/components/admin/ImageUploadField';
 import type { Result } from './actions';
 
 export type SeoDefaultsForm = {
@@ -104,13 +105,14 @@ export default function SeoForm({
           Used wherever a page has no description of its own. Without one, Google writes its own
           snippet from the page.
         </p>
-        <L label="Default social image URL">
-          <input name="defaultOgImageUrl" defaultValue={defaults.defaultOgImageUrl} placeholder="/og-default.jpg" className="c-inp" />
-        </L>
-        <p className="text-xs text-ink-soft">
-          Shown when a link is shared and the page has no image of its own. 1200×630 works
-          everywhere.
-        </p>
+        <ImageUploadField
+          name="defaultOgImageUrl"
+          label="Default social image"
+          prefix="seo"
+          defaultValue={defaults.defaultOgImageUrl}
+          hint="Shown when a link is shared and the page has no image of its own. 1200×630 works everywhere."
+          altSourceNote="Social previews take their description from the page title."
+        />
       </section>
 
       <section className="space-y-3 border border-line bg-white p-4">

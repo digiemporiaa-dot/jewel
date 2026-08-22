@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import ImageUploadField from '@/components/admin/ImageUploadField';
 import { createPostAction, updatePostAction, deletePostAction } from './actions';
 
 export type PostDefaults = {
@@ -35,7 +36,6 @@ export default function PostForm({ defaults = {} }: { defaults?: PostDefaults })
         <L label="Author"><input name="author" defaultValue={defaults.author ?? 'Maya Jewellers'} required className="p-inp" /></L>
         <L label="Category"><input name="category" defaultValue={defaults.category} className="p-inp" /></L>
         <L label="Tags (comma-separated)"><input name="tags" defaultValue={defaults.tags} className="p-inp" /></L>
-        <L label="Featured image URL"><input name="featuredImage" defaultValue={defaults.featuredImage} className="p-inp" /></L>
         <L label="Status">
           <select name="status" defaultValue={defaults.status ?? 'DRAFT'} className="p-inp">
             <option value="DRAFT">Draft</option>
@@ -44,6 +44,13 @@ export default function PostForm({ defaults = {} }: { defaults?: PostDefaults })
         </L>
         <L label="Publish date"><input name="publishedAt" type="datetime-local" defaultValue={defaults.publishedAt} className="p-inp" /></L>
       </div>
+      <ImageUploadField
+        name="featuredImage"
+        label="Featured image"
+        prefix="blog"
+        defaultValue={defaults.featuredImage}
+        altSourceNote="Described by the post title wherever it appears."
+      />
       <L label="Excerpt"><textarea name="excerpt" defaultValue={defaults.excerpt} rows={2} className="p-inp" /></L>
       <L label="Content (one paragraph per line)"><textarea name="content" defaultValue={defaults.content} rows={12} required className="p-inp font-mono text-xs" /></L>
       <div className="grid sm:grid-cols-2 gap-3">

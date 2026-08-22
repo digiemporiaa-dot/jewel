@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import { checkImageUrl } from '@/lib/uploads/constraints';
 import { assertPermission } from '@/lib/auth/guard';
 import { writeAudit } from '@/lib/audit';
 import { prisma } from '@/lib/prisma';
@@ -31,7 +32,17 @@ const baseSchema = z.object({
   name: z.string().min(1, 'Name is required').max(80),
   slug: z.string().max(80).optional(),
   description: z.string().max(2000).nullable().optional(),
-  imageUrl: z.string().url('Image URL must be a valid URL').max(500).nullable().optional(),
+  // Not `.url()`: a path in `public/` is a legitimate image address, and the
+  // shared check is the one that refuses `javascript:` and `data:`.
+  imageUrl: z
+    .string()
+    .max(500)
+    .superRefine((value, ctx) => {
+      const verdict = checkImageUrl(value);
+      if (!verdict.ok) ctx.addIssue({ code: z.ZodIssueCode.custom, message: verdict.error });
+    })
+    .nullable()
+    .optional(),
   order: z.coerce.number().int().min(0).max(9999).default(0),
   isActive: z.boolean().default(true),
   parentId: z.string().nullable().optional(),

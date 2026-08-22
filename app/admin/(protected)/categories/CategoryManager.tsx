@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils/cn';
+import ImageUploadField from '@/components/admin/ImageUploadField';
 import { createCategoryAction, updateCategoryAction, deleteCategoryAction } from './actions';
 
 export type CategoryRow = {
@@ -93,9 +94,7 @@ function CreateForm({ categories }: { categories: CategoryRow[] }) {
             </select>
           </Field>
         </div>
-        <Field label="Image URL" hint="Paste a hosted image URL.">
-          <input name="imageUrl" type="url" maxLength={500} className={inputCls} placeholder="https://…" />
-        </Field>
+        <ImageUploadField name="imageUrl" label="Image" prefix="categories" altSourceNote="Described by the category name." />
         <Field label="Description">
           <textarea name="description" rows={2} maxLength={2000} className={inputCls} />
         </Field>
@@ -239,9 +238,7 @@ function CategoryRowItem({ category, categories }: { category: CategoryRow; cate
               </select>
             </Field>
           </div>
-          <Field label="Image URL">
-            <input name="imageUrl" type="url" defaultValue={category.imageUrl ?? ''} maxLength={500} className={inputCls} />
-          </Field>
+          <ImageUploadField name="imageUrl" label="Image" prefix="categories" defaultValue={category.imageUrl ?? ''} altSourceNote="Described by the category name." />
           <Field label="Description">
             <textarea name="description" rows={2} defaultValue={category.description ?? ''} maxLength={2000} className={inputCls} />
           </Field>

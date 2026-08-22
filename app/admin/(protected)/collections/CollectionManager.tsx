@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils/cn';
+import ImageUploadField from '@/components/admin/ImageUploadField';
 import { createCollectionAction, updateCollectionAction, deleteCollectionAction } from './actions';
 
 export type CollectionRow = {
@@ -78,9 +79,7 @@ function CreateForm() {
             </select>
           </Field>
         </div>
-        <Field label="Image URL" hint="Paste a hosted image URL.">
-          <input name="imageUrl" type="url" maxLength={500} className={inputCls} placeholder="https://…" />
-        </Field>
+        <ImageUploadField name="imageUrl" label="Image" prefix="collections" altSourceNote="Described by the collection name." />
         <Field label="Description">
           <textarea name="description" rows={2} maxLength={2000} className={inputCls} />
         </Field>
@@ -194,9 +193,7 @@ function CollectionRowItem({ collection }: { collection: CollectionRow }) {
               </select>
             </Field>
           </div>
-          <Field label="Image URL">
-            <input name="imageUrl" type="url" defaultValue={collection.imageUrl ?? ''} maxLength={500} className={inputCls} />
-          </Field>
+          <ImageUploadField name="imageUrl" label="Image" prefix="collections" defaultValue={collection.imageUrl ?? ''} altSourceNote="Described by the collection name." />
           <Field label="Description">
             <textarea name="description" rows={2} defaultValue={collection.description ?? ''} maxLength={2000} className={inputCls} />
           </Field>

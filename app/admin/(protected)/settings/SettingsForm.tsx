@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import ImageUploadField from '@/components/admin/ImageUploadField';
 import { updateSettingsAction } from './actions';
 
 export type SettingsDefaults = Record<string, string | number | boolean | undefined>;
@@ -31,6 +32,24 @@ export default function SettingsForm({ defaults }: { defaults: SettingsDefaults 
         <Grid>
           <F label="Brand name"><input name="brandName" defaultValue={v('brandName')} required className="s-inp" /></F>
           <F label="Tagline"><input name="tagline" defaultValue={v('tagline')} className="s-inp" /></F>
+        </Grid>
+        <Grid>
+          <ImageUploadField
+            name="logoUrl"
+            label="Logo"
+            prefix="brand"
+            defaultValue={v('logoUrl')}
+            hint="Used in the header and in the shop's structured data."
+            altSourceNote="Described by the brand name."
+          />
+          <ImageUploadField
+            name="faviconUrl"
+            label="Favicon"
+            prefix="brand"
+            defaultValue={v('faviconUrl')}
+            hint="The small icon in a browser tab. A square PNG works everywhere."
+            altSourceNote="Browsers do not read alt text for a favicon."
+          />
         </Grid>
       </Section>
 

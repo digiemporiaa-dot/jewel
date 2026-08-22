@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils/cn';
+import ImageUploadField from '@/components/admin/ImageUploadField';
 import { BLOCK_LABELS } from '@/lib/cms/blocks';
 import {
   resolveBlockStyle, parseBlockStyle, styleControlsFor, styleOptions,
@@ -25,12 +26,25 @@ const BLOCK_TYPES = Object.keys(BLOCK_LABELS) as (keyof typeof BLOCK_LABELS)[];
  * but showing two controls for one visual outcome would only invite them to
  * disagree.
  */
-const FIELDS: Record<string, { key: string; label: string; kind: 'text' | 'textarea' | 'number' | 'select'; options?: string[] }[]> = {
+type Field = {
+  key: string;
+  label: string;
+  kind: 'text' | 'textarea' | 'number' | 'select' | 'image';
+  options?: string[];
+  /** For `image` fields: which key holds the alt text, when the block stores one. */
+  altKey?: string;
+  hint?: string;
+};
+
+const FIELDS: Record<string, Field[]> = {
   HERO: [
     { key: 'eyebrow', label: 'Eyebrow', kind: 'text' },
     { key: 'heading', label: 'Heading', kind: 'text' },
     { key: 'subheading', label: 'Subheading', kind: 'textarea' },
-    { key: 'imageUrl', label: 'Image URL', kind: 'text' },
+    { key: 'imageUrl', label: 'Image', kind: 'image', altKey: 'imageAlt' },
+    // Present in the schema since the hero was built, but until now there was no
+    // field for it, so no shop could ever set one.
+    { key: 'mobileImageUrl', label: 'Mobile image (optional)', kind: 'image', hint: 'Used below 640px.' },
     { key: 'ctaLabel', label: 'Button label', kind: 'text' },
     { key: 'ctaHref', label: 'Button link', kind: 'text' },
   ],
@@ -39,7 +53,7 @@ const FIELDS: Record<string, { key: string; label: string; kind: 'text' | 'texta
     // "Address, not embed code" is in the label because that is where an
     // operator is looking when they are about to paste the wrong thing.
     { key: 'videoUrl', label: 'YouTube or Vimeo address (not embed code)', kind: 'text' },
-    { key: 'posterUrl', label: 'Still image URL (optional; needed for Vimeo)', kind: 'text' },
+    { key: 'posterUrl', label: 'Still image (optional; needed for Vimeo)', kind: 'image' },
     { key: 'caption', label: 'Caption', kind: 'textarea' },
   ],
   RICH_TEXT: [
@@ -49,7 +63,7 @@ const FIELDS: Record<string, { key: string; label: string; kind: 'text' | 'texta
   IMAGE_TEXT: [
     { key: 'heading', label: 'Heading', kind: 'text' },
     { key: 'body', label: 'Body', kind: 'textarea' },
-    { key: 'imageUrl', label: 'Image URL', kind: 'text' },
+    { key: 'imageUrl', label: 'Image', kind: 'image', altKey: 'imageAlt' },
     { key: 'ctaLabel', label: 'Button label', kind: 'text' },
     { key: 'ctaHref', label: 'Button link', kind: 'text' },
   ],
@@ -178,6 +192,23 @@ function BlockCard({
 
       <div className="grid sm:grid-cols-2 gap-3">
         {fields.map((f) => (
+          f.kind === 'image' ? (
+            <div key={f.key} className="sm:col-span-2">
+              <ImageUploadField
+                label={f.label}
+                prefix="cms"
+                hint={f.hint}
+                value={String(data[f.key] ?? '')}
+                onChange={(v) => set(f.key, v)}
+                altName={f.altKey}
+                altLabel="Alt text"
+                altValue={f.altKey ? String(data[f.altKey] ?? '') : undefined}
+                onAltChange={f.altKey ? (v) => set(f.altKey!, v) : undefined}
+                requireAlt={Boolean(f.altKey)}
+                altSourceNote={f.altKey ? undefined : 'Described by the block heading.'}
+              />
+            </div>
+          ) : (
           <label key={f.key} className={cn('block', f.kind === 'textarea' && 'sm:col-span-2')}>
             <span className="block mb-1 text-xs text-ink-soft">{f.label}</span>
             {f.kind === 'textarea' ? (
@@ -195,6 +226,7 @@ function BlockCard({
               />
             )}
           </label>
+          )
         ))}
       </div>
 

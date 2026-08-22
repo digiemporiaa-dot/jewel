@@ -1,5 +1,75 @@
 # Changelog
 
+## Phase 3 · Item 9 — One image field, everywhere · 2026-08-22
+
+Uploading a picture used to be a product-editor privilege. The CMS, the blog, the
+categories and collections, the social image and the brand settings all took a
+URL and nothing else, which meant every non-product image had to be hosted
+somewhere else first.
+
+### One upload path, not a second one
+
+`components/admin/ImageUploadField.tsx` is the whole surface: a preview, an
+address input, an upload button, a progress bar and — where the model has
+somewhere to keep it — an alt-text field. Every screen uses it. The rule that
+mattered while building it was to extract the existing uploader rather than write
+a new one, because a second uploader means a second set of type and size rules,
+and the second set is always the one that goes stale.
+
+The limits now live in `lib/uploads/constraints.ts`, which has no `server-only`
+and no Node import, so the browser and the presign route check the same numbers
+and produce the same wording. The browser check is a courtesy — it refuses a 9 MB
+photo in the same second instead of after the upload — and the server check is
+the one that counts.
+
+`fetch` reports no upload progress, so the PUT goes through `XMLHttpRequest`. On
+a shop's connection an 8 MB photo is otherwise a silent minute, and a silent
+minute is when somebody clicks the button again.
+
+### Three things that were quietly wrong
+
+**The upload prefix was a free string.** It is interpolated into the object key
+as `${prefix}/${uuid}.${ext}`, so `../../` was a path the caller chose. It is now
+a closed list of seven folders, rejected at the route and defaulted at the
+storage layer.
+
+**The presign route demanded `products.manage`.** Correct when the product
+editor was the only uploader; now it accepts any of the six permissions that
+legitimately put an image on a screen. Dispatch still cannot write to the bucket.
+
+**Product images had optional alt text**, and the upload path filled it with the
+file name. "IMG_4823.jpg" is worse than blank because it looks like the field was
+filled in. Alt text is now required by `imageSchema`, and the Add button stays
+disabled until there is some.
+
+Where a model has no alt column — a category image, a blog cover — the field says
+where the description comes from instead of pretending to store one: the category
+name, the post title. Hero and image-and-text blocks gained a real `imageAlt`,
+which the renderer prefers over the heading.
+
+### Addresses are checked, not trusted
+
+A pasted image address ends up in a `src`. `checkImageUrl` accepts https and
+site-relative paths and refuses `javascript:`, `data:` and protocol-relative
+addresses, in the product schema, the CMS block schemas, the category and
+collection actions and the store settings. SVG uploads stay refused: an SVG is a
+document that can carry script, and served from the product-photo bucket it would
+be stored XSS with a `.svg` extension.
+
+### Two fields that existed but could never be set
+
+`StoreSetting.logoUrl` has been read by the header and by the Organization
+structured data since the schema was written, and `faviconUrl` by nothing at all.
+Neither had an admin field. Both do now, and the favicon is wired into the root
+layout's `icons`, so uploading one changes something.
+
+The hero block's `mobileImageUrl` had the same problem — in the schema since the
+hero was built, absent from the editor, unrendered. It now has a field and a
+mobile-only element, because a crop that works at 1280px rarely works at 360px.
+
+Tests: 22 new, covering the type and size gate, the prefix whitelist, address
+validation, required alt text and the CMS image fields. 518 passing overall.
+
 ## Phase 3 · Item 8 — Video embeds · 2026-08-22
 
 Products and CMS pages can carry a YouTube or Vimeo video.

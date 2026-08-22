@@ -24,7 +24,9 @@ const jost = Jost({
 });
 
 export async function generateMetadata(): Promise<Metadata> {
-  const [defaults, seo, tags] = await Promise.all([seoDefaults(), getSeoSettings(), getTagConfig()]);
+  const [defaults, seo, tags, store] = await Promise.all([
+    seoDefaults(), getSeoSettings(), getTagConfig(), getStoreSettings(),
+  ]);
 
   // The title template is applied by Next from here, which is why `buildMetadata`
   // returns each page's own untemplated title — applying it in both places would
@@ -35,6 +37,9 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase: new URL(defaults.siteUrl),
     title: { default: defaults.defaultTitle ?? defaults.brandName, template },
     description: defaults.defaultDescription ?? undefined,
+    // `faviconUrl` has been a settings column since the schema was written and
+    // was read by nothing. Without this, uploading a favicon changed nothing.
+    ...(store.faviconUrl ? { icons: { icon: store.faviconUrl, shortcut: store.faviconUrl, apple: store.faviconUrl } } : {}),
     openGraph: {
       title: defaults.defaultTitle ?? defaults.brandName,
       description: defaults.defaultDescription ?? undefined,

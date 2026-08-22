@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import { checkImageUrl } from '@/lib/uploads/constraints';
 import { resolveStateCode } from '@/lib/tax/gst';
 import { parseTenures, DEFAULT_TENURES } from '@/lib/emi';
 import { assertPermission } from '@/lib/auth/guard';
@@ -13,9 +14,25 @@ export type Result = { ok: boolean; error?: string };
 
 const money = z.string().trim().refine((v) => v === '' || /^\d+(\.\d{1,2})?$/.test(v), 'Enter a valid amount');
 
+const imageAddress = z
+  .string()
+  .trim()
+  .max(500)
+  .optional()
+  .or(z.literal(''))
+  .superRefine((value, ctx) => {
+    const verdict = checkImageUrl(value ?? '');
+    if (!verdict.ok) ctx.addIssue({ code: z.ZodIssueCode.custom, message: verdict.error });
+  });
+
 const settingsSchema = z.object({
   brandName: z.string().trim().min(2, 'Brand name is required').max(80),
   tagline: z.string().trim().max(160),
+  // Both columns have existed since the schema was written and both are read —
+  // the logo by the header and by Organization structured data, the favicon by
+  // the root layout — but neither had a field, so no shop could set either.
+  logoUrl: imageAddress,
+  faviconUrl: imageAddress,
   phone: z.string().trim().max(30).optional().or(z.literal('')),
   whatsappNumber: z.string().trim().max(30).optional().or(z.literal('')),
   email: z.string().trim().max(120).optional().or(z.literal('')),
@@ -78,6 +95,8 @@ export async function updateSettingsAction(fd: FormData): Promise<Result> {
     data: {
       brandName: d.brandName,
       tagline: d.tagline,
+      logoUrl: nullIfEmpty(d.logoUrl),
+      faviconUrl: nullIfEmpty(d.faviconUrl),
       phone: nullIfEmpty(d.phone),
       whatsappNumber: nullIfEmpty(d.whatsappNumber),
       email: nullIfEmpty(d.email),

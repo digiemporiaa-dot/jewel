@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { checkImageUrl } from '@/lib/uploads/constraints';
 import { parseVideo } from '@/lib/video/parse';
 
 const optionalDecimal = z
@@ -100,8 +101,23 @@ export const variantSchema = z.object({
 
 export const imageSchema = z.object({
   productId: z.string().min(1),
-  url: z.string().trim().url('Enter a valid image URL').max(500),
-  alt: z.string().trim().max(160).optional().nullable(),
+  // Site-relative paths are legitimate here, so this is not `.url()`. The shared
+  // check is what refuses `javascript:` and `data:` — a URL an operator pastes
+  // ends up in a `src`, and that is an XSS vector wearing a picture frame.
+  url: z
+    .string()
+    .trim()
+    .min(1, 'Add an image')
+    .max(500)
+    .superRefine((value, ctx) => {
+      const verdict = checkImageUrl(value);
+      if (!verdict.ok) ctx.addIssue({ code: z.ZodIssueCode.custom, message: verdict.error });
+    }),
+  // Required, not optional. An unlabelled product photo is invisible to a screen
+  // reader and to image search, and the previous upload path quietly filled this
+  // with the file name — "IMG_4823.jpg" is worse than nothing, because it looks
+  // like the field was filled in.
+  alt: z.string().trim().min(1, 'Alt text is required').max(160),
   device: z.enum(['ALL', 'DESKTOP', 'MOBILE']).default('ALL'),
   type: z.enum(['IMAGE', 'VIDEO']).default('IMAGE'),
 });

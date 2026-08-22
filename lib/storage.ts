@@ -3,6 +3,13 @@ import { S3Client } from '@aws-sdk/client-s3';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'node:crypto';
+import {
+  ALLOWED_IMAGE_TYPES,
+  MAX_UPLOAD_BYTES,
+  checkUpload,
+  isUploadPrefix,
+  type UploadPrefix,
+} from '@/lib/uploads/constraints';
 
 /**
  * S3-compatible storage (Cloudflare R2). Images are NEVER stored in Postgres
@@ -10,8 +17,9 @@ import { randomUUID } from 'node:crypto';
  * returns a short-lived URL, and the browser uploads directly.
  */
 
-export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif'] as const;
-export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024; // 8 MB
+// The limits themselves live in `lib/uploads/constraints.ts`, which the admin's
+// browser can import too — one set of numbers, enforced on both sides.
+export { ALLOWED_IMAGE_TYPES, MAX_UPLOAD_BYTES };
 
 export function isStorageConfigured(): boolean {
   return Boolean(
@@ -57,18 +65,18 @@ export async function createPresignedUpload(params: {
   size: number;
   prefix?: string;
 }): Promise<PresignResult> {
-  if (!ALLOWED_IMAGE_TYPES.includes(params.contentType as (typeof ALLOWED_IMAGE_TYPES)[number])) {
-    return { ok: false, error: 'Unsupported file type. Use JPEG, PNG, WebP or AVIF.' };
-  }
-  if (!Number.isFinite(params.size) || params.size <= 0 || params.size > MAX_UPLOAD_BYTES) {
-    return { ok: false, error: `File too large. Max ${Math.round(MAX_UPLOAD_BYTES / (1024 * 1024))} MB.` };
-  }
+  const check = checkUpload({ type: params.contentType, size: params.size });
+  if (!check.ok) return { ok: false, error: check.error };
+  // The browser sends the prefix, so the browser does not get to choose the
+  // path. Anything outside the closed list falls back to the default folder
+  // rather than being interpolated into the object key.
+  const prefix: UploadPrefix = isUploadPrefix(params.prefix) ? params.prefix : 'products';
   if (!isStorageConfigured()) {
     return { ok: false, error: 'Storage is not configured. Add image by URL, or set R2_* env vars.' };
   }
 
   const ext = EXT[params.contentType] ?? 'bin';
-  const key = `${params.prefix ?? 'products'}/${randomUUID()}.${ext}`;
+  const key = `${prefix}/${randomUUID()}.${ext}`;
 
   const command = new PutObjectCommand({
     Bucket: process.env.R2_BUCKET,

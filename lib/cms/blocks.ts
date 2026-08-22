@@ -1,6 +1,26 @@
 import { z } from 'zod';
 import type { CmsBlockType } from '@prisma/client';
 import { parseVideo, toStored } from '@/lib/video/parse';
+import { checkImageUrl } from '@/lib/uploads/constraints';
+
+/**
+ * An image address, not markup and not a scheme that can execute. Blocks are
+ * rendered into `src` attributes, so the same check the uploader uses runs on
+ * save — a value typed straight into the field gets no easier ride than one
+ * that arrived through an upload.
+ */
+function imageAddress() {
+  return z
+    .string()
+    .trim()
+    .max(500)
+    .superRefine((value, ctx) => {
+      const verdict = checkImageUrl(value);
+      if (!verdict.ok) ctx.addIssue({ code: z.ZodIssueCode.custom, message: verdict.error });
+    })
+    .optional()
+    .default('');
+}
 
 /** Canonical stored form. Unreachable for invalid input — superRefine ran first. */
 function canonicalVideo(value: string): string {
@@ -19,8 +39,10 @@ export const heroSchema = z.object({
   eyebrow: z.string().trim().max(60).optional().default(''),
   heading: z.string().trim().min(1, 'Heading is required').max(120),
   subheading: z.string().trim().max(300).optional().default(''),
-  imageUrl: z.string().trim().max(500).optional().default(''),
-  mobileImageUrl: z.string().trim().max(500).optional().default(''),
+  imageUrl: imageAddress(),
+  mobileImageUrl: imageAddress(),
+  /** Describes the picture. Falls back to the heading when left blank. */
+  imageAlt: z.string().trim().max(160).optional().default(''),
   ctaLabel: z.string().trim().max(40).optional().default(''),
   ctaHref: z.string().trim().max(200).optional().default(''),
 });
@@ -35,7 +57,8 @@ export const richTextSchema = z.object({
 export const imageTextSchema = z.object({
   heading: z.string().trim().max(120).optional().default(''),
   body: z.string().trim().max(2000).optional().default(''),
-  imageUrl: z.string().trim().max(500).optional().default(''),
+  imageUrl: imageAddress(),
+  imageAlt: z.string().trim().max(160).optional().default(''),
   imagePosition: z.enum(['left', 'right']).default('left'),
   ctaLabel: z.string().trim().max(40).optional().default(''),
   ctaHref: z.string().trim().max(200).optional().default(''),
@@ -69,7 +92,7 @@ export const videoSchema = z.object({
     .transform((value) => (value === '' ? '' : canonicalVideo(value)))
     .default(''),
   /** Optional still. Vimeo does not serve one at a predictable address. */
-  posterUrl: z.string().trim().max(500).optional().default(''),
+  posterUrl: imageAddress(),
 });
 
 export const productGridSchema = z.object({
@@ -157,10 +180,10 @@ export function parseBlockData(type: CmsBlockType, data: unknown) {
 /** Sensible starting content when an admin adds a new block. */
 export function defaultBlockData(type: CmsBlockType): Record<string, unknown> {
   switch (type) {
-    case 'HERO': return { eyebrow: '', heading: 'A new heading', subheading: '', imageUrl: '', mobileImageUrl: '', ctaLabel: '', ctaHref: '' };
+    case 'HERO': return { eyebrow: '', heading: 'A new heading', subheading: '', imageUrl: '', mobileImageUrl: '', imageAlt: '', ctaLabel: '', ctaHref: '' };
     case 'VIDEO': return { heading: '', caption: '', videoUrl: '', posterUrl: '' };
     case 'RICH_TEXT': return { heading: '', body: 'Write something here.', align: 'left' };
-    case 'IMAGE_TEXT': return { heading: '', body: '', imageUrl: '', imagePosition: 'left', ctaLabel: '', ctaHref: '' };
+    case 'IMAGE_TEXT': return { heading: '', body: '', imageUrl: '', imageAlt: '', imagePosition: 'left', ctaLabel: '', ctaHref: '' };
     case 'PRODUCT_GRID': return { heading: 'Featured', source: 'featured', limit: 4 };
     case 'COLLECTION_GRID': return { heading: 'Collections', limit: 3 };
     case 'BANNER': return { text: 'Announcement', ctaLabel: '', ctaHref: '', tone: 'velvet' };

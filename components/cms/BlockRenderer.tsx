@@ -46,7 +46,14 @@ export default async function BlockRenderer({ type, data }: { type: CmsBlockType
     }
 
     case 'HERO': {
-      const b = d as unknown as { eyebrow: string; heading: string; subheading: string; imageUrl: string; ctaLabel: string; ctaHref: string };
+      const b = d as unknown as {
+        eyebrow: string; heading: string; subheading: string;
+        imageUrl: string; mobileImageUrl?: string; imageAlt?: string;
+        ctaLabel: string; ctaHref: string;
+      };
+      // The heading is the fallback description, not a substitute for one: an
+      // operator who writes real alt text gets it used.
+      const heroAlt = b.imageAlt?.trim() || b.heading;
       return (
         <section className={s.section}>
           <div className={cn(s.inner, 'grid lg:grid-cols-2 gap-8 items-center')}>
@@ -61,7 +68,17 @@ export default async function BlockRenderer({ type, data }: { type: CmsBlockType
               )}
             </div>
             <div className={cn('aspect-[4/3] border overflow-hidden', s.border)}>
-              <ProductImage src={b.imageUrl || null} alt={b.heading} monogram={b.heading.charAt(0)} className="w-full h-full" />
+              {b.mobileImageUrl ? (
+                <>
+                  {/* A hero crop that works on a wide screen rarely works at
+                      360px. Two elements rather than one `srcSet` because the
+                      two files are different crops, not two sizes of one. */}
+                  <ProductImage src={b.mobileImageUrl} alt={heroAlt} monogram={b.heading.charAt(0)} className="w-full h-full sm:hidden" />
+                  <ProductImage src={b.imageUrl || null} alt={heroAlt} monogram={b.heading.charAt(0)} className="w-full h-full hidden sm:block" />
+                </>
+              ) : (
+                <ProductImage src={b.imageUrl || null} alt={heroAlt} monogram={b.heading.charAt(0)} className="w-full h-full" />
+              )}
             </div>
           </div>
         </section>
@@ -85,12 +102,12 @@ export default async function BlockRenderer({ type, data }: { type: CmsBlockType
     }
 
     case 'IMAGE_TEXT': {
-      const b = d as unknown as { heading: string; body: string; imageUrl: string; ctaLabel: string; ctaHref: string };
+      const b = d as unknown as { heading: string; body: string; imageUrl: string; imageAlt?: string; ctaLabel: string; ctaHref: string };
       return (
         <section className={s.section}>
           <div className={cn(s.inner, 'grid lg:grid-cols-2 gap-8 items-center')}>
             <div className={cn('aspect-[5/4] border overflow-hidden', s.border, s.style.mediaSide === 'right' && 'lg:order-2')}>
-              <ProductImage src={b.imageUrl || null} alt={b.heading || 'Image'} monogram={(b.heading || 'M').charAt(0)} className="w-full h-full" />
+              <ProductImage src={b.imageUrl || null} alt={b.imageAlt?.trim() || b.heading || 'Image'} monogram={(b.heading || 'M').charAt(0)} className="w-full h-full" />
             </div>
             <div>
               {b.heading && <h2 className={cn('text-3xl', s.heading)}>{b.heading}</h2>}

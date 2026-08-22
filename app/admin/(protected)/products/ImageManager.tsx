@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useTransition, useRef } from 'react';
+import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils/cn';
+import ImageUploadField from '@/components/admin/ImageUploadField';
 import { addImageAction, deleteImageAction, setPrimaryImageAction, moveImageAction } from './actions';
 
 type Image = { id: string; url: string; alt: string | null; isPrimary: boolean; order: number; device: string; type: string };
@@ -11,46 +12,19 @@ export default function ImageManager({ productId, images }: { productId: string;
   const router = useRouter();
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const fileRef = useRef<HTMLInputElement>(null);
+  // Held here rather than left to the DOM so the Add button can refuse an
+  // unlabelled image before it reaches the server.
+  const [url, setUrl] = useState('');
+  const [alt, setAlt] = useState('');
 
-  function addByUrl(e: React.FormEvent<HTMLFormElement>) {
+  function add(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     start(async () => {
       const res = await addImageAction(fd);
       setMsg(res.ok ? 'Image added' : res.error ?? 'Failed');
-      if (res.ok) { (e.target as HTMLFormElement).reset(); router.refresh(); }
+      if (res.ok) { setUrl(''); setAlt(''); router.refresh(); }
     });
-  }
-
-  // Presigned direct upload (R2). Falls back to a clear message if not configured.
-  async function upload(file: File) {
-    setMsg(null);
-    setUploading(true);
-    try {
-      const presign = await fetch('/api/admin/upload-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contentType: file.type, size: file.size, prefix: 'products' }),
-      });
-      const data = await presign.json();
-      if (!presign.ok) { setMsg(data.error ?? 'Upload not available'); return; }
-      const put = await fetch(data.uploadUrl, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
-      if (!put.ok) { setMsg('Upload failed'); return; }
-      const fd = new FormData();
-      fd.set('productId', productId);
-      fd.set('url', data.publicUrl);
-      fd.set('alt', file.name);
-      const res = await addImageAction(fd);
-      setMsg(res.ok ? 'Uploaded' : res.error ?? 'Failed');
-      if (res.ok) router.refresh();
-    } catch {
-      setMsg('Upload error');
-    } finally {
-      setUploading(false);
-      if (fileRef.current) fileRef.current.value = '';
-    }
   }
 
   function act(fn: () => Promise<{ ok: boolean; error?: string }>) {
@@ -65,33 +39,39 @@ export default function ImageManager({ productId, images }: { productId: string;
       <div className="px-5 py-3 border-b border-line"><h2 className="font-heading text-lg">Images</h2></div>
 
       <div className="p-5 space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2">
-          {/* Add by URL */}
-          <form onSubmit={addByUrl} className="border border-line p-3 space-y-2">
-            <p className="text-xs text-ink-soft">Add by URL</p>
-            <input type="hidden" name="productId" value={productId} />
-            <input name="url" required placeholder="https://…/image.jpg" className="i-inp" />
-            <input name="alt" placeholder="Alt text" className="i-inp" />
-            <div className="flex gap-2">
-              <select name="device" className="i-inp"><option value="ALL">All</option><option value="DESKTOP">Desktop</option><option value="MOBILE">Mobile</option></select>
+        {/* One image field, one upload path. Upload to storage or paste a
+            hosted address — both end up in the same input. */}
+        <form onSubmit={add} className="border border-line p-3 space-y-3">
+          <input type="hidden" name="productId" value={productId} />
+          <ImageUploadField
+            name="url"
+            label="Image"
+            prefix="products"
+            value={url}
+            onChange={setUrl}
+            altName="alt"
+            altValue={alt}
+            onAltChange={setAlt}
+            requireAlt
+            required
+          />
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="text-xs text-ink-soft">
+              <span className="block mb-1">Shown on</span>
+              <select name="device" className="i-inp"><option value="ALL">All devices</option><option value="DESKTOP">Desktop</option><option value="MOBILE">Mobile</option></select>
+            </label>
+            <label className="text-xs text-ink-soft">
+              <span className="block mb-1">Type</span>
               <select name="type" className="i-inp"><option value="IMAGE">Image</option><option value="VIDEO">Video</option></select>
-            </div>
-            <button disabled={pending} className="btn-outline text-xs py-1.5">{pending ? '…' : 'Add image'}</button>
-          </form>
-
-          {/* Direct upload */}
-          <div className="border border-line p-3 space-y-2">
-            <p className="text-xs text-ink-soft">Upload file (presigned R2)</p>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/avif"
-              onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])}
-              className="text-xs"
-            />
-            <p className="text-xs text-ink-soft">{uploading ? 'Uploading…' : 'JPEG/PNG/WebP/AVIF, max 8 MB.'}</p>
+            </label>
+            <button
+              disabled={pending || url.trim() === '' || alt.trim() === ''}
+              className="btn-outline text-xs py-1.5 disabled:opacity-50"
+            >
+              {pending ? '…' : 'Add image'}
+            </button>
           </div>
-        </div>
+        </form>
 
         {msg && <p className="text-sm text-ink-soft">{msg}</p>}
 
