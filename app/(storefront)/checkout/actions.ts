@@ -157,7 +157,14 @@ export async function abandonPayment(orderId: string): Promise<void> {
 
 
 export type CouponPreview =
-  | { ok: true; code: string; discount: string; freeShipping: boolean; appliesTo: string; grandTotal: string }
+  | {
+      ok: true; code: string; discount: string; freeShipping: boolean; appliesTo: string;
+      // The recomputed taxable value, GST and shipping travel with the total.
+      // Showing a pre-discount GST row beside a discounted total is the same
+      // class of mistake as a button that disagrees with the Total: rows that
+      // do not add up.
+      taxableTotal: string; gstTotal: string; shipping: string; grandTotal: string;
+    }
   | { ok: false; error: string };
 
 /**
@@ -189,6 +196,9 @@ export async function previewCouponAction(code: string): Promise<CouponPreview> 
     discount: totals.discountTotal,
     freeShipping: result.calculation.freeShipping,
     appliesTo: result.calculation.appliesTo,
+    taxableTotal: totals.taxableTotal,
+    gstTotal: totals.gstTotal,
+    shipping: totals.shipping,
     grandTotal: totals.grandTotal,
   };
 }

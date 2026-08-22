@@ -6,6 +6,8 @@ import { getStoreSettings } from '@/lib/store';
 import { formatCurrency } from '@/lib/utils/format';
 import CartItemRow from './CartItemRow';
 import EmiNote from '@/components/storefront/EmiNote';
+import OrderSummary from '@/components/storefront/OrderSummary';
+import { resolvePayable } from '@/lib/checkout/totals';
 import { emiFor } from '@/lib/emi-settings';
 
 export const dynamic = 'force-dynamic';
@@ -44,44 +46,53 @@ export default async function CartPage() {
           <Link href="/c/new-arrivals" className="inline-block mt-6 text-sm underline underline-offset-4 hover:text-brass">Continue shopping</Link>
         </div>
 
-        {/* Summary */}
-        <aside className="lg:sticky lg:top-6 self-start border border-line bg-paper p-6 h-fit">
-          <h2 className="font-heading text-xl">Order Summary</h2>
-
-          {freeAbove && !cart.freeShippingEligible && (
-            <p className="mt-3 text-xs text-ink-soft border border-line-strong bg-paper-2 px-3 py-2">
-              Add {formatCurrency(freeAbove)}+ worth to unlock free shipping.
-            </p>
+        {/* Summary — the same component checkout uses, so the two agree. A
+            shopper who sees one breakdown here and another at checkout has been
+            given a reason to abandon. */}
+        <OrderSummary
+          className="lg:sticky lg:top-6 self-start h-fit"
+          lines={cart.lines.map((l) => ({
+            itemId: l.itemId,
+            name: l.name,
+            variantLabel: l.variantLabel,
+            image: l.image,
+            quantity: l.quantity,
+            lineTotal: l.lineTotal,
+          }))}
+          totals={resolvePayable(
+            {
+              itemCount: cart.itemCount,
+              metalTotal: cart.metalTotal,
+              makingTotal: cart.makingTotal,
+              stoneTotal: cart.stoneTotal,
+              itemPriceTotal: cart.itemPriceTotal,
+              productDiscountTotal: cart.productDiscountTotal,
+              taxableTotal: cart.taxableTotal,
+              gstTotal: cart.gstTotal,
+              itemsTotal: cart.itemsTotal,
+              shipping: cart.shipping,
+              grandTotal: cart.grandTotal,
+            },
+            // No coupon in the bag — codes are entered at checkout, and showing
+            // a discount here that checkout might refuse would be worse than
+            // showing none.
+            null
           )}
-
-          <dl className="mt-4 space-y-2.5 text-sm">
-            <Row label="Metal + wastage" value={formatCurrency(cart.metalTotal)} />
-            {Number(cart.stoneTotal) > 0 && <Row label="Diamonds / stones" value={formatCurrency(cart.stoneTotal)} />}
-            <Row label="Making charges" value={formatCurrency(cart.makingTotal)} />
-            <Row label="GST" value={formatCurrency(cart.gstTotal)} />
-            <Row label="Shipping" value={Number(cart.shipping) === 0 ? 'Free' : formatCurrency(cart.shipping)} />
-            <div className="border-t border-line pt-3 flex justify-between font-medium text-base">
-              <dt>Total</dt>
-              <dd>{formatCurrency(cart.grandTotal)}</dd>
-            </div>
-          </dl>
+          itemsTotal={cart.itemsTotal}
+          note={
+            freeAbove && !cart.freeShippingEligible ? (
+              <p className="mt-3 border border-line-strong bg-paper-2 px-3 py-2 text-xs text-ink-soft">
+                Add {formatCurrency(freeAbove)}+ worth to unlock free shipping.
+              </p>
+            ) : null
+          }
+        >
           <EmiNote best={emi.best} options={emi.options} className="mt-3" />
-
-          <p className="mt-2 text-xs text-ink-soft">Prices calculated on today’s live metal rate. Inclusive of GST.</p>
-
+          <p className="mt-2 text-xs text-ink-soft">Prices calculated on today&rsquo;s live metal rate.</p>
           <Link href="/checkout" className="btn-primary w-full mt-5">Proceed to Checkout</Link>
           <p className="mt-3 text-center text-xs text-ink-soft">Secure checkout · Easy returns per store policy</p>
-        </aside>
+        </OrderSummary>
       </div>
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between text-ink-soft">
-      <dt>{label}</dt>
-      <dd className="text-ink">{value}</dd>
     </div>
   );
 }

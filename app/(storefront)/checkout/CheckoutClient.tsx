@@ -2,29 +2,22 @@
 
 import { useState, useTransition, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { formatCurrency } from '@/lib/utils/format';
 import { cn } from '@/lib/utils/cn';
 import { sendCheckoutOtp, verifyCheckoutOtp, placeOrder, confirmCheckoutPayment, previewCouponAction, type CouponPreview } from './actions';
 import { trackEcommerce, type EventItem } from '@/lib/marketing/events';
-
-/** What a coupon reduced, in the shopper's words rather than the schema's. */
-const SCOPE_LABELS: Record<string, string> = {
-  MAKING_CHARGES: 'making charges',
-  METAL_VALUE: 'metal value',
-  STONE_VALUE: 'stones',
-  ORDER_TOTAL: 'your order',
-};
-
-type Summary = { itemCount: number; makingTotal: string; gstTotal: string; shipping: string; grandTotal: string };
+import { resolvePayable, type SummaryTotals } from '@/lib/checkout/totals';
+import CheckoutSummary from './CheckoutSummary';
+import type { SummaryLine } from '@/components/storefront/OrderSummary';
 
 declare global {
   interface Window { Razorpay?: new (opts: unknown) => { open: () => void } }
 }
 
 export default function CheckoutClient({
-  summary, verifiedPhone, panRequired, codAllowed, brandName, analyticsItems,
+  summary, lines, verifiedPhone, panRequired, codAllowed, brandName, analyticsItems,
 }: {
-  summary: Summary; verifiedPhone: string | null; panRequired: boolean; codAllowed: boolean; brandName: string;
+  summary: SummaryTotals; lines: SummaryLine[];
+  verifiedPhone: string | null; panRequired: boolean; codAllowed: boolean; brandName: string;
   analyticsItems: EventItem[];
 }) {
   const router = useRouter();
@@ -33,15 +26,6 @@ export default function CheckoutClient({
   // `begin_checkout` marks reaching this page, not completing it, so it fires
   // once on mount. The ref survives React's development double-invoke of effects.
   const checkoutTracked = useRef(false);
-  useEffect(() => {
-    if (checkoutTracked.current || analyticsItems.length === 0) return;
-    checkoutTracked.current = true;
-    trackEcommerce('begin_checkout', {
-      currency: 'INR',
-      value: Number(summary.grandTotal),
-      items: analyticsItems,
-    });
-  }, [analyticsItems, summary.grandTotal]);
 
   // Contact + OTP
   const [name, setName] = useState('');
@@ -64,6 +48,26 @@ export default function CheckoutClient({
   const [couponInput, setCouponInput] = useState('');
   const [coupon, setCoupon] = useState<CouponPreview | null>(null);
   const [couponPending, setCouponPending] = useState(false);
+
+  // THE single source of truth for what the shopper pays. The Total row, the
+  // button label, the cash-on-delivery wording and the analytics value all read
+  // `totals.grandTotal`. Nothing in this component may reach past it to
+  // `summary.grandTotal` — that split is exactly what made the button advertise
+  // a different figure from the Total above it.
+  const totals = resolvePayable(summary, coupon?.ok ? coupon : null);
+
+  // `begin_checkout` marks reaching this page, not completing it, so it fires
+  // once on mount — before any code could have been applied. The ref survives
+  // React's development double-invoke of effects.
+  useEffect(() => {
+    if (checkoutTracked.current || analyticsItems.length === 0) return;
+    checkoutTracked.current = true;
+    trackEcommerce('begin_checkout', {
+      currency: 'INR',
+      value: Number(totals.grandTotal),
+      items: analyticsItems,
+    });
+  }, [analyticsItems, totals.grandTotal]);
 
   function applyCoupon() {
     if (!couponInput.trim()) return;
@@ -138,7 +142,10 @@ export default function CheckoutClient({
     });
   }
 
-  const canPlace = verified && name && phone && addr.line1 && addr.city && addr.state && /^\d{6}$/.test(addr.pincode) && (!panRequired || pan.length === 10);
+  const canPlace = Boolean(
+    verified && name && phone && addr.line1 && addr.city && addr.state &&
+    /^\d{6}$/.test(addr.pincode) && (!panRequired || pan.length === 10)
+  );
 
   return (
     <div className="grid lg:grid-cols-[1.5fr_1fr] gap-8">
@@ -191,63 +198,27 @@ export default function CheckoutClient({
         {error && <p role="alert" className="text-sm text-red-700 border border-red-300 bg-red-50 px-3 py-2">{error}</p>}
       </div>
 
-      {/* Summary */}
-      <aside className="lg:sticky lg:top-6 self-start border border-line bg-paper p-6 h-fit">
-        <h2 className="font-heading text-xl">Order Summary</h2>
-        <dl className="mt-4 space-y-2 text-sm">
-          <Row label={`Items (${summary.itemCount})`} value="" />
-          <Row label="Making charges" value={formatCurrency(summary.makingTotal)} />
-          <Row label="GST" value={formatCurrency(summary.gstTotal)} />
-          <Row label="Shipping" value={coupon?.ok && coupon.freeShipping ? 'Free' : Number(summary.shipping) === 0 ? 'Free' : formatCurrency(summary.shipping)} />
-          {coupon?.ok && Number(coupon.discount) > 0 && (
-            <div className="flex justify-between text-velvet">
-              <dt>Discount ({coupon.code})</dt>
-              <dd>- {formatCurrency(coupon.discount)}</dd>
-            </div>
-          )}
-          <div className="border-t border-line pt-3 flex justify-between font-medium text-base">
-            <dt>Total</dt>
-            <dd>{formatCurrency(coupon?.ok ? coupon.grandTotal : summary.grandTotal)}</dd>
-          </div>
-        </dl>
-
-        <div className="mt-4 border-t border-line pt-4">
-          <label htmlFor="coupon" className="block text-xs tracking-[0.1em] uppercase text-ink-soft mb-1.5">
-            Discount code
-          </label>
-          <div className="flex gap-2">
-            <input
-              id="coupon"
-              value={couponInput}
-              onChange={(e) => { setCouponInput(e.target.value.toUpperCase()); setCoupon(null); }}
-              placeholder="Enter code"
-              maxLength={40}
-              className="flex-1 border border-line px-3 py-2 text-sm outline-none focus:border-brass uppercase"
-            />
-            <button
-              type="button"
-              onClick={applyCoupon}
-              disabled={couponPending || couponInput.trim() === ''}
-              className="btn-outline text-xs px-4"
-            >
-              {couponPending ? '…' : 'Apply'}
-            </button>
-          </div>
-          {coupon && !coupon.ok && <p className="mt-2 text-sm text-red-700">{coupon.error}</p>}
-          {coupon?.ok && (
-            <p className="mt-2 text-sm text-velvet">
-              {coupon.freeShipping
-                ? 'Free shipping applied.'
-                : `${formatCurrency(coupon.discount)} off ${SCOPE_LABELS[coupon.appliesTo] ?? 'your order'}.`}
-            </p>
-          )}
-        </div>
-        <button onClick={submit} disabled={!canPlace || pending} className="btn-primary w-full mt-5">
-          {pending ? 'Processing…' : method === 'COD' ? 'Place Order' : `Pay ${formatCurrency(summary.grandTotal)}`}
-        </button>
-        {!verified && <p className="mt-2 text-center text-xs text-ink-soft">Verify your phone to continue.</p>}
-        <p className="mt-3 text-center text-xs text-ink-soft">Prices locked at today’s rate · Secure checkout</p>
-      </aside>
+      <CheckoutSummary
+        lines={lines}
+        totals={totals}
+        itemsTotal={summary.itemsTotal}
+        method={method}
+        pending={pending}
+        canPlace={canPlace}
+        verified={verified}
+        couponInput={couponInput}
+        couponPending={couponPending}
+        couponFeedback={
+          coupon === null
+            ? null
+            : coupon.ok
+              ? { ok: true, freeShipping: coupon.freeShipping, discount: coupon.discount, appliesTo: coupon.appliesTo }
+              : { ok: false, error: coupon.error }
+        }
+        onCouponInput={(v) => { setCouponInput(v); setCoupon(null); }}
+        onApplyCoupon={applyCoupon}
+        onSubmit={submit}
+      />
     </div>
   );
 }

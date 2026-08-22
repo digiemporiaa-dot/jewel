@@ -93,6 +93,14 @@ export type CartSummary = {
   metalTotal: string;
   makingTotal: string;
   stoneTotal: string;
+  /**
+   * Value of fixed-price items, which have no metal or making component.
+   * Without this the summary rows cannot reach the taxable total for a bag
+   * containing anything priced as a flat MRP.
+   */
+  itemPriceTotal: string;
+  /** Per-item discounts set on the product, separate from any coupon code. */
+  productDiscountTotal: string;
   gstTotal: string;
   taxableTotal: string;
   itemsTotal: string;
@@ -109,7 +117,8 @@ export async function getCart(sessionToken: string | undefined): Promise<CartSum
   const store = await getStoreSettings();
   const empty: CartSummary = {
     lines: [], itemCount: 0, currency: store.currency,
-    metalTotal: '0.00', makingTotal: '0.00', stoneTotal: '0.00', gstTotal: '0.00',
+    metalTotal: '0.00', makingTotal: '0.00', stoneTotal: '0.00',
+    itemPriceTotal: '0.00', productDiscountTotal: '0.00', gstTotal: '0.00',
     taxableTotal: '0.00', itemsTotal: '0.00', shipping: '0.00', freeShippingEligible: false, grandTotal: '0.00',
   };
   if (!sessionToken) return empty;
@@ -135,6 +144,7 @@ export async function getCart(sessionToken: string | undefined): Promise<CartSum
   }
 
   let metal = new Decimal(0), making = new Decimal(0), stone = new Decimal(0), gst = new Decimal(0), taxable = new Decimal(0), items = new Decimal(0);
+  let fixedPrice = new Decimal(0), productDiscount = new Decimal(0);
 
   const lines: CartLine[] = cart.items.map((item) => {
     const pricing = pricingByProduct.get(item.productId);
@@ -149,6 +159,10 @@ export async function getCart(sessionToken: string | undefined): Promise<CartSum
       metal = metal.plus(new Decimal(breakup.metalValue).plus(breakup.wastage).times(q));
       making = making.plus(new Decimal(breakup.making).times(q));
       stone = stone.plus(new Decimal(breakup.diamondValue).plus(breakup.stoneValue).times(q));
+      // A FIXED-mode line is a flat price with no components, so its value would
+      // otherwise appear in the total with nothing on screen accounting for it.
+      if (breakup.mode === 'FIXED') fixedPrice = fixedPrice.plus(new Decimal(breakup.subtotal).times(q));
+      productDiscount = productDiscount.plus(new Decimal(breakup.discount).times(q));
       gst = gst.plus(new Decimal(breakup.gst).times(q));
       taxable = taxable.plus(new Decimal(breakup.taxable).times(q));
       const lt = new Decimal(breakup.unitTotal).times(q);
@@ -184,6 +198,8 @@ export async function getCart(sessionToken: string | undefined): Promise<CartSum
     metalTotal: metal.toFixed(2),
     makingTotal: making.toFixed(2),
     stoneTotal: stone.toFixed(2),
+    itemPriceTotal: fixedPrice.toFixed(2),
+    productDiscountTotal: productDiscount.toFixed(2),
     gstTotal: gst.toFixed(2),
     taxableTotal: taxable.toFixed(2),
     itemsTotal: items.toFixed(2),

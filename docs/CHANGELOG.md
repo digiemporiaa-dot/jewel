@@ -1,5 +1,98 @@
 # Changelog
 
+## Fix · Checkout summary · 2026-08-22
+
+### The bug
+
+The pay button ignored the coupon. The Total row read the discounted figure and
+the button label read `summary.grandTotal` unconditionally, so with a code
+applied the button advertised **₹2,522** above a Total of **₹2,285**.
+
+A shopper consents to the figure on the button and is then charged a different
+one. That is not cosmetic.
+
+The cause was two paths to one number. There is now exactly one:
+`resolvePayable()` in `lib/checkout/totals.ts` returns a `PayableTotals`, and the
+Total row, the button label, the cash-on-delivery wording and the analytics
+`value` all read `grandTotal` from it. Nothing in the component can reach past it
+to the undiscounted figure — there is no second amount in scope to get wrong.
+
+A rendered test asserts the button and the Total row show the same amount, with
+and without a coupon, and on the COD path. It is rendered rather than unit-tested
+on purpose: the arithmetic was already right and the Total row was already right,
+so only looking at what the shopper sees catches a gap between them.
+
+### The GST row moved too
+
+With a coupon the discount reduces the taxable value *before* GST, but the
+summary kept showing the pre-discount GST. Same class of mistake — rows that do
+not add up. The coupon preview now carries its recomputed taxable value, GST and
+shipping alongside the total, and all four are displayed.
+
+### The summary itemises
+
+It showed `Items (1)` — no names, no prices — and no metal row, so the visible
+lines did not reach the Total.
+
+Now: thumbnail, name, variant, quantity and line total per item, then a
+breakdown where every row is additive top to bottom — metal + wastage, making
+charges, stones, item price, item discount, coupon discount, taxable value, GST,
+shipping, total. Collapsible on mobile so the payment step stays reachable
+without scrolling past a long list.
+
+Two rows exist because verifying against the live site found money with nothing
+to explain it:
+
+- **Item price.** A flat-priced piece has no metal and no making component, so a
+  gift set showed `₹0.00`, `₹0.00`, GST — and a total ₹899 larger than anything
+  on screen accounted for.
+- **Item discount.** A discount set on the product itself is separate from a
+  coupon code and was not surfaced anywhere.
+
+`getCart` now sums both from figures the pricing engine already produced. No
+pricing logic changed.
+
+### Paise, not rounded rupees
+
+`formatCurrency` rounds to whole rupees by default, which is right for a product
+tile and wrong in a breakdown: rounded independently, ₹1,650 + ₹364 + ₹204 −
+₹237 + ₹59 lands on ₹2,040 beside a total rounded to ₹2,041. The summary shows
+paise throughout so the column reconciles exactly.
+
+### Cart and checkout are the same component
+
+`components/storefront/OrderSummary.tsx` renders both. A shopper who sees one
+breakdown in the bag and another at checkout has been given a reason to abandon,
+and two implementations would drift the first time either was edited.
+
+### Verified
+
+`tsc` clean, `next build` clean, lint clean, **328 tests across 25 files** (28
+new). Live against a production build with a mixed bag — one weight-based ring
+and one flat-priced gift set:
+
+```
+Metal + wastage   ₹21,962.88     Metal + wastage   ₹21,962.88
+Making charges     ₹1,612.00     Making charges     ₹1,612.00
+Item price           ₹899.00     Item price           ₹899.00
+                                 Discount (CODE)    − ₹806.00
+                                 Taxable value     ₹23,667.88
+GST                  ₹734.22     GST                  ₹710.04
+Shipping                Free     Shipping                Free
+Total             ₹25,208.10     Total             ₹24,377.92
+Button      Pay ₹25,208.10       Button      Pay ₹24,377.92
+```
+
+Both columns reconcile to the paisa, the button matches the Total in both, the
+cart agrees with checkout, and GST moved with the discount.
+
+### Tooling
+
+Component tests needed a DOM: `jsdom` and `@testing-library/react` are new dev
+dependencies, and `vitest.config.ts` sets `esbuild.jsx` so `.tsx` tests compile
+without a Vite React plugin (the current major wants a Vite newer than vitest 2
+permits).
+
 ## Phase 3 · Item 5 — Enquiry capture · 2026-08-22
 
 The WhatsApp buttons were the shop's busiest call to action and left no trace.

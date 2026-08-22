@@ -28,7 +28,27 @@ export default async function CheckoutPage() {
     <div className="shell py-8 sm:py-12">
       <h1 className="text-3xl mb-6">Checkout</h1>
       <CheckoutClient
-        summary={{ itemCount: cart.itemCount, makingTotal: cart.makingTotal, gstTotal: cart.gstTotal, shipping: cart.shipping, grandTotal: cart.grandTotal }}
+        summary={{
+          itemCount: cart.itemCount,
+          metalTotal: cart.metalTotal,
+          makingTotal: cart.makingTotal,
+          stoneTotal: cart.stoneTotal,
+          itemPriceTotal: cart.itemPriceTotal,
+          productDiscountTotal: cart.productDiscountTotal,
+          taxableTotal: cart.taxableTotal,
+          gstTotal: cart.gstTotal,
+          itemsTotal: cart.itemsTotal,
+          shipping: cart.shipping,
+          grandTotal: cart.grandTotal,
+        }}
+        lines={cart.lines.map((l) => ({
+          itemId: l.itemId,
+          name: l.name,
+          variantLabel: l.variantLabel,
+          image: l.image,
+          quantity: l.quantity,
+          lineTotal: l.lineTotal,
+        }))}
         analyticsItems={cart.lines.map((l) => ({
           item_id: l.variantId ?? l.productId,
           item_name: l.name,
