@@ -43,7 +43,7 @@ async function toCouponLines(cart: CartSummary): Promise<CouponLine[]> {
   if (productIds.length === 0) return [];
 
   const products = await prisma.product.findMany({
-    where: { id: { in: productIds } },
+    where: { id: { in: productIds }, deletedAt: null },
     select: {
       id: true,
       categoryId: true,

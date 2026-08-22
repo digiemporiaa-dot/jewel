@@ -6,6 +6,7 @@ import { assertPermission } from '@/lib/auth/guard';
 import { writeAudit } from '@/lib/audit';
 import { transitionOrder, recordVerification, confirmManualPayment, addOrderNote } from '@/lib/admin/orders';
 import { OrderStatus } from '@prisma/client';
+import { archiveOrder, unarchiveOrder } from '@/lib/admin/soft-delete';
 
 export type Result = { ok: boolean; error?: string };
 
@@ -42,6 +43,32 @@ export async function addNoteAction(orderId: string, body: string): Promise<Resu
   const staff = await assertPermission('orders.view');
   if (!body.trim()) return { ok: false, error: 'Empty note' };
   await addOrderNote(orderId, staff.id, body.trim());
+  revalidatePath(`/admin/orders/${orderId}`);
+  return { ok: true };
+}
+
+/**
+ * File a finished order away.
+ *
+ * There is no delete action here and there will not be one. GST invoices are
+ * retained for years, and a refund or chargeback dispute six months from now
+ * needs the original record. Archiving hides a finished order from the working
+ * list; that is the whole of it.
+ */
+export async function archiveOrderAction(orderId: string): Promise<Result> {
+  const staff = await assertPermission('orders.manage');
+  const res = await archiveOrder(orderId, staff.id);
+  if (!res.ok) return res;
+  revalidatePath('/admin/orders');
+  revalidatePath(`/admin/orders/${orderId}`);
+  return { ok: true };
+}
+
+export async function unarchiveOrderAction(orderId: string): Promise<Result> {
+  const staff = await assertPermission('orders.manage');
+  const res = await unarchiveOrder(orderId, staff.id);
+  if (!res.ok) return res;
+  revalidatePath('/admin/orders');
   revalidatePath(`/admin/orders/${orderId}`);
   return { ok: true };
 }

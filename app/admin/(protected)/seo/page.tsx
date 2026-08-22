@@ -125,7 +125,7 @@ export default async function SeoPage() {
 
 async function SitemapNote() {
   const [products, posts] = await Promise.all([
-    prisma.product.count({ where: { isActive: true, noIndex: false } }),
+    prisma.product.count({ where: { isActive: true, deletedAt: null, noIndex: false } }),
     prisma.blogPost.count({ where: { status: 'PUBLISHED', noIndex: false } }),
   ]);
 

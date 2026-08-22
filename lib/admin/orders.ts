@@ -12,6 +12,8 @@ export type OrderListParams = {
   q?: string;
   page?: number;
   range?: ResolvedRange;
+  /** The archive view. Orders are never deleted, only filed away. */
+  archived?: boolean;
 };
 
 /** Orders that never became revenue, and should not be summed as if they had. */
@@ -23,7 +25,9 @@ const VOID_STATUSES: OrderStatus[] = [
 ];
 
 export function orderListWhere(params: OrderListParams): Prisma.OrderWhereInput {
-  const where: Prisma.OrderWhereInput = {};
+  // Archived orders are out of the working list and nowhere else — they still
+  // exist, still hold their invoice number, and still appear in the archive.
+  const where: Prisma.OrderWhereInput = params.archived ? { archivedAt: { not: null } } : { archivedAt: null };
   if (params.status) where.status = params.status;
   if (params.q) {
     where.OR = [

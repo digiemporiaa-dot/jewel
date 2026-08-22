@@ -88,6 +88,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
           lead={{
             id: lead.id, status: lead.status, assignedToId: lead.assignedToId,
             estimatedValue: lead.estimatedValue?.toString() ?? null, notes: lead.notes,
+            name: lead.name, phone: lead.phone,
           }}
           staff={salesStaff}
         />

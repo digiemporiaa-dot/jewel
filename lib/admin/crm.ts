@@ -132,10 +132,11 @@ export async function getSalesStaff() {
 
 // ── Customers ────────────────────────────────────────────────────────────────
 
-export async function listCustomers(params: { q?: string; page?: number }) {
+export async function listCustomers(params: { q?: string; page?: number; deleted?: boolean }) {
   const page = Math.max(1, params.page ?? 1);
   const size = 20;
-  const where: Prisma.CustomerWhereInput = {};
+  // Deleted customers are invisible unless the archive view asks for them.
+  const where: Prisma.CustomerWhereInput = params.deleted ? { deletedAt: { not: null } } : { deletedAt: null };
   if (params.q) {
     where.OR = [
       { name: { contains: params.q, mode: 'insensitive' } },

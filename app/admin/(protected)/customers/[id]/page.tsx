@@ -5,6 +5,7 @@ import { getCustomerDetail } from '@/lib/admin/crm';
 import { formatCurrency, formatDate } from '@/lib/utils/format';
 import PageHeader from '@/components/admin/PageHeader';
 import StatCard from '@/components/admin/StatCard';
+import CustomerRemoval from './CustomerRemoval';
 
 export const dynamic = 'force-dynamic';
 
@@ -90,6 +91,14 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
               </ul>
             )}
           </Panel>
+
+          <CustomerRemoval
+            id={customer.id}
+            phone={customer.phone}
+            orderCount={customer.orders.length}
+            deletedAt={customer.deletedAt?.toISOString() ?? null}
+            anonymisedAt={customer.anonymisedAt?.toISOString() ?? null}
+          />
         </div>
       </div>
     </div>

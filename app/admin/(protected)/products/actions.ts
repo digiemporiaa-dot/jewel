@@ -5,9 +5,10 @@ import { redirect } from 'next/navigation';
 import { assertPermission } from '@/lib/auth/guard';
 import { writeAudit } from '@/lib/audit';
 import {
-  createProduct, updateProduct, deleteProduct,
+  createProduct, updateProduct,
   upsertVariant, deleteVariant,
 } from '@/lib/admin/products';
+import { softDeleteProduct, restoreProduct } from '@/lib/admin/soft-delete';
 import { addImage, deleteImage, setPrimaryImage, moveImage } from '@/lib/admin/images';
 import { setStock } from '@/lib/inventory';
 
@@ -42,13 +43,42 @@ export async function updateProductAction(id: string, _prev: FormResult, fd: For
   return { ok: true };
 }
 
-export async function deleteProductAction(id: string): Promise<FormResult> {
+/**
+ * Remove a product from sale.
+ *
+ * Soft, not literal — an order line from last year still points at this row, and
+ * a hard delete would null that reference and take the link between an invoice
+ * and its product with it. The typed confirmation is checked here as well as in
+ * the browser, because a confirmation only the client enforces is not one.
+ */
+export async function deleteProductAction(id: string, typedSku: string): Promise<FormResult> {
   const staff = await assertPermission('products.manage');
-  const before = await import('@/lib/prisma').then((m) => m.prisma.product.findUnique({ where: { id }, select: { sku: true, name: true } }));
-  await deleteProduct(id);
-  await writeAudit({ userId: staff.id, action: 'PRODUCT_DELETE', entity: 'Product', entityId: id, before });
+
+  const { prisma } = await import('@/lib/prisma');
+  const product = await prisma.product.findUnique({ where: { id }, select: { sku: true } });
+  if (!product) return { ok: false, error: 'Product not found' };
+  if (typedSku.trim().toUpperCase() !== product.sku.toUpperCase()) {
+    return { ok: false, error: `Type the SKU ${product.sku} to confirm.` };
+  }
+
+  const res = await softDeleteProduct(id, staff.id);
+  if (!res.ok) return res;
   revalidatePath('/admin/products');
-  redirect('/admin/products');
+  revalidatePath(`/admin/products/${id}`);
+  // Stays on the product rather than redirecting to the list. The screen then
+  // shows what actually happened — deleted, with a Restore button — instead of
+  // bouncing to a list the product is no longer in, which reads like it was
+  // destroyed.
+  return { ok: true };
+}
+
+export async function restoreProductAction(id: string): Promise<FormResult> {
+  const staff = await assertPermission('products.manage');
+  const res = await restoreProduct(id, staff.id);
+  if (!res.ok) return res;
+  revalidatePath('/admin/products');
+  revalidatePath(`/admin/products/${id}`);
+  return { ok: true };
 }
 
 export async function saveVariantAction(fd: FormData): Promise<FormResult> {

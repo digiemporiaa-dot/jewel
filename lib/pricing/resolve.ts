@@ -164,7 +164,7 @@ export function priceProduct(
 /** Load one product (by id or slug) and compute its full pricing. */
 export async function getProductPricing(where: { id?: string; slug?: string }): Promise<ProductPricing | null> {
   const product = await prisma.product.findFirst({
-    where: where.id ? { id: where.id } : { slug: where.slug },
+    where: { ...(where.id ? { id: where.id } : { slug: where.slug }), deletedAt: null },
     include: productInclude,
   });
   if (!product) return null;
@@ -182,7 +182,9 @@ export async function getProductPricing(where: { id?: string; slug?: string }): 
  */
 export async function recomputeProductPrices(productIds?: string[]): Promise<number> {
   const products = await prisma.product.findMany({
-    where: productIds ? { id: { in: productIds } } : {},
+    // A deleted product is not repriced. It is off sale, so the work is
+    // wasted, and on a catalogue with years of removals it is most of the work.
+    where: { deletedAt: null, ...(productIds ? { id: { in: productIds } } : {}) },
     include: productInclude,
   });
   const makingRules = await loadActiveMakingRules();
@@ -213,7 +215,7 @@ export async function recomputeProductPrices(productIds?: string[]): Promise<num
 /** Products affected by a change to a given purity's rate (for impact preview). */
 export async function productsUsingPurity(purityId: string) {
   return prisma.product.findMany({
-    where: { purityId, isActive: true },
+    where: { purityId, isActive: true, deletedAt: null },
     select: { id: true, name: true, sku: true, priceFrom: true, priceTo: true },
   });
 }

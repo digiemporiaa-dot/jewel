@@ -47,5 +47,7 @@ export async function getCustomerId(): Promise<string | null> {
 export async function getCurrentCustomer() {
   const id = await getCustomerId();
   if (!id) return null;
-  return prisma.customer.findUnique({ where: { id } });
+  // A deleted customer is nobody. Returning the row would let a session
+  // outlive an erasure request and put a scrubbed name back on a screen.
+  return prisma.customer.findFirst({ where: { id, deletedAt: null } });
 }

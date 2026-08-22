@@ -35,7 +35,7 @@ export async function buildSeoReport(): Promise<SeoReport> {
 
   const [products, categories, collections, pages, posts] = await Promise.all([
     prisma.product.findMany({
-      where: { isActive: true },
+      where: { isActive: true, deletedAt: null },
       select: {
         slug: true, name: true, shortDescription: true, seoTitle: true, seoDescription: true,
         ogImageUrl: true, canonicalUrl: true, noIndex: true,

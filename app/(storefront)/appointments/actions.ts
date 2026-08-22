@@ -74,7 +74,7 @@ export async function bookAppointmentAction(input: unknown): Promise<{ ok: boole
 /** Products offered in the "product of interest" picker. */
 export async function getInterestProducts() {
   return prisma.product.findMany({
-    where: { isActive: true },
+    where: { isActive: true, deletedAt: null },
     select: { id: true, name: true },
     orderBy: [{ isFeatured: 'desc' }, { name: 'asc' }],
     take: 60,

@@ -117,6 +117,10 @@ export type InventoryRow = {
 
 export async function getInventoryOverview(onlyLow = false): Promise<InventoryRow[]> {
   const rows = await prisma.inventory.findMany({
+    // The stock rows of a deleted product are excluded rather than zeroed: the
+    // pieces may still be in the safe, and a stock count destroyed to tidy a
+    // listing is a number nobody can recover.
+    where: { variant: { product: { deletedAt: null } } },
     include: { variant: { include: { product: { select: { name: true } } } } },
     orderBy: { stockQty: 'asc' },
   });

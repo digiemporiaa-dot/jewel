@@ -3,23 +3,35 @@ import { requirePermission } from '@/lib/auth/guard';
 import { listCustomers } from '@/lib/admin/crm';
 import { formatDate } from '@/lib/utils/format';
 import PageHeader from '@/components/admin/PageHeader';
+import ArchiveToggle from '@/components/admin/ArchiveToggle';
 
 export const dynamic = 'force-dynamic';
 
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; deleted?: string }>;
 }) {
   await requirePermission('customers.view');
   const sp = await searchParams;
-  const result = await listCustomers({ q: sp.q, page: sp.page ? Number(sp.page) : 1 });
+  const deleted = sp.deleted === '1';
+  const result = await listCustomers({ q: sp.q, page: sp.page ? Number(sp.page) : 1, deleted });
 
   return (
     <div>
       <PageHeader title="Customers" description={`${result.total} customers`} />
 
+      <ArchiveToggle
+        basePath="/admin/customers"
+        param="deleted"
+        params={{ q: sp.q }}
+        active={deleted}
+        liveLabel="Customers"
+        archivedLabel="Removed"
+      />
+
       <form className="mb-4 flex gap-2 text-sm" action="/admin/customers">
+        {deleted && <input type="hidden" name="deleted" value="1" />}
         <input name="q" defaultValue={sp.q} placeholder="Search name / phone / email" className="border border-line px-3 py-2 outline-none focus:border-brass min-w-[240px]" />
         <button className="btn-outline text-xs">Search</button>
       </form>

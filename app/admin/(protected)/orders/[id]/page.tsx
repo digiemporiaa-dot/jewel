@@ -7,6 +7,8 @@ import PageHeader from '@/components/admin/PageHeader';
 import OrderActions from './OrderActions';
 import ShipmentPanel from '@/components/admin/ShipmentPanel';
 import { can as canPerm } from '@/lib/auth/rbac';
+import ArchiveOrder from './ArchiveOrder';
+import { isArchivable } from '@/lib/admin/removal-rules';
 
 export const dynamic = 'force-dynamic';
 
@@ -124,6 +126,14 @@ export default async function AdminOrderDetail({ params }: { params: Promise<{ i
               }}
             />
           )}
+
+          <ArchiveOrder
+            orderId={order.id}
+            orderNumber={order.orderNumber}
+            status={order.status}
+            archivedAt={order.archivedAt?.toISOString() ?? null}
+            canArchive={isArchivable(order.status)}
+          />
         </div>
       </div>
     </div>

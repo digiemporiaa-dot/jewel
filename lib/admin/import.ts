@@ -10,6 +10,9 @@ async function loadLookups(): Promise<Lookups> {
     prisma.category.findMany({ select: { id: true, slug: true } }),
     prisma.metal.findMany({ select: { id: true, type: true } }),
     prisma.purity.findMany({ select: { id: true, name: true, metalId: true } }),
+    // Deleted products included on purpose: they keep their SKU and slug, so
+    // an import row reusing one would fail at the database rather than in the
+    // dry run where it can be explained.
     prisma.product.findMany({ select: { sku: true, slug: true } }),
   ]);
   return {

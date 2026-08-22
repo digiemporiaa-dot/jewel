@@ -57,11 +57,11 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       prisma.order.count({
         where: { status: { in: [OrderStatus.CONFIRMED, OrderStatus.READY_TO_SHIP] } },
       }),
-      prisma.customer.count({ where: { createdAt: { gte: today } } }),
+      prisma.customer.count({ where: { createdAt: { gte: today }, deletedAt: null } }),
       prisma.lead.count({ where: { status: LeadStatus.NEW } }),
       prisma.appointment.count({ where: { date: { gte: new Date() } } }),
       prisma.inventory.count({
-        where: { stockQty: { lte: 2 } }, // threshold check refined per-row in inventory screen
+        where: { stockQty: { lte: 2 }, variant: { product: { deletedAt: null } } }, // threshold check refined per-row in inventory screen
       }),
       prisma.cart.count({ where: { abandonedAt: { not: null } } }),
     ]);

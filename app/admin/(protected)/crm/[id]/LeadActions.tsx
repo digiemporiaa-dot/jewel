@@ -2,14 +2,18 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { updateLeadAction, addFollowUpAction, logCallAction, completeFollowUpAction } from '../actions';
+import { updateLeadAction, addFollowUpAction, logCallAction, completeFollowUpAction, deleteLeadAction } from '../actions';
+import TypedConfirm from '@/components/admin/TypedConfirm';
 
 const STAGES = ['NEW', 'CONTACTED', 'QUALIFIED', 'FOLLOW_UP', 'NEGOTIATION', 'CONVERTED', 'LOST'];
 
 export default function LeadActions({
   lead, staff,
 }: {
-  lead: { id: string; status: string; assignedToId: string | null; estimatedValue: string | null; notes: string | null };
+  lead: {
+    id: string; status: string; assignedToId: string | null; estimatedValue: string | null; notes: string | null;
+    name: string | null; phone: string | null;
+  };
   staff: { id: string; name: string }[];
 }) {
   const router = useRouter();
@@ -83,6 +87,27 @@ export default function LeadActions({
         <L label="Notes"><textarea name="notes" rows={2} className="c-inp" /></L>
         <button disabled={pending} className="btn-outline text-xs">Log call</button>
       </form>
+
+      {/* The only genuine delete in the application: a lead carries no invoice
+          and no accounting consequence, so keeping a soft-deleted copy of
+          somebody's phone number forever would be hoarding, not caution. */}
+      <div className="border-t border-line pt-4">
+        <TypedConfirm
+          label="Delete this lead"
+          expected={lead.phone ?? lead.name ?? lead.id}
+          expectedLabel={lead.phone ? 'phone number' : lead.name ? 'name' : 'id'}
+          confirmLabel="Delete lead"
+          description={
+            <>
+              <p>This one really is deleted — a lead has no invoice and no payment behind it.</p>
+              <p className="mt-1 text-ink-soft">
+                Its follow-ups and call logs go with it. The audit log keeps a record of what was removed.
+              </p>
+            </>
+          }
+          onConfirm={(typed) => deleteLeadAction(lead.id, typed)}
+        />
+      </div>
 
       {msg && <p className="text-xs text-ink-soft">{msg}</p>}
       <style>{`.c-inp{width:100%;border:1px solid var(--line);padding:.45rem .6rem;font-size:.85rem;outline:none}.c-inp:focus{border-color:var(--brass)}`}</style>

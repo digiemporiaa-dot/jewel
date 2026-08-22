@@ -12,11 +12,15 @@ export type ProductListParams = {
   pricingMode?: PricingMode;
   status?: 'active' | 'inactive';
   page?: number;
+  /** The archive view. Off means deleted products are invisible, as everywhere else. */
+  deleted?: boolean;
 };
 
 export async function listProducts(params: ProductListParams) {
   const page = Math.max(1, params.page ?? 1);
-  const where: Prisma.ProductWhereInput = {};
+  // The one place in the application that may ask for deleted rows, and it has
+  // to ask explicitly.
+  const where: Prisma.ProductWhereInput = params.deleted ? { deletedAt: { not: null } } : { deletedAt: null };
   if (params.q) {
     where.OR = [
       { name: { contains: params.q, mode: 'insensitive' } },
@@ -64,6 +68,11 @@ export async function listProducts(params: ProductListParams) {
 }
 
 /** Reference data for the product form (categories, metals, purities, making rules). */
+/** How many products are sitting in the archive, for the toggle's badge. */
+export async function countDeletedProducts(): Promise<number> {
+  return prisma.product.count({ where: { deletedAt: { not: null } } });
+}
+
 export async function getProductFormRefs() {
   const [categories, metals, purities, makingRules] = await Promise.all([
     prisma.category.findMany({ where: { isActive: true }, select: { id: true, name: true }, orderBy: { order: 'asc' } }),
@@ -136,12 +145,23 @@ export async function createProduct(raw: unknown) {
   if (!parsed.success) return { ok: false as const, error: parsed.error.issues[0]?.message ?? 'Invalid input' };
 
   // Uniqueness checks (friendly errors instead of a Prisma throw).
+  //
+  // Deleted products are deliberately included: they still hold their SKU and
+  // slug, because an order line from last year still points at them. Without
+  // this the create would fail on a Prisma unique constraint with nothing to
+  // explain it — the SKU is "free" everywhere the operator can see.
   const clash = await prisma.product.findFirst({
     where: { OR: [{ slug: parsed.data.slug }, { sku: parsed.data.sku }] },
-    select: { slug: true, sku: true },
+    select: { slug: true, sku: true, deletedAt: true },
   });
   if (clash) {
-    return { ok: false as const, error: clash.slug === parsed.data.slug ? 'Slug already in use' : 'SKU already in use' };
+    const field = clash.slug === parsed.data.slug ? 'Slug' : 'SKU';
+    return {
+      ok: false as const,
+      error: clash.deletedAt
+        ? `${field} belongs to a deleted product. Restore it from the archive instead, or choose another.`
+        : `${field} already in use`,
+    };
   }
 
   const product = await prisma.product.create({ data: toData(parsed.data) });

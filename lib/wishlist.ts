@@ -9,7 +9,7 @@ export async function toggleWishlist(productId: string, sessionToken: string): P
     await prisma.wishlistItem.delete({ where: { id: existing.id } });
     return { saved: false };
   }
-  const product = await prisma.product.findUnique({ where: { id: productId }, select: { priceFrom: true } });
+  const product = await prisma.product.findFirst({ where: { id: productId, deletedAt: null }, select: { priceFrom: true } });
   await prisma.wishlistItem.create({
     data: { sessionToken, productId, priceAtAdd: product?.priceFrom ?? null },
   });

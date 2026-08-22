@@ -144,7 +144,9 @@ export async function runOccasionCampaigns(now = new Date()): Promise<OccasionRe
   ]);
 
   const customers = await prisma.customer.findMany({
-    where: { marketingOptIn: true, email: { not: null }, OR: [{ dob: { not: null } }, { anniversary: { not: null } }] },
+    // `deletedAt` first: sending a birthday email to somebody who asked to be
+    // erased is the single worst way for an erasure to fail.
+    where: { deletedAt: null, marketingOptIn: true, email: { not: null }, OR: [{ dob: { not: null } }, { anniversary: { not: null } }] },
     select: { id: true, name: true, email: true, dob: true, anniversary: true },
     take: 500,
   });

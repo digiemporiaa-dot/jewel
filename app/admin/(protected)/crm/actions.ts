@@ -7,6 +7,8 @@ import { prisma } from '@/lib/prisma';
 import { can } from '@/lib/auth/rbac';
 import { leadCreateSchema, leadUpdateSchema, followUpSchema, callLogSchema } from '@/lib/validations/crm';
 import { FollowUpStatus, LeadStatus } from '@prisma/client';
+import { deleteLead } from '@/lib/admin/soft-delete';
+import { redirect } from 'next/navigation';
 
 export type Result = { ok: boolean; error?: string };
 
@@ -116,4 +118,32 @@ export async function logCallAction(fd: FormData): Promise<Result> {
   });
   revalidatePath(`/admin/crm/${parsed.data.leadId}`);
   return { ok: true };
+}
+
+
+/**
+ * The one real delete in the application.
+ *
+ * A lead is an enquiry: no invoice, no payment, nothing an accountant needs. So
+ * unlike a product, a customer or an order, it genuinely goes — keeping a
+ * soft-deleted copy of somebody's phone number forever, for no reason anybody
+ * could give, is its own kind of problem. The audit entry keeps the before-state
+ * so the deletion can still be accounted for.
+ */
+export async function deleteLeadAction(leadId: string, typed: string): Promise<Result> {
+  const staff = await assertPermission('leads.manage');
+  const lead = await prisma.lead.findUnique({ where: { id: leadId }, select: { name: true, phone: true } });
+  if (!lead) return { ok: false, error: 'Lead not found' };
+
+  // Whichever identifier this lead actually has. A WhatsApp enquiry from an
+  // anonymous visitor has neither, and then the id is what there is to type.
+  const expected = lead.phone ?? lead.name ?? leadId;
+  if (typed.trim().toLowerCase() !== expected.trim().toLowerCase()) {
+    return { ok: false, error: `Type ${expected} to confirm.` };
+  }
+
+  const res = await deleteLead(leadId, staff.id);
+  if (!res.ok) return res;
+  revalidatePath('/admin/crm');
+  redirect('/admin/crm');
 }

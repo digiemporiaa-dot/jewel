@@ -66,7 +66,9 @@ export async function getProductDetail(slug: string): Promise<ProductDetail | nu
       diamonds: { select: { certification: true } },
     },
   });
-  if (!product || !product.isActive) return null;
+  // A deleted product is a 404, not a hidden one. Both conditions are checked
+  // because they are set independently.
+  if (!product || !product.isActive || product.deletedAt) return null;
 
   const pricing = await getProductPricing({ id: product.id });
   const madeToOrder = product.fulfilmentType === 'MADE_TO_ORDER';
@@ -137,7 +139,7 @@ export async function getProductDetail(slug: string): Promise<ProductDetail | nu
 
 export async function getRelatedProducts(categorySlug: string, excludeId: string, limit = 4): Promise<ProductCardData[]> {
   const products = await prisma.product.findMany({
-    where: { isActive: true, category: { slug: categorySlug }, id: { not: excludeId } },
+    where: { isActive: true, deletedAt: null, category: { slug: categorySlug }, id: { not: excludeId } },
     take: limit,
     orderBy: [{ isFeatured: 'desc' }, { createdAt: 'desc' }],
     include: { category: { select: { name: true } }, images: true },

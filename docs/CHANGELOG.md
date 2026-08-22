@@ -1,5 +1,84 @@
 # Changelog
 
+## Phase 3 · Item 13 — Delete, soft rather than literal · 2026-08-22
+
+| Entity | What happens |
+|---|---|
+| Product | Soft delete — off the storefront and out of the admin lists, restorable |
+| Customer | Soft delete, optionally with the personal details erased |
+| Order | Archive only. There is no delete, and there will not be one |
+| Lead | Genuinely deleted |
+
+### Why nothing with money attached is really deleted
+
+GST invoices have to be retained for years. Deleting a customer row breaks the
+foreign key of every order that person placed and takes the sales history with
+it. Refund and chargeback disputes surface months later needing the original
+record. An order that was cancelled is not an order that never happened, and the
+difference matters to whoever files the return.
+
+A lead is the exception, and it goes for the opposite reason: it carries no
+invoice, no payment and no accounting consequence, so keeping a soft-deleted copy
+of somebody's phone number forever would be hoarding rather than caution. The
+audit entry keeps the before-state so the deletion can still be accounted for.
+
+### The cascade, and the part of it that is not a cascade
+
+Soft-deleting a product deactivates its variants. Its **inventory rows are left
+exactly as they are** and excluded from the stock screens by query instead: the
+pieces may still be in the safe, and zeroing a stock count to tidy a listing
+destroys a number nobody can recover. An inventory row still counted against a
+product nobody can see corrupts stock reports just as badly, so the exclusion is
+the fix — non-destructively.
+
+A restored product comes back **as a draft**, not back on sale. Whoever restores
+it decides when it goes live rather than discovering it already has.
+
+### `deletedAt` excluded everywhere, and one place it deliberately is not
+
+Every reader was changed: listings, search, the product page, related products,
+the sitemap, the SEO report, the coupon engine, the appointment picker, the
+wishlist, price recompute, the rate-change impact preview, the video CSP host
+scan, the customer session, the campaign audience and the dashboard counters.
+Storefront queries carry `deletedAt: null` *alongside* `isActive: true` rather
+than relying on soft delete having switched the flag — two independent conditions
+mean an update path that flips `isActive` back on cannot resurrect a deleted
+product.
+
+The campaign audience matters most: sending a birthday email to somebody who
+asked to be erased is the single worst way for an erasure to fail.
+
+The exception is the **SKU and slug uniqueness check**, which still sees deleted
+products, because they keep those values — an order line from last year points at
+that row. Without it, re-creating a deleted product would fail on a bare unique
+constraint with nothing to explain it. It now says the SKU belongs to a deleted
+product and suggests restoring it.
+
+### Erasure, done properly
+
+Erasing a customer replaces name, phone, email, gender, date of birth and
+anniversary, clears the marketing opt-in, and stamps `anonymisedAt`. The row
+survives, so every order still has a parent and the accounting records are
+intact. `phone` is unique and not nullable, so it becomes `removed-<id>` —
+unmistakably not a phone number and impossible to collide. This is one-way, and
+the confirmation says so; restore is offered only for a customer who was hidden
+rather than erased.
+
+### Two-step confirmation that cannot be answered by reflex
+
+"Are you sure?" is answered yes without reading it. Removing a product requires
+typing its SKU; removing a customer, their phone number; deleting a lead, their
+phone or name. The typed value is **re-checked on the server**, because a
+confirmation only the browser enforces is not one.
+
+Every removal writes an audit entry with the before-state — verified live for all
+six actions. An archive view on products, orders and customers makes the whole
+thing honest: removing something that quietly cannot be found again is a delete
+with extra steps.
+
+Tests: 12 new, run against a real database because the guarantees are about what
+queries return and which foreign keys survive. 610 passing overall.
+
 ## Phase 3 · Item 12 — Date filters for orders and leads · 2026-08-22
 
 From/to filtering on the orders and CRM lists, with presets, totals and CSV

@@ -157,7 +157,11 @@ async function runListing(
 ): Promise<Listing> {
   const page = Math.max(1, params.page ?? 1);
   const where: Prisma.ProductWhereInput = {
-    AND: [{ isActive: true }, baseWhere, ...buildFilterWhere(params)],
+    // `deletedAt` alongside `isActive` deliberately, rather than relying on
+    // soft delete having switched the flag off. Two independent conditions
+    // means an update path that flips `isActive` back on cannot resurrect a
+    // deleted product on the storefront.
+    AND: [{ isActive: true, deletedAt: null }, baseWhere, ...buildFilterWhere(params)],
   };
 
   const [items, total] = await Promise.all([
@@ -257,7 +261,7 @@ export async function getFilterFacets() {
   const [metals, purities, occasions] = await Promise.all([
     prisma.metal.findMany({ where: { isActive: true }, select: { name: true, type: true } }),
     prisma.purity.findMany({ where: { isActive: true }, select: { name: true }, orderBy: { order: 'asc' } }),
-    prisma.product.findMany({ where: { isActive: true }, select: { occasion: true } }),
+    prisma.product.findMany({ where: { isActive: true, deletedAt: null }, select: { occasion: true } }),
   ]);
   const occasionSet = new Set<string>();
   occasions.forEach((p) => p.occasion.forEach((o) => occasionSet.add(o)));

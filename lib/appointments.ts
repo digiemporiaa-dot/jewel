@@ -62,7 +62,7 @@ export async function bookAppointment(input: BookAppointmentInput): Promise<{ id
 
   // Link to an existing customer by phone, or create one (unverified).
   const customer = input.customerId
-    ? await prisma.customer.findUnique({ where: { id: input.customerId } })
+    ? await prisma.customer.findFirst({ where: { id: input.customerId, deletedAt: null } })
     : await prisma.customer.upsert({
         where: { phone: input.phone },
         create: { phone: input.phone, name: input.name, email: input.email || undefined },

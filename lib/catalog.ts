@@ -19,7 +19,7 @@ function mapCard(p: Prisma.ProductGetPayload<{ include: { category: { select: { 
 async function productRow(where: Prisma.ProductWhereInput, orderBy: Prisma.ProductOrderByWithRelationInput[], limit: number): Promise<ProductCardData[]> {
   try {
     const rows = await prisma.product.findMany({
-      where: { isActive: true, ...where },
+      where: { isActive: true, deletedAt: null, ...where },
       orderBy,
       take: limit,
       include: { category: { select: { name: true } }, images: true },

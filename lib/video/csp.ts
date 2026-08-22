@@ -17,7 +17,7 @@ export async function videoFrameHosts(): Promise<string[]> {
   try {
     const [products, blocks] = await Promise.all([
       prisma.product.findMany({
-        where: { isActive: true, videoUrl: { not: null } },
+        where: { isActive: true, deletedAt: null, videoUrl: { not: null } },
         select: { videoUrl: true },
         // The set of *providers* is what matters, not the set of videos. A
         // handful of rows is enough to discover both.

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { requirePermission } from '@/lib/auth/guard';
-import { listProducts } from '@/lib/admin/products';
+import { listProducts, countDeletedProducts } from '@/lib/admin/products';
+import ArchiveToggle from '@/components/admin/ArchiveToggle';
 import { getProductFormRefs } from '@/lib/admin/products';
 import { formatCurrency } from '@/lib/utils/format';
 import { cn } from '@/lib/utils/cn';
@@ -12,11 +13,12 @@ export const dynamic = 'force-dynamic';
 export default async function ProductsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; category?: string; mode?: string; status?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; mode?: string; status?: string; page?: string; deleted?: string }>;
 }) {
   await requirePermission('products.manage');
   const sp = await searchParams;
-  const [{ categories }, result] = await Promise.all([
+  const deleted = sp.deleted === '1';
+  const [{ categories }, result, deletedCount] = await Promise.all([
     getProductFormRefs(),
     listProducts({
       q: sp.q,
@@ -24,8 +26,12 @@ export default async function ProductsPage({
       pricingMode: (sp.mode as PricingMode) || undefined,
       status: sp.status === 'inactive' ? 'inactive' : sp.status === 'active' ? 'active' : undefined,
       page: sp.page ? Number(sp.page) : 1,
+      deleted,
     }),
+    countDeletedProducts(),
   ]);
+
+  const current = { q: sp.q, category: sp.category, mode: sp.mode, status: sp.status };
 
   return (
     <div>
@@ -33,6 +39,16 @@ export default async function ProductsPage({
       <div className="mb-4 -mt-2">
         <Link href="/admin/products/import" className="text-sm underline decoration-line-strong underline-offset-4 hover:text-brass">Bulk import CSV</Link>
       </div>
+
+      <ArchiveToggle
+        basePath="/admin/products"
+        param="deleted"
+        params={current}
+        active={deleted}
+        liveLabel="In the catalogue"
+        archivedLabel="Deleted"
+        count={deletedCount}
+      />
 
       {/* Filters */}
       <form className="mb-4 flex flex-wrap gap-2 text-sm" action="/admin/products">

@@ -5,6 +5,7 @@ import { formatCurrency, formatDate } from '@/lib/utils/format';
 import { cn } from '@/lib/utils/cn';
 import PageHeader from '@/components/admin/PageHeader';
 import DateRangeFilter from '@/components/admin/DateRangeFilter';
+import ArchiveToggle from '@/components/admin/ArchiveToggle';
 import { resolveRange, withParams } from '@/lib/admin/date-range';
 import { OrderStatus } from '@prisma/client';
 
@@ -13,12 +14,14 @@ export const dynamic = 'force-dynamic';
 export default async function AdminOrdersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; q?: string; page?: string; preset?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ status?: string; q?: string; page?: string; preset?: string; from?: string; to?: string; archived?: string }>;
 }) {
   await requirePermission('orders.view');
   const sp = await searchParams;
   const range = resolveRange({ preset: sp.preset, from: sp.from, to: sp.to });
+  const archived = sp.archived === '1';
   const result = await listOrders({
+    archived,
     status: sp.status && sp.status in OrderStatus ? (sp.status as OrderStatus) : undefined,
     q: sp.q,
     page: sp.page ? Number(sp.page) : 1,
@@ -30,13 +33,24 @@ export default async function AdminOrdersPage({
     status: sp.status, q: sp.q,
     preset: range.preset === 'all' ? undefined : range.preset,
     from: range.fromKey ?? undefined, to: range.toKey ?? undefined,
+    archived: archived ? '1' : undefined,
   };
 
   return (
     <div>
       <PageHeader title="Orders" description={`${result.total} orders`} />
 
+      <ArchiveToggle
+        basePath="/admin/orders"
+        param="archived"
+        params={{ status: sp.status, q: sp.q, preset: range.preset === 'all' ? undefined : range.preset, from: range.fromKey ?? undefined, to: range.toKey ?? undefined }}
+        active={archived}
+        liveLabel="Working list"
+        archivedLabel="Archived"
+      />
+
       <form className="mb-3 flex flex-wrap gap-2 text-sm" action="/admin/orders">
+        {archived && <input type="hidden" name="archived" value="1" />}
         <input name="q" defaultValue={sp.q} placeholder="Order # / phone / name" className="border border-line px-3 py-2 outline-none focus:border-brass min-w-[200px]" />
         <select name="status" defaultValue={sp.status ?? ''} className="border border-line px-3 py-2 outline-none focus:border-brass">
           <option value="">All statuses</option>

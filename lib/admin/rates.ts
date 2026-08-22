@@ -105,7 +105,7 @@ export async function previewRateChange(purityId: string, newRate: string): Prom
   if (!purity) throw new Error('Purity not found');
 
   const products = await prisma.product.findMany({
-    where: { purityId, isActive: true },
+    where: { purityId, isActive: true, deletedAt: null },
     include: productInclude,
   });
   const makingRules = await loadActiveMakingRules();
@@ -161,7 +161,7 @@ export async function applyRateChange(
       },
     });
 
-    const affectedProducts = await tx.product.findMany({ where: { purityId }, select: { id: true } });
+    const affectedProducts = await tx.product.findMany({ where: { purityId, deletedAt: null }, select: { id: true } });
     return { previousRate, affected: affectedProducts.map((p) => p.id) };
   });
 

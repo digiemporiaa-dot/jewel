@@ -83,12 +83,16 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
         images={product.images.map((i) => ({ id: i.id, url: i.url, alt: i.alt, isPrimary: i.isPrimary, order: i.order, device: i.device, type: i.type }))}
       />
 
-      <div className="border border-line bg-white p-5 flex items-center justify-between">
+      <div className="border border-line bg-white p-5 space-y-3">
         <div>
-          <p className="font-heading text-lg">Danger zone</p>
-          <p className="text-sm text-ink-soft">Deleting a product removes its variants, images and inventory.</p>
+          <p className="font-heading text-lg">Remove from sale</p>
+          <p className="text-sm text-ink-soft">
+            The product and its variants come off the storefront and out of the admin lists. Nothing is
+            erased: orders that include it still resolve, its stock counts are left untouched, and it can
+            be restored from the archive.
+          </p>
         </div>
-        <DeleteProductButton id={id} />
+        <DeleteProductButton id={id} sku={product.sku} deletedAt={product.deletedAt?.toISOString() ?? null} />
       </div>
     </div>
   );

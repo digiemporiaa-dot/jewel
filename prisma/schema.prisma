@@ -496,6 +496,14 @@ model Customer {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
+  /// Soft delete. Deleting a customer row would break every order that
+  /// references it and destroy the sales history those orders represent.
+  deletedAt    DateTime?
+  /// Set when the personal details were scrubbed. This is the correct answer to
+  /// an erasure request: name, email and phone go, the order totals stay, and
+  /// the accounting records remain intact.
+  anonymisedAt DateTime?
+
   addresses     Address[]
   orders        Order[]
   carts         Cart[]
@@ -755,6 +763,11 @@ model Product {
   certification String?
   hasDiamond    Boolean @default(false)
   hasStone      Boolean @default(false)
+
+  /// Soft delete. A product that has ever been ordered cannot be removed: the
+  /// order lines reference it, and an invoice from two years ago still has to
+  /// resolve. Set instead of deleting; every default query excludes it.
+  deletedAt DateTime?
 
   // Merchandising flags
   isActive     Boolean @default(true)
@@ -1101,6 +1114,11 @@ model Order {
   invoiceNumber String? @unique
   placeOfSupply String?
   taxBreakup    Json?
+
+  /// Archived, never deleted. GST invoices are retained for years, and refund
+  /// and chargeback disputes surface months later needing the original record.
+  /// Archiving hides a finished order from the working list; that is all.
+  archivedAt DateTime?
 
   // Price lock — snapshot of rates used, and lock window.
   rateSnapshot Json?
