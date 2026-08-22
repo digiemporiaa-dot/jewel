@@ -16,7 +16,9 @@ import { parseTenures } from '@/lib/emi';
 import { buildMetadata } from '@/lib/seo/metadata';
 import { productLd, breadcrumbLd, serialiseJsonLd } from '@/lib/seo/jsonld';
 import VideoEmbed from '@/components/storefront/VideoEmbed';
+import TrustSignals from '@/components/storefront/TrustSignals';
 import { fromStored } from '@/lib/video/parse';
+import { sizeGuideFor } from '@/lib/products/size-guide';
 import { siteUrl } from '@/lib/seo/settings';
 
 export const dynamic = 'force-dynamic';
@@ -68,6 +70,17 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   };
 
   const productVideo = fromStored(detail.videoUrl);
+
+  // Which size chart, if any, this piece should offer. Derived from the
+  // category and the name rather than a column, so it works for the catalogue
+  // that already exists instead of one somebody has to backfill first.
+  const sizeGuide = sizeGuideFor({
+    categorySlug: detail.categorySlug,
+    categoryName: detail.categoryName,
+    productName: detail.name,
+  });
+
+  const certifications = [detail.certification, ...detail.diamondCertifications];
 
   const priceForSchema = detail.priceFrom ?? detail.variants.find((v) => v.breakup)?.breakup?.unitTotal ?? null;
   const inStock = detail.variants.some((v) => v.inStock);
@@ -143,9 +156,14 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
                 fulfilmentType: detail.fulfilmentType, leadTimeDays: detail.leadTimeDays, gstInclusive: detail.gstInclusive,
                 savedInitial: savedIds.has(detail.id),
                 whatsappNumber: store.whatsappNumber, brandName: store.brandName, siteUrl: SITE_URL,
+                sizeGuide,
               }}
             />
           </div>
+
+          {/* Hallmark and certificate, next to the price rather than buried in
+              the spec table — this is a purchase-decision factor here. */}
+          <TrustSignals values={certifications} className="mt-6" />
         </div>
       </div>
 

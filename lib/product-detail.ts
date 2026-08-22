@@ -32,6 +32,8 @@ export type ProductDetail = {
   fulfilmentType: 'READY_TO_SHIP' | 'MADE_TO_ORDER';
   leadTimeDays: number | null;
   certification: string | null;
+  /** Certificate numbers on the stones, e.g. an IGI report for a solitaire. */
+  diamondCertifications: string[];
   gstInclusive: boolean;
   occasion: string[];
   tags: string[];
@@ -59,6 +61,9 @@ export async function getProductDetail(slug: string): Promise<ProductDetail | nu
       purity: { select: { name: true } },
       images: { orderBy: { order: 'asc' } },
       variants: { where: { isActive: true }, include: { inventory: true }, orderBy: { createdAt: 'asc' } },
+      // A ring can be hallmarked on the gold and certified on the stone; both
+      // belong on the page, and only one of them was ever stored on the product.
+      diamonds: { select: { certification: true } },
     },
   });
   if (!product || !product.isActive) return null;
@@ -108,6 +113,9 @@ export async function getProductDetail(slug: string): Promise<ProductDetail | nu
     fulfilmentType: product.fulfilmentType,
     leadTimeDays: product.leadTimeDays,
     certification: product.certification,
+    diamondCertifications: product.diamonds
+      .map((d) => d.certification)
+      .filter((c): c is string => typeof c === 'string' && c.trim() !== ''),
     gstInclusive: product.gstInclusive,
     occasion: product.occasion,
     tags: product.tags,

@@ -1,5 +1,64 @@
 # Changelog
 
+## Phase 3 · Item 11 — Hallmark, certificate and size guide · 2026-08-22
+
+### The certification was stored and never really shown
+
+`Product.certification` has held "BIS Hallmark 916" or "IGI Certified" since the
+catalogue was built, and appeared as one grey row at the bottom of the
+specification table. In this category that is a purchase-decision factor, not a
+footnote: a 22K chain with no visible hallmark is a chain somebody has to take on
+trust, and a diamond with a report number they can check is a different purchase
+from one without.
+
+It now sits beside the price. `parseCertification` reads the free text a jeweller
+typed and recognises BIS, IGI, GIA, HRD and SGL, the BIS purity marks (916 is
+shown as "916 · 22K", because "916" on its own reads as a number rather than a
+purity), and HUIDs and report numbers.
+
+`ProductDiamond.certification` is read too, so a ring hallmarked on the gold and
+certified on the stone shows both. Several stones sharing one report number show
+it once.
+
+### Nothing is asserted on the shop's behalf
+
+A number is linked only where the issuer publishes a page that checks it. GIA's
+report check takes the number in the query string, so it is pre-filled; IGI's
+does not, so the link goes to their verification page with the number beside it
+to copy. **BIS gets no link at all** — there is no per-HUID web lookup, the
+number is checked in the BIS Care app, and saying that is more use than a link to
+a homepage. A verification link that lands nowhere is a trust signal that fails.
+Issuers we have no check page for show the number and no link, and there is a
+test that keeps it that way.
+
+Text this does not recognise is printed as the jeweller wrote it rather than
+dressed up as a certificate.
+
+The admin field now asks for the number: "BIS Hallmark 916 HUID AZ4K9P", "GIA
+2141438171". Including it is what makes the badge verifiable.
+
+### Size guide, beside the sizes
+
+Wrong-size orders are the main avoidable return here, and it is the one question
+a photograph cannot answer. The chart opens over the buy box from the size
+selector — a separate page loses the shopper mid-decision — as a native
+`<dialog>`, which gets focus trapping, Escape and the top layer from the browser
+rather than from a hundred lines that would get one of them wrong.
+
+Indian ring sizes 6–26 and the standard bangle scale, each with diameter and
+circumference, plus how to measure with a thread. Circumference is derived from
+diameter rather than typed as a second column: two hand-typed columns are two
+columns that can disagree, and a millimetre of disagreement is a returned ring.
+
+Which chart a product offers is derived from its category and name, not a new
+column, so it works on the catalogue that exists rather than one somebody has to
+backfill. Live verification caught the first version matching nothing at all —
+the pattern was singular and every category slug is plural ("gold-rings",
+"bangles"). It also confirmed the boundary that matters: **earrings are not
+offered a ring chart**, despite ending in the same five letters.
+
+Tests: 24 new. 570 passing overall.
+
 ## Phase 3 · Item 10 — Live rate marquee · 2026-08-22
 
 A scrolling strip of current metal rates across the top of the site, with the

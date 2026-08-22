@@ -3,6 +3,8 @@
 import { useState, useMemo, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils/cn';
+import SizeGuide from '@/components/storefront/SizeGuide';
+import type { SizeGuideKind } from '@/lib/products/size-guide';
 import { formatCurrency } from '@/lib/utils/format';
 import { buildWhatsAppLink } from '@/lib/whatsapp';
 import { WhatsAppIcon } from '@/components/icons';
@@ -31,6 +33,8 @@ export default function BuyBox({
     fulfilmentType: 'READY_TO_SHIP' | 'MADE_TO_ORDER'; leadTimeDays: number | null; gstInclusive: boolean;
     savedInitial: boolean;
     whatsappNumber: string | null; brandName: string; siteUrl: string;
+    /** Which size chart to offer beside the selector, if any. */
+    sizeGuide: SizeGuideKind | null;
   };
 }) {
   const router = useRouter();
@@ -125,9 +129,15 @@ export default function BuyBox({
       {/* Variant / size selector */}
       {hasVariantChoice && (
         <div>
-          <p className="text-xs tracking-[0.1em] uppercase text-ink-soft mb-2">
-            {product.variants.some((v) => v.size) ? 'Select size' : 'Select option'}
-          </p>
+          <div className="mb-2 flex items-baseline justify-between gap-3">
+            <p className="text-xs tracking-[0.1em] uppercase text-ink-soft">
+              {product.variants.some((v) => v.size) ? 'Select size' : 'Select option'}
+            </p>
+            {/* Beside the sizes, where the question is actually being asked.
+                Wrong-size orders are the main avoidable return in this
+                category, and a photograph cannot settle it. */}
+            {product.sizeGuide && <SizeGuide kind={product.sizeGuide} />}
+          </div>
           <div className="flex flex-wrap gap-2">
             {product.variants.map((v) => {
               const disabled = !madeToOrder && !v.inStock;
@@ -149,6 +159,10 @@ export default function BuyBox({
           </div>
         </div>
       )}
+
+      {/* A single-size ring still raises the same question, and there is no
+          selector to hang the link off. */}
+      {!hasVariantChoice && product.sizeGuide && <SizeGuide kind={product.sizeGuide} />}
 
       {/* Availability */}
       <div className="text-sm">

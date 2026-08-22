@@ -132,7 +132,15 @@ export default function ProductForm({
               <Field label="Advance %"><input name="advancePercent" defaultValue={defaults.advancePercent} className="inp" /></Field>
             </>
           )}
-          <Field label="Certification"><input name="certification" defaultValue={defaults.certification} placeholder="BIS Hallmark 916 / IGI" className="inp" /></Field>
+          {/* The product page reads this: a purity mark becomes a hallmark
+              badge, and a report number becomes a link to the issuer's check
+              page. Including the number is what makes it verifiable. */}
+          <Field
+            label="Certification"
+            hint="Include the number — “BIS Hallmark 916 HUID AZ4K9P”, “IGI 12345678”, “GIA 2141438171”."
+          >
+            <input name="certification" defaultValue={defaults.certification} placeholder="BIS Hallmark 916 HUID AZ4K9P" className="inp" />
+          </Field>
           <Field label="HSN code">
             <input name="hsnCode" defaultValue={defaults.hsnCode || '7113'} placeholder="7113" className="inp" />
             <span className="mt-1 block text-xs text-ink-soft">
@@ -189,8 +197,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Grid({ children }: { children: React.ReactNode }) {
   return <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">{children}</div>;
 }
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label className="block text-sm"><span className="block mb-1 text-xs text-ink-soft">{label}</span>{children}</label>;
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <label className="block text-sm">
+      <span className="block mb-1 text-xs text-ink-soft">{label}</span>
+      {children}
+      {hint && <span className="mt-1 block text-xs text-ink-soft">{hint}</span>}
+    </label>
+  );
 }
 function Check({ name, label, defaultChecked }: { name: string; label: string; defaultChecked?: boolean }) {
   return <label className="flex items-center gap-2"><input type="checkbox" name={name} defaultChecked={defaultChecked} /> {label}</label>;
