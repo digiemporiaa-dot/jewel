@@ -5,6 +5,7 @@ import { getShippingProvider } from '@/lib/shipping/provider';
 import { mapShiprocketStatus } from '@/lib/shipping/status';
 import { commitStock, releaseStock } from '@/lib/inventory';
 import { OrderStatus, PaymentStatus, PaymentType, ShipmentStatus, PaymentMethod, type Order, type OrderItem } from '@prisma/client';
+import { sendOrderShipped, sendOrderDelivered } from '@/lib/email/notifications';
 
 export class ShippingError extends Error {}
 
@@ -117,7 +118,12 @@ export async function applyShipmentStatus(orderId: string, rawStatus: string, so
   const mapping = mapShiprocketStatus(rawStatus);
 
   const data: { status: ShipmentStatus; shippedAt?: Date; deliveredAt?: Date; ndrReason?: string; rtoInitiatedAt?: Date } = { status: mapping.shipment };
-  if (mapping.shipment === ShipmentStatus.IN_TRANSIT && !order.shipment.shippedAt) data.shippedAt = new Date();
+  // Both emails fire on the *transition*, read before the update is applied.
+  // Couriers repeat a status happily; a customer told four times that their
+  // parcel has shipped stops reading anything the shop sends.
+  const justShipped = mapping.shipment === ShipmentStatus.IN_TRANSIT && !order.shipment.shippedAt;
+  const justDelivered = mapping.shipment === ShipmentStatus.DELIVERED && !order.shipment.deliveredAt;
+  if (justShipped) data.shippedAt = new Date();
   if (mapping.shipment === ShipmentStatus.DELIVERED) data.deliveredAt = new Date();
   if (mapping.shipment === ShipmentStatus.NDR) data.ndrReason = rawStatus;
   if (mapping.shipment === ShipmentStatus.RTO_INITIATED) data.rtoInitiatedAt = new Date();
@@ -132,6 +138,11 @@ export async function applyShipmentStatus(orderId: string, rawStatus: string, so
   } else {
     await prisma.orderEvent.create({ data: { orderId, message: `Courier update: ${rawStatus}`, actor: source } });
   }
+
+  // The customer hears it from the courier's own signal rather than from an
+  // admin remembering to press something.
+  if (justShipped) void sendOrderShipped(orderId);
+  if (justDelivered) void sendOrderDelivered(orderId);
 
   // Delivery: commit reserved stock to a sale; capture COD.
   if (mapping.shipment === ShipmentStatus.DELIVERED) {

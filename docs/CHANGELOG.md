@@ -1,5 +1,64 @@
 # Changelog
 
+## Phase 3 · Item 4 completion — the five templates that were never built · 2026-08-22
+
+The spec named ten template keys. Six shipped. The missing five —
+`ORDER_SHIPPED`, `ORDER_DELIVERED`, `BACK_IN_STOCK`, `PRICE_DROP` and
+`NEW_CUSTOMER` — were not templates a client could not edit. They were emails
+**the shop never sent at all**.
+
+### Two of them were designed into the schema and left unwired
+
+`WishlistItem.notifyBackInStock`, `notifyPriceDrop` and `priceAtAdd` have been
+columns since the wishlist was built, carrying a comment saying what they were
+for. Nothing ever read them. Somebody who asked to be told a ₹1.2 lakh necklace
+was back was never told, and the shop had no idea it was failing to.
+
+`lib/wishlist/notify.ts` sends both, triggered where the fact becomes true:
+
+- **Back in stock** fires from `setStock`, on the *crossing* from nothing to
+  something. Topping up from 2 to 5 is not "back", and a piece that already had
+  stock must not email anybody.
+- **Price drop** fires from `recomputeProductPrices`, for the products whose
+  `priceFrom` actually fell. Metal rates move both ways; only one direction is
+  news.
+
+Both are self-limiting, which is what stops a cron turning them into a spam
+generator: back-in-stock clears its flag when sent, and a price drop rewrites
+`priceAtAdd` to the new price so the next email needs a *further* fall rather
+than firing every night the price sits below where it started.
+
+### The bug in that, caught before it shipped
+
+`sendTemplate` returns `false` rather than throwing when mail is unconfigured —
+which is this shop's current state. The first version cleared the flag and moved
+the baseline regardless. The first cron run would have consumed every waiting
+back-in-stock request and reset every price baseline, sent nothing, and left
+nothing looking broken. Both writes are now conditional on delivery.
+
+### Shipped and delivered come from the courier
+
+Both fire from `applyShipmentStatus`, on the transition rather than the state —
+couriers repeat a status happily, and a customer told four times that their
+parcel has shipped stops reading anything the shop sends. The tracking link is
+the shop's own page, not the courier's: it works without the customer knowing
+who carried the parcel, and it survives a change of provider.
+
+### Welcome, guarded
+
+Sent from the appointment booking path — the one moment a customer record is
+created with an email and no order behind it. `sendWelcome` also refuses to send
+to anybody with an order, so however it is wired later it cannot land beside a
+receipt. A welcome arriving in the same minute as an order confirmation reads as
+a broken shop.
+
+A test now asserts every key the spec names exists, that every template declares
+each variable its own copy uses (an undeclared placeholder renders as literal
+`{{price}}` in an inbox), and that the per-template whitelist did not widen as
+the set grew.
+
+Tests: 14 new. 632 passing overall.
+
 ## Phase 3 · Item 6 completion — the SEO fields nothing could reach · 2026-08-22
 
 `ogImageUrl`, `canonicalUrl` and `noIndex` have been columns on Product,

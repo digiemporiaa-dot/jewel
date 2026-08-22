@@ -83,3 +83,86 @@ export async function sendPaymentConfirmation(orderId: string): Promise<void> {
     console.error('[email] payment confirmation failed', e);
   }
 }
+
+/**
+ * The parcel has left. Sent once, when a courier first reports movement.
+ *
+ * Called from the shipment sync rather than from an admin action, because the
+ * courier is authoritative for fulfilment: the customer should hear it when it
+ * is true, not when somebody remembers to press a button.
+ */
+export async function sendOrderShipped(orderId: string): Promise<void> {
+  try {
+    const order = await prisma.order.findUnique({ where: { id: orderId }, include: { shipment: true } });
+    if (!order || !order.contactEmail) return;
+
+    await sendTemplate({
+      key: 'order_shipped',
+      to: order.contactEmail,
+      customerId: order.customerId,
+      values: {
+        name: order.contactName,
+        order_number: order.orderNumber,
+        courier: order.shipment?.courier ?? 'our courier partner',
+        awb: order.shipment?.awb ?? '',
+        // The shop's own tracking page, not the courier's: it works without the
+        // customer knowing which courier carried the parcel, and it survives a
+        // change of provider.
+        tracking_url: `${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/track?order=${encodeURIComponent(order.orderNumber)}`,
+      },
+    });
+  } catch (e) {
+    console.error('[email] shipped notification failed', e);
+  }
+}
+
+export async function sendOrderDelivered(orderId: string): Promise<void> {
+  try {
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!order || !order.contactEmail) return;
+
+    await sendTemplate({
+      key: 'order_delivered',
+      to: order.contactEmail,
+      customerId: order.customerId,
+      values: {
+        name: order.contactName,
+        order_number: order.orderNumber,
+        order_url: orderUrl(),
+      },
+    });
+  } catch (e) {
+    console.error('[email] delivered notification failed', e);
+  }
+}
+
+/**
+ * Welcome, sent once, and only to somebody who has not bought anything yet.
+ *
+ * The order-count guard is the whole safeguard: a welcome arriving in the same
+ * minute as an order confirmation reads as a broken shop, and one arriving on
+ * somebody's fourth order reads worse. Whatever wires this up later, it cannot
+ * land next to a receipt.
+ */
+export async function sendWelcome(customerId: string): Promise<void> {
+  try {
+    const customer = await prisma.customer.findFirst({
+      where: { id: customerId, deletedAt: null },
+      select: { id: true, name: true, email: true, _count: { select: { orders: true } } },
+    });
+    if (!customer?.email) return;
+    if (customer._count.orders > 0) return;
+
+    await sendTemplate({
+      key: 'new_customer',
+      to: customer.email,
+      customerId: customer.id,
+      values: {
+        name: customer.name ?? 'there',
+        url: `${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/my-account`,
+      },
+    });
+  } catch (e) {
+    console.error('[email] welcome failed', e);
+  }
+}

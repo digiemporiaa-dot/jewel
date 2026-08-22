@@ -1,6 +1,7 @@
 import 'server-only';
 import { prisma } from '@/lib/prisma';
 import { AppointmentStatus, AppointmentType, LeadSource, LeadStatus } from '@prisma/client';
+import { sendWelcome } from '@/lib/email/notifications';
 
 /** Default slots offered when no AppointmentSlot rows are configured. */
 export const DEFAULT_SLOTS = [
@@ -61,6 +62,10 @@ export async function bookAppointment(input: BookAppointmentInput): Promise<{ id
   }
 
   // Link to an existing customer by phone, or create one (unverified).
+  const existing = input.customerId
+    ? null
+    : await prisma.customer.findUnique({ where: { phone: input.phone }, select: { id: true } });
+
   const customer = input.customerId
     ? await prisma.customer.findFirst({ where: { id: input.customerId, deletedAt: null } })
     : await prisma.customer.upsert({
@@ -68,6 +73,13 @@ export async function bookAppointment(input: BookAppointmentInput): Promise<{ id
         create: { phone: input.phone, name: input.name, email: input.email || undefined },
         update: { name: input.name },
       });
+
+  // Booking an appointment is the one moment a customer record is created with
+  // an email and no order behind it — the only place a welcome can be sent
+  // without arriving next to a receipt.
+  if (!existing && !input.customerId && customer?.id && input.email) {
+    void sendWelcome(customer.id);
+  }
 
   const appointment = await prisma.appointment.create({
     data: {

@@ -84,10 +84,15 @@ export async function setStock(
   opts: { lowStockThreshold?: number; reason?: string; note?: string } = {}
 ): Promise<void> {
   if (newStock < 0) throw new Error('Stock cannot be negative');
+
+  let cameBackInStock = false;
   await prisma.$transaction(async (tx) => {
     const inv = await tx.inventory.findUnique({ where: { variantId } });
     if (!inv) throw new Error('No inventory record');
     const delta = newStock - inv.stockQty;
+    // The crossing, not the level. A piece that already had stock is not "back",
+    // and topping up from 2 to 5 must not email anybody.
+    cameBackInStock = inv.stockQty <= 0 && newStock > 0;
     await tx.inventory.update({
       where: { variantId },
       data: {
@@ -101,6 +106,34 @@ export async function setStock(
       });
     }
   });
+
+  // Outside the transaction and deliberately not awaited by the caller's
+  // critical path: a mail provider having a bad afternoon must never roll back
+  // a stock count.
+  if (cameBackInStock) {
+    void announceBackInStock(variantId);
+  }
+}
+
+/**
+ * Tell the people who asked to be told, once the stock write has committed.
+ *
+ * Wishlist rows are per product, while stock is per variant, so this resolves
+ * the parent — somebody who saved a ring wants to know it is available, not
+ * which size came back.
+ */
+async function announceBackInStock(variantId: string): Promise<void> {
+  try {
+    const variant = await prisma.productVariant.findUnique({
+      where: { id: variantId },
+      select: { productId: true },
+    });
+    if (!variant) return;
+    const { notifyBackInStock } = await import('@/lib/wishlist/notify');
+    await notifyBackInStock(variant.productId);
+  } catch (e) {
+    console.error('[inventory] back-in-stock notification failed', e);
+  }
 }
 
 export type InventoryRow = {

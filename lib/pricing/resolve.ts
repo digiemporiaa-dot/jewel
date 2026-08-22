@@ -1,4 +1,5 @@
 import 'server-only';
+import Decimal from 'decimal.js';
 import { prisma } from '@/lib/prisma';
 import { calculatePrice, PricingError, type CalculatePriceInput, type PriceBreakup } from '@/lib/pricing';
 import { pickMakingRule, toMakingChargeInput, type MakingRuleCandidate } from '@/lib/pricing/making';
@@ -200,15 +201,35 @@ export async function recomputeProductPrices(productIds?: string[]): Promise<num
   }
 
   let updated = 0;
+  // Products whose "from" price actually fell. Metal rates move both ways, and
+  // a shopper watching a saved piece wants to hear about one direction only.
+  const cheaper: string[] = [];
+
   for (const product of products) {
     const rate = await rateFor(product.purityId);
     const pricing = priceProduct(product, rate, makingRules);
+    const before = product.priceFrom;
     await prisma.product.update({
       where: { id: product.id },
       data: { priceFrom: pricing.priceFrom, priceTo: pricing.priceTo },
     });
+    if (before && pricing.priceFrom && new Decimal(pricing.priceFrom).lt(before.toString())) {
+      cheaper.push(product.id);
+    }
     updated += 1;
   }
+
+  // After the writes, never inside them: a recompute that half-succeeded because
+  // an email provider timed out would leave the catalogue priced inconsistently.
+  if (cheaper.length > 0) {
+    try {
+      const { notifyPriceDrops } = await import('@/lib/wishlist/notify');
+      await notifyPriceDrops(cheaper);
+    } catch (e) {
+      console.error('[pricing] price-drop notifications failed', e);
+    }
+  }
+
   return updated;
 }
 
