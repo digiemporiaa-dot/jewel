@@ -1,5 +1,125 @@
 # Changelog
 
+## Phase 3 · Item 7 — URL redirects · 2026-08-22
+
+Renaming a product broke every link to it that already existed: in Google's
+index, in a customer's WhatsApp history, and in whatever the shop paid to
+advertise. Nobody remembers to add a redirect by hand at the moment they are
+busy renaming something, so the shop does not.
+
+### Automatic on every rename
+
+Changing the address of a product, category, collection, page or journal post now
+raises a 301 from the old path. Best-effort and never throws: losing a redirect
+is a shame, but failing the rename the operator actually asked for would be
+worse.
+
+### Resolved on the Edge
+
+The middleware consults an in-memory map before anything else runs — a renamed
+page must not render its 404 first, and there is no point authenticating a
+request that is about to be sent elsewhere. The map is fetched from an internal
+route handler and memoised for 30 seconds per isolate, the same arrangement the
+marketing-tag CSP uses: an admin's change is live within half a minute rather
+than instantly, in exchange for not querying the database on every request to
+the site.
+
+Failure is contained. A lookup error keeps the last known good map rather than
+dropping every redirect over a blip; with nothing cached, an empty map means
+renamed pages 404 — bad, but the site keeps serving, which is the only safe way
+for something on every request to fail.
+
+Hits are counted through `waitUntil`, after the redirect has already gone out. A
+redirect must not wait on a database round trip, and the Edge cannot reach Prisma
+anyway.
+
+### What it refuses
+
+A redirect table is one of the few pieces of shop configuration that can take a
+whole site down, so most of the logic is refusal:
+
+- **The home page.** Redirecting `/` would take everything down.
+- **Paths the shop itself owns** — `/checkout`, `/cart`, `/admin`, `/api`,
+  `/my-account`. Checked on save *and* in the middleware, because a rule on
+  `/checkout` would be a shop that cannot take money and a direct database edit
+  must not be able to create one.
+- **Loops.** Including the case a per-rule check misses: `A→B` exists and
+  somebody adds `B→A`. Neither rule points at itself, so both pass a self-check,
+  and the site bounces between two URLs forever.
+- **Unusable destinations** — `javascript:`, `data:`, a bare word.
+- **Anything but 301 or 302.**
+
+Off-site destinations are allowed: an old campaign page that now lives on
+Instagram is a legitimate redirect.
+
+### Chains are flattened, not banned
+
+An operator who renames a product twice has legitimately created `A→B→C`, and
+refusing the second rename would be worse than the extra hop. So chains are
+followed rather than rejected: a new rule is pointed at where its target actually
+ends up, and rules that pointed at the new rule's source are re-pointed past it.
+Each extra hop costs a little ranking and a round trip on a mobile connection.
+
+### Matching is forgiving
+
+Paths are normalised on both sides — case folded, trailing slash dropped, repeated
+slashes collapsed, query removed. A shopper typing from a business card or a QR
+code gets the case wrong constantly, and matching case-sensitively would turn a
+working redirect into a 404 for exactly those people.
+
+The incoming query string is carried across, because it usually holds the
+campaign parameters that justify the link existing:
+`/diwali-sale?utm_source=meta` reaches `/c/wedding?utm_source=meta`, so the shop
+keeps the attribution for clicks it paid for. A query already on the rule's own
+target wins, since that was written deliberately.
+
+### A defect the live run found
+
+Renaming a page and then renaming it back — the ordinary "undo that" — left the
+first rule in place, pointing the now-live page at a slug nothing served any
+more. A visitor to the correct URL was sent to a dead one.
+
+Fixed: a path that a real page occupies cannot also be a redirect source. On a
+rename the new path is released first — an automatic rule is deleted, since the
+rename it described has been undone; a hand-written one is only switched off,
+because somebody typed it for a reason and the record of what they meant is
+worth more than the tidiness of removing it.
+
+### System → Redirects
+
+Add rules by hand, or paste a list. The importer takes commas or tabs so a
+spreadsheet pastes straight in, ignores a header row, and **reports every row it
+rejected with its line number** — an import of two hundred rules must not
+silently drop the nine that were malformed. Rows are applied one at a time
+rather than in a batch, because a file containing `A→B` and `B→A` is a loop that
+only the second row reveals.
+
+The list is ordered most-used first, and prefers switching a rule off to
+deleting it: a redirect nobody understands is usually one still carrying traffic.
+Deleting one with hits asks twice and names the number.
+
+### Verified
+
+`tsc` clean, `next build` clean, lint clean, **458 tests across 27 files** (54
+new). End to end against a production build:
+
+- `/old-ring` → 301 to the product; `/OLD-RING/` reaches it too; a `utm_source`
+  survives the hop;
+- `/checkout` and a loop were both refused with the reason shown;
+- an import of 5 rows added 2 and listed 3 rejections by line;
+- turning a rule off returned its path to a 404;
+- renaming a CMS page created the 301 automatically, and renaming it back left
+  no stale rule — the live page serves itself and the renamed URL redirects to
+  it.
+
+### Note
+
+A URL with both the wrong case *and* a trailing slash takes two hops:
+Next's own trailing-slash normalisation issues a 308 before the middleware runs,
+then the redirect fires. It lands correctly; it is one hop longer than it needs
+to be. Changing that means disabling Next's normalisation site-wide, which is a
+larger trade than the case deserves.
+
 ## Phase 3 · Item 6b — Structured data, robots, sitemap and the SEO screen · 2026-08-22
 
 The second half of item 6: the parts an operator can see and switch.

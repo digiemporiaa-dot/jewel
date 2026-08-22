@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { assertPermission } from '@/lib/auth/guard';
 import { writeAudit } from '@/lib/audit';
 import { prisma } from '@/lib/prisma';
+import { recordSlugChange } from '@/lib/redirects';
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -138,6 +139,10 @@ export async function updateCategoryAction(id: string, fd: FormData): Promise<Ac
       seoDescription: d.seoDescription ?? null,
     },
   });
+
+  // Renaming breaks every link that already exists — in Google, in a shared
+  // WhatsApp message, in whatever was advertised.
+  await recordSlugChange({ prefix: '/c', oldSlug: before?.slug ?? '', newSlug: slug, staffId: staff.id });
 
   await writeAudit({
     userId: staff.id,

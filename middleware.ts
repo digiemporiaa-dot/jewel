@@ -3,13 +3,17 @@ import { NextResponse, type NextRequest, type NextFetchEvent } from 'next/server
 import { authConfig } from './auth.config';
 import { baseCsp } from './lib/security/csp';
 import { appendCspSources, hasCspSources, type CspSources } from './lib/marketing/csp';
+import { getRedirectMap, resolveRedirect } from './lib/redirects/edge';
 
 /**
- * Two jobs, both of which have to happen before a response leaves:
+ * Three jobs, all of which have to happen before a response leaves:
  *
- *  1. Guard `/admin` — authentication only. Role checks are re-done server-side
+ *  1. Serve redirects. First, because a renamed page must not render its 404
+ *     before anything else gets a say, and because there is no point running the
+ *     auth guard on a request that is about to be sent somewhere else.
+ *  2. Guard `/admin` — authentication only. Role checks are re-done server-side
  *     in every admin route and server action; a hidden menu is not authorization.
- *  2. Own the Content-Security-Policy. It lives here rather than in
+ *  3. Own the Content-Security-Policy. It lives here rather than in
  *     `next.config.mjs` because marketing tag IDs are database values that change
  *     without a redeploy, and a policy declared in the config is fixed at server
  *     start and would override anything set here. One owner, no ambiguity.
@@ -87,8 +91,50 @@ async function withCsp(res: NextResponse, req: NextRequest, withTags: boolean): 
   return res;
 }
 
+/**
+ * Paths a redirect may never shadow.
+ *
+ * Checked here as well as on save. A rule on `/checkout` written before this
+ * guard existed — or by a direct database edit — would otherwise be a shop that
+ * cannot take money, and the middleware is the last place able to refuse it.
+ */
+function isProtectedPath(pathname: string): boolean {
+  return /^\/(admin|api|_next|checkout|cart|my-account)(\/|$)/.test(pathname);
+}
+
+/** Tell the Node runtime a rule was used. Failure here is not worth a log line. */
+async function recordHit(origin: string, fromPath: string): Promise<void> {
+  const base = process.env.INTERNAL_BASE_URL ?? origin;
+  await fetch(`${base.replace(/\/$/, '')}/api/internal/redirect-hit`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ fromPath }),
+    signal: AbortSignal.timeout(2000),
+  }).catch(() => {});
+}
+
 export default async function middleware(req: NextRequest, ev: NextFetchEvent) {
-  if (req.nextUrl.pathname.startsWith('/admin')) {
+  const { pathname, search } = req.nextUrl;
+
+  if (!isProtectedPath(pathname)) {
+    try {
+      const map = await getRedirectMap(req.nextUrl.origin);
+      const hit = resolveRedirect(pathname, search, map);
+      if (hit) {
+        // Counted after the response goes out, never before it: a redirect must
+        // not wait on a database round trip, and the Edge cannot reach Prisma.
+        ev.waitUntil(recordHit(req.nextUrl.origin, pathname));
+        return NextResponse.redirect(new URL(hit.location, req.nextUrl.origin), hit.statusCode);
+      }
+    } catch (e) {
+      // A redirect failure must never take the site down: every request passes
+      // through here, so falling through to normal routing is the only safe
+      // outcome. The visitor sees the page, or its 404, as they would have.
+      console.error('[middleware] redirect resolution failed', e);
+    }
+  }
+
+  if (pathname.startsWith('/admin')) {
     // The auth guard returns its own response when it redirects an unauthenticated
     // visitor to the sign-in page; otherwise it lets the request continue.
     const guarded = await authMiddleware(req as never, ev as never);

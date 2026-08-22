@@ -165,6 +165,8 @@ export async function updateProduct(id: string, raw: unknown) {
   });
   if (clash) return { ok: false as const, error: 'Slug or SKU already in use by another product' };
 
+  const before = await prisma.product.findUnique({ where: { id }, select: { slug: true } });
+
   const isFixed = parsed.data.pricingMode === 'FIXED';
   await prisma.product.update({
     where: { id },
@@ -176,6 +178,12 @@ export async function updateProduct(id: string, raw: unknown) {
       makingChargeRule: parsed.data.makingChargeRuleId ? { connect: { id: parsed.data.makingChargeRuleId } } : { disconnect: true },
     },
   });
+  // Renaming a product breaks every link to it that already exists — in
+  // Google's index, in a customer's WhatsApp history, and in whatever the shop
+  // paid to advertise. This is the case the redirect table exists for.
+  const { recordSlugChange } = await import('@/lib/redirects');
+  await recordSlugChange({ prefix: '/p', oldSlug: before?.slug ?? '', newSlug: parsed.data.slug });
+
   const { recomputeProductPrices } = await import('@/lib/pricing/resolve');
   await recomputeProductPrices([id]);
   return { ok: true as const, id };

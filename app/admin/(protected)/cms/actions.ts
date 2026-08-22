@@ -9,6 +9,7 @@ import { prisma } from '@/lib/prisma';
 import { parseBlockData, defaultBlockData } from '@/lib/cms/blocks';
 import { resolveBlockStyle, syncLegacyFields } from '@/lib/cms/style';
 import { CmsBlockType, PublishStatus, type Prisma } from '@prisma/client';
+import { recordSlugChange } from '@/lib/redirects';
 
 export type Result = { ok: boolean; error?: string };
 
@@ -55,6 +56,7 @@ export async function updatePageAction(id: string, fd: FormData): Promise<Result
   const clash = await prisma.cmsPage.findFirst({ where: { slug: parsed.data.slug, id: { not: id } }, select: { id: true } });
   if (clash) return { ok: false, error: 'That slug is already in use' };
 
+  const before = await prisma.cmsPage.findUnique({ where: { id }, select: { slug: true } });
   const page = await prisma.cmsPage.update({
     where: { id },
     data: {
@@ -66,6 +68,9 @@ export async function updatePageAction(id: string, fd: FormData): Promise<Result
       seoTitle: parsed.data.seoTitle || null,
       seoDescription: parsed.data.seoDescription || null,
     },
+  });
+  await recordSlugChange({
+    prefix: '/pages', oldSlug: before?.slug ?? '', newSlug: parsed.data.slug, staffId: staff.id,
   });
   await writeAudit({ userId: staff.id, action: 'CMS_PAGE_UPDATE', entity: 'CmsPage', entityId: id, after: { status: parsed.data.status } });
   revalidatePath('/admin/cms');

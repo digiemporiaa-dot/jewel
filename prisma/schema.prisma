@@ -304,6 +304,45 @@ model StoreSetting {
   createdAt DateTime @default(now())
 }
 
+/// A redirect from an old URL to a new one.
+///
+/// Two sources: an operator adding one by hand, and the automatic 301 raised
+/// whenever a slug changes. The second is the important one — renaming a product
+/// silently breaks every link to it that already exists in Google, in a
+/// customer's WhatsApp history, and in whatever the shop paid to advertise.
+///
+/// `fromPath` is stored normalised (leading slash, no trailing slash, no query,
+/// lower-cased) so a lookup is one exact-match index hit rather than a scan —
+/// this is consulted on the Edge for requests that turn out to be 404s.
+model Redirect {
+  id          String  @id @default(cuid())
+  fromPath    String  @unique
+  toPath      String
+  /// 301 (permanent) or 302 (temporary). Permanent is the default because that
+  /// is what passes ranking to the new URL; temporary is for a sale page that
+  /// will come back.
+  statusCode  Int     @default(301)
+  isActive    Boolean @default(true)
+  /// Why this exists — "renamed 2026-08-22", "old print campaign".
+  note        String?
+  /// Set when the redirect was raised automatically by a slug change, so the
+  /// admin can tell them apart from ones a person typed.
+  isAutomatic Boolean @default(false)
+  /// Staff user id, when a person created it. Not a relation: the redirect must
+  /// outlive whoever added it.
+  createdBy   String?
+
+  /// Cheap usage signal. A redirect nobody has hit in a year can be retired;
+  /// one hit daily is load-bearing and must not be.
+  hitCount  Int       @default(0)
+  lastHitAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+}
+
 /// Site-wide SEO configuration.
 ///
 /// Separate from StoreSetting because it is edited by whoever runs marketing,

@@ -7,6 +7,7 @@ import { assertPermission } from '@/lib/auth/guard';
 import { writeAudit } from '@/lib/audit';
 import { prisma } from '@/lib/prisma';
 import { PublishStatus } from '@prisma/client';
+import { recordSlugChange } from '@/lib/redirects';
 
 export type Result = { ok: boolean; error?: string };
 
@@ -63,7 +64,15 @@ export async function updatePostAction(id: string, fd: FormData): Promise<Result
   const clash = await prisma.blogPost.findFirst({ where: { slug: parsed.data.slug, id: { not: id } }, select: { id: true } });
   if (clash) return { ok: false, error: 'That slug is already in use' };
 
+  const before = await prisma.blogPost.findUnique({ where: { id }, select: { slug: true } });
   await prisma.blogPost.update({ where: { id }, data: toData(parsed.data) });
+
+  // Renaming breaks every link that already exists — in Google, in a shared
+  // WhatsApp message, in whatever was advertised. Nobody remembers to add the
+  // redirect by hand at the moment they are busy renaming something.
+  await recordSlugChange({
+    prefix: '/blog', oldSlug: before?.slug ?? '', newSlug: parsed.data.slug, staffId: staff.id,
+  });
   await writeAudit({ userId: staff.id, action: 'BLOG_UPDATE', entity: 'BlogPost', entityId: id });
   revalidatePath('/admin/blog');
   revalidatePath('/blog');
