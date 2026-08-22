@@ -1213,8 +1213,12 @@ model Lead {
   id           String     @id @default(cuid())
   source       LeadSource @default(WEBSITE)
   status       LeadStatus @default(NEW)
-  name         String
-  phone        String
+  /// Null for an enquiry captured before the shopper identified themselves —
+  /// a WhatsApp click from a signed-out visitor is a real lead with no name yet.
+  name         String?
+  /// Null for the same reason. A WhatsApp click-to-chat never tells the site the
+  /// visitor's number; it arrives when they actually send the message.
+  phone        String?
   email        String?
   customerId   String?
   customer     Customer?  @relation(fields: [customerId], references: [id])
@@ -1225,6 +1229,17 @@ model Lead {
   assignedToId String?
   assignedTo   User?      @relation("LeadAssignee", fields: [assignedToId], references: [id])
   lastContactedAt DateTime?
+  /// Guest session that produced an auto-captured lead, so repeat clicks from
+  /// one anonymous visitor collapse into one lead rather than twenty.
+  sessionToken String?
+  /// How many times this enquiry has been repeated — a shopper who clicks
+  /// Enquire on the same piece four days running is a warmer lead than one who
+  /// clicked once, and that is invisible if repeats are simply discarded.
+  touchCount   Int        @default(1)
+  /// Uniqueness key for automatic capture, e.g. `whatsapp:<who>:<product>:<day>`
+  /// or `cart:<cartId>`. Postgres enforces it, so two simultaneous clicks cannot
+  /// both create a lead. Null for anything a person entered by hand.
+  dedupeKey    String?    @unique
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -1234,6 +1249,8 @@ model Lead {
   @@index([status])
   @@index([assignedToId])
   @@index([phone])
+  @@index([sessionToken])
+  @@index([source, createdAt])
 }
 
 model FollowUp {

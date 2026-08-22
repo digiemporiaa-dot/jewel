@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils/cn';
 import PageHeader from '@/components/admin/PageHeader';
 import NewLeadForm from './NewLeadForm';
 import { LeadStatus } from '@prisma/client';
+import { leadTitle, leadContact } from '@/lib/admin/lead-display';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,9 +65,13 @@ export default async function CrmPage({
                 <Link key={l.id} href={`/admin/crm/${l.id}`} className="block px-4 py-3 hover:bg-paper-2/40">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="font-medium text-sm">{l.name}</p>
-                      <p className="text-xs text-ink-soft">{l.phone}{l.email ? ` · ${l.email}` : ''}</p>
+                      <p className="font-medium text-sm">{leadTitle(l)}</p>
+                      <p className="text-xs text-ink-soft">{leadContact(l)}</p>
                       {l.product && <p className="text-xs text-ink-soft">Interested in {l.product.name}</p>}
+                      <p className="text-[0.7rem] text-ink-soft">
+                        {l.source.replace(/_/g, ' ').toLowerCase()}
+                        {l.touchCount > 1 && ` · asked ${l.touchCount} times`}
+                      </p>
                       {l.followUps[0] && <p className="text-xs text-brass">Follow-up due {formatDate(l.followUps[0].dueAt)}</p>}
                     </div>
                     <div className="text-right shrink-0">
@@ -100,8 +105,8 @@ export default async function CrmPage({
             <ul className="divide-y divide-line/60">
               {due.map((f) => (
                 <li key={f.id} className="px-4 py-3 text-sm">
-                  <Link href={`/admin/crm/${f.lead.id}`} className="font-medium hover:text-brass">{f.lead.name}</Link>
-                  <p className="text-xs text-ink-soft">{f.lead.phone} · due {formatDate(f.dueAt)}</p>
+                  <Link href={`/admin/crm/${f.lead.id}`} className="font-medium hover:text-brass">{leadTitle(f.lead)}</Link>
+                  <p className="text-xs text-ink-soft">{leadContact(f.lead)} · due {formatDate(f.dueAt)}</p>
                   {f.note && <p className="text-xs mt-0.5">{f.note}</p>}
                 </li>
               ))}

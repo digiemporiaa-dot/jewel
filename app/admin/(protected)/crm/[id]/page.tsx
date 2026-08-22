@@ -6,6 +6,7 @@ import { getLead, getSalesStaff } from '@/lib/admin/crm';
 import { formatCurrency, formatDate } from '@/lib/utils/format';
 import PageHeader from '@/components/admin/PageHeader';
 import LeadActions, { CompleteFollowUpButton } from './LeadActions';
+import { leadTitle, leadContact } from '@/lib/admin/lead-display';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +20,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
 
   return (
     <div>
-      <PageHeader title={lead.name} description={`${lead.phone}${lead.email ? ` · ${lead.email}` : ''}`} action={{ label: 'Back to CRM', href: '/admin/crm' }} />
+      <PageHeader title={leadTitle(lead)} description={leadContact(lead)} action={{ label: 'Back to CRM', href: '/admin/crm' }} />
 
       <div className="grid lg:grid-cols-[1.5fr_1fr] gap-6">
         <div className="space-y-5">

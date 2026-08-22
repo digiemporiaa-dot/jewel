@@ -131,3 +131,26 @@ export function updateGoogleConsent(granted: boolean): void {
     analytics_storage: value,
   });
 }
+
+/**
+ * Report an enquiry — someone opening a WhatsApp chat with the shop.
+ *
+ * Not part of `trackEcommerce` because it is not a step in the purchase funnel
+ * and carries no money: quoting a value here would inflate ROAS with enquiries
+ * that never became sales. Each network has its own name for the same idea.
+ */
+export function trackLead(params: { productId?: string | null } = {}): void {
+  const w = tagWindow();
+  if (!w) return;
+  const detail = params.productId ? { product_id: params.productId } : {};
+
+  w.dataLayer = w.dataLayer ?? [];
+  w.dataLayer.push({ event: 'generate_lead', ...detail });
+
+  w.gtag?.('event', 'generate_lead', detail);
+  w.fbq?.('track', 'Lead', detail);
+  w.ttq?.track('Contact', detail);
+  w.pintrk?.('track', 'lead', detail);
+  // Snapchat has no enquiry event; SIGN_UP is the closest standard one.
+  w.snaptr?.('track', 'SIGN_UP', detail);
+}

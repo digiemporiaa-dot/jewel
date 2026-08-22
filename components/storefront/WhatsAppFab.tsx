@@ -1,5 +1,5 @@
 import { getStoreSettings } from '@/lib/store';
-import { WhatsAppIcon } from '@/components/icons';
+import WhatsAppLink from '@/components/storefront/WhatsAppLink';
 
 /** Site-wide floating WhatsApp enquiry button (brief §26). Number from settings. */
 export default async function WhatsAppFab() {
@@ -10,14 +10,10 @@ export default async function WhatsAppFab() {
   const href = `https://wa.me/${digits}?text=${encodeURIComponent(`Hi ${store.brandName}, I have a question.`)}`;
 
   return (
-    <a
+    <WhatsAppLink
       href={href}
-      target="_blank"
-      rel="noreferrer"
-      aria-label="Chat on WhatsApp"
+      ariaLabel="Chat on WhatsApp"
       className="fixed z-30 right-4 bottom-20 lg:bottom-6 grid place-items-center h-12 w-12 rounded-full bg-[#25D366] text-white shadow-lg hover:scale-105 transition-transform"
-    >
-      <WhatsAppIcon width={26} height={26} />
-    </a>
+    />
   );
 }

@@ -77,7 +77,7 @@ export async function getDueFollowUps(scope: CrmScope, withinHours = 24) {
     },
     orderBy: { dueAt: 'asc' },
     take: 50,
-    include: { lead: { select: { id: true, name: true, phone: true, status: true } } },
+    include: { lead: { select: { id: true, name: true, phone: true, email: true, source: true, status: true } } },
   });
 }
 

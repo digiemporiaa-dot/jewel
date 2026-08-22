@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils/cn';
 import { formatCurrency } from '@/lib/utils/format';
 import { buildWhatsAppLink } from '@/lib/whatsapp';
 import { WhatsAppIcon } from '@/components/icons';
+import WhatsAppLink from '@/components/storefront/WhatsAppLink';
 import WishlistButton from '@/components/storefront/WishlistButton';
 import PriceLabel from '@/components/storefront/PriceLabel';
 import PriceBreakup from './PriceBreakup';
@@ -182,9 +183,13 @@ export default function BuyBox({
       <div className="flex items-center gap-3">
         <WishlistButton productId={product.id} initialSaved={product.savedInitial} variant="full" className="flex-1" />
         {whatsappLink && (
-          <a href={whatsappLink} target="_blank" rel="noreferrer" className="btn-outline flex-1 justify-center">
+          <WhatsAppLink
+            href={whatsappLink}
+            productId={product.id}
+            className="btn-outline flex-1 justify-center"
+          >
             <WhatsAppIcon width={18} height={18} /> Enquire
-          </a>
+          </WhatsAppLink>
         )}
       </div>
       {msg && <p className="text-sm text-ink-soft">{msg}</p>}

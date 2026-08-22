@@ -1,5 +1,99 @@
 # Changelog
 
+## Phase 3 · Item 5 — Enquiry capture · 2026-08-22
+
+The WhatsApp buttons were the shop's busiest call to action and left no trace.
+A shopper tapped Enquire, opened WhatsApp, and either messaged or did not — and
+either way nobody at the shop knew the tap had happened.
+
+### What is captured
+
+A tap on **Enquire** (product page) or the **floating chat button** now raises a
+CRM lead before the shopper reaches WhatsApp, carrying which piece they were
+looking at. Abandoned bags raise one too, at the moment the bag is written off
+rather than after the last reminder — on a ₹1,00,000 bag a phone call the same
+evening beats three emails over three days, and a bag with no email address gets
+no reminders at all, so the lead is its only trace.
+
+### What is deliberately not captured
+
+A click-to-chat link never tells the site the visitor's phone number; that
+arrives when they actually send the message. So `Lead.name` and `Lead.phone` are
+now nullable, and an anonymous enquiry is stored with neither. Inventing a
+placeholder number would have put an uncallable row in a list of people to call.
+The CRM labels these honestly — "Anonymous enquiry", "No contact details — they
+have not messaged yet" — rather than rendering an empty cell that reads as a bug.
+
+Staff-entered leads still require a name and a number. That is enforced by the
+form, which is where it belongs, not by the column.
+
+### The tap is never delayed
+
+Logging goes out through `navigator.sendBeacon`, which the browser queues and
+delivers independently of the page. An `await` before opening WhatsApp would add
+a visible pause on the one button nobody waits for, and a `fetch` the unload
+cancels would simply lose the enquiry. If the beacon is blocked or unsupported,
+the shop misses that click and nothing else happens — the link is a plain anchor
+and works with JavaScript switched off entirely.
+
+### De-duplication is enforced by Postgres
+
+One lead per shopper, per piece, per day — a rule the shop owner can hold in
+their head. The key is a unique index on `Lead.dedupeKey`, not a check-then-
+insert, because two taps in the same millisecond would both pass a check and
+both write. Verified against a real database: twenty simultaneous captures
+produce exactly one lead.
+
+Repeats are counted rather than discarded. Somebody who enquired about the same
+necklace four times is a warmer lead than somebody who enquired once, and that
+is invisible if the extras are simply dropped.
+
+A day is bucketed in **IST**, not UTC. Bucketing on UTC would split an evening's
+browsing across two days at 5:30pm local, which is exactly when people shop.
+
+Abandoned-cart leads are one per cart *for ever*, not per day — the reminder
+campaign already runs on a schedule, and a second lead would have sales chase
+one shopper twice.
+
+### The endpoint trusts the browser for one thing
+
+`POST /api/enquiry` accepts a product id and nothing else. Who the shopper is
+comes from the server's own cookies; a payload carrying a `customerId` or a
+`phone` is ignored, because a public endpoint that accepted those would let
+anyone attribute enquiries to anyone.
+
+The product id is verified against the database *before* the de-duplication key
+is built, and the key uses the resolved id. Without that, a caller could mint a
+fresh lead per made-up id and walk straight around the limit; unresolvable ids
+now collapse into that visitor's one site-level lead for the day.
+
+The endpoint issues the guest session cookie if the visitor does not have one —
+the same first-party, httpOnly cookie the guest bag already uses, adding no new
+tracking surface. Most WhatsApp enquiries come from visitors who never added
+anything to a bag, so without this the first tap from every new visitor would be
+unattributable and the second would look like a first.
+
+### Marketing tags
+
+`trackLead` reports the enquiry to whichever pixels are installed, in each
+network's own vocabulary. It carries no monetary value on purpose: quoting one
+would inflate ROAS with enquiries that never became sales.
+
+### Schema
+
+`Lead` gains `sessionToken`, `touchCount`, `dedupeKey` (unique), and indexes on
+`sessionToken` and `(source, createdAt)`. `name` and `phone` become nullable.
+NULLs are exempt from a unique index, so hand-entered leads are unaffected.
+
+### Verified
+
+`tsc` clean, `next build` clean, lint clean, **300 tests across 23 files**. End
+to end against a production build with a fresh anonymous browser profile: two
+taps produced one lead with `touchCount` 2 and the right product linked, the
+session cookie was issued by the beacon, an unknown product id produced no
+product link, a spoofed `customerId`/`phone` payload was ignored, and the link
+still worked with JavaScript disabled.
+
 ## Phase 3 · Item 4 — Editable email templates · 2026-08-22
 
 Every word the shop emails a customer was hardcoded. Birthday and anniversary

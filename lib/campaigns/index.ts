@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { sendTemplate } from '@/lib/templates';
 import { decideReminder, stageLabel, DEFAULT_REMINDER_CONFIG, type ReminderConfig } from '@/lib/campaigns/schedule';
 import { formatCurrency } from '@/lib/utils/format';
+import { captureAbandonedCartLead } from '@/lib/leads';
 
 /** Load a campaign's on/off state and config overrides from the database. */
 export async function getCampaign(type: string) {
@@ -23,7 +24,28 @@ async function reminderConfig(): Promise<{ enabled: boolean; config: ReminderCon
   };
 }
 
-export type AbandonedCartResult = { scanned: number; markedAbandoned: number; remindersSent: number; skipped: number };
+export type AbandonedCartResult = {
+  scanned: number; markedAbandoned: number; remindersSent: number; skipped: number;
+  /** CRM leads raised for newly abandoned carts. */
+  leadsRaised: number;
+};
+
+/**
+ * Rough value of what was left behind, for the lead's estimated value.
+ *
+ * Built from each product's "from" price rather than a recomputed quote: this is
+ * a sales prompt — "chase this one first" — not a figure anyone is charged, and
+ * the real total is recomputed at checkout against the live metal rate anyway.
+ */
+function cartValue(items: { quantity: number; product: { priceFrom: unknown } }[]): string | null {
+  let total = 0;
+  for (const item of items) {
+    const from = Number(item.product.priceFrom ?? 0);
+    if (!Number.isFinite(from) || from <= 0) return null; // an unpriced item makes the sum a lie
+    total += from * item.quantity;
+  }
+  return total > 0 ? total.toFixed(2) : null;
+}
 
 /**
  * Abandoned-cart pass: mark newly abandoned carts, then send at most one staged
@@ -32,7 +54,7 @@ export type AbandonedCartResult = { scanned: number; markedAbandoned: number; re
  */
 export async function runAbandonedCartCampaign(now = new Date()): Promise<AbandonedCartResult> {
   const { enabled, config } = await reminderConfig();
-  const result: AbandonedCartResult = { scanned: 0, markedAbandoned: 0, remindersSent: 0, skipped: 0 };
+  const result: AbandonedCartResult = { scanned: 0, markedAbandoned: 0, remindersSent: 0, skipped: 0, leadsRaised: 0 };
   if (!enabled) return result;
 
   const carts = await prisma.cart.findMany({
@@ -62,6 +84,20 @@ export async function runAbandonedCartCampaign(now = new Date()): Promise<Abando
     if (decision.action === 'mark-abandoned') {
       await prisma.cart.update({ where: { id: cart.id }, data: { abandonedAt: now } });
       result.markedAbandoned += 1;
+
+      // Raise a CRM lead at the moment the cart is written off, not when the
+      // last reminder is sent. On a ₹1,00,000 bag a phone call the same evening
+      // is worth more than three emails over three days — and a cart with no
+      // email address gets no reminders at all, so this is the only trace of it.
+      const outcome = await captureAbandonedCartLead({
+        cartId: cart.id,
+        customerId: cart.customer?.id ?? null,
+        sessionToken: cart.sessionToken,
+        itemCount: cart.items.reduce((sum, i) => sum + i.quantity, 0),
+        value: cartValue(cart.items),
+        productId: cart.items[0]?.productId ?? null,
+      });
+      if (outcome === 'created') result.leadsRaised += 1;
       continue;
     }
     if (decision.action === 'none') { result.skipped += 1; continue; }
