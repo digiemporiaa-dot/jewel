@@ -14,10 +14,13 @@ import Gallery from './Gallery';
 import BuyBox from './BuyBox';
 import { parseTenures } from '@/lib/emi';
 import { buildMetadata } from '@/lib/seo/metadata';
+import { productLd, breadcrumbLd, serialiseJsonLd } from '@/lib/seo/jsonld';
+import { siteUrl } from '@/lib/seo/settings';
 
 export const dynamic = 'force-dynamic';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
+// Runtime, so a domain change does not need a rebuild — see lib/seo/settings.
+const SITE_URL = siteUrl();
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
@@ -65,42 +68,32 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   const priceForSchema = detail.priceFrom ?? detail.variants.find((v) => v.breakup)?.breakup?.unitTotal ?? null;
   const inStock = detail.variants.some((v) => v.inStock);
 
-  const productLd = {
-    '@context': 'https://schema.org',
-    '@type': 'Product',
+  const ld = productLd({
+    siteUrl: SITE_URL,
+    brandName: store.brandName,
+    currency: store.currency,
+    path: `/p/${slug}`,
     name: detail.name,
-    description: detail.shortDescription ?? detail.description ?? undefined,
+    description: detail.shortDescription ?? detail.description,
     sku: detail.sku,
-    image: detail.images.map((i) => i.url).filter(Boolean),
-    brand: { '@type': 'Brand', name: store.brandName },
-    ...(detail.reviewCount > 0 && detail.reviewAverage
-      ? { aggregateRating: { '@type': 'AggregateRating', ratingValue: detail.reviewAverage.toFixed(1), reviewCount: detail.reviewCount } }
-      : {}),
-    offers: priceForSchema
-      ? {
-          '@type': 'Offer',
-          priceCurrency: store.currency,
-          price: priceForSchema,
-          availability: inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
-          url: `${SITE_URL}/p/${slug}`,
-        }
-      : undefined,
-  };
+    images: detail.images.map((i) => i.url),
+    price: priceForSchema,
+    inStock,
+    reviewCount: detail.reviewCount,
+    reviewAverage: detail.reviewAverage,
+    category: detail.categoryName,
+  });
 
-  const breadcrumbLd = {
-    '@context': 'https://schema.org',
-    '@type': 'BreadcrumbList',
-    itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
-      { '@type': 'ListItem', position: 2, name: detail.categoryName, item: `${SITE_URL}/c/${detail.categorySlug}` },
-      { '@type': 'ListItem', position: 3, name: detail.name, item: `${SITE_URL}/p/${slug}` },
-    ],
-  };
+  const crumbs = breadcrumbLd(SITE_URL, [
+    { name: 'Home', path: '/' },
+    { name: detail.categoryName, path: `/c/${detail.categorySlug}` },
+    { name: detail.name, path: `/p/${slug}` },
+  ]);
 
   return (
     <div className="shell py-6 sm:py-10">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(productLd) }} />
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serialiseJsonLd(ld) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serialiseJsonLd(crumbs) }} />
 
       {/* Breadcrumb */}
       <nav className="text-xs text-ink-soft mb-4" aria-label="Breadcrumb">

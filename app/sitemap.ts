@@ -1,18 +1,26 @@
 import type { MetadataRoute } from 'next';
 import { prisma } from '@/lib/prisma';
-import { getLivePageSlugs } from '@/lib/cms';
+import { getSeoSettings, siteUrl } from '@/lib/seo/settings';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 3600;
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000').replace(/\/$/, '');
-
 /**
- * Sitemap covering active products, categories, collections, published CMS pages
- * and blog posts (brief §28). Built from live data so new content is discoverable
- * without a redeploy.
+ * The sitemap.
+ *
+ * Built from live data so new content is discoverable without a redeploy, and
+ * filtered by `noIndex` so it never advertises a page whose own `<meta robots>`
+ * tells crawlers to stay away. Listing a page in a sitemap and then telling the
+ * crawler not to index it is a contradiction Search Console reports as an error,
+ * so the two have to agree.
  */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const SITE_URL = siteUrl();
+  const seo = await getSeoSettings();
+
+  // Nothing to advertise while the site is switched off.
+  if (!seo.indexingEnabled) return [];
+
   const staticEntries: MetadataRoute.Sitemap = [
     { url: `${SITE_URL}/`, changeFrequency: 'daily', priority: 1 },
     { url: `${SITE_URL}/collections`, changeFrequency: 'weekly', priority: 0.7 },
@@ -23,12 +31,30 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   try {
     const [products, categories, collections, pages, posts] = await Promise.all([
-      prisma.product.findMany({ where: { isActive: true }, select: { slug: true, updatedAt: true } }),
-      prisma.category.findMany({ where: { isActive: true }, select: { slug: true, updatedAt: true } }),
-      prisma.collection.findMany({ where: { isActive: true }, select: { slug: true, updatedAt: true } }),
-      getLivePageSlugs(),
+      prisma.product.findMany({
+        where: { isActive: true, noIndex: false },
+        select: { slug: true, updatedAt: true },
+      }),
+      prisma.category.findMany({
+        where: { isActive: true, noIndex: false },
+        select: { slug: true, updatedAt: true },
+      }),
+      prisma.collection.findMany({
+        where: { isActive: true, noIndex: false },
+        select: { slug: true, updatedAt: true },
+      }),
+      prisma.cmsPage.findMany({
+        where: {
+          noIndex: false,
+          OR: [
+            { status: 'PUBLISHED' },
+            { status: 'SCHEDULED', scheduledAt: { lte: new Date() } },
+          ],
+        },
+        select: { slug: true, updatedAt: true },
+      }),
       prisma.blogPost.findMany({
-        where: { status: 'PUBLISHED', publishedAt: { lte: new Date() } },
+        where: { status: 'PUBLISHED', publishedAt: { lte: new Date() }, noIndex: false },
         select: { slug: true, updatedAt: true },
       }),
     ]);
@@ -41,8 +67,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       ...pages.map((p) => ({ url: `${SITE_URL}/pages/${p.slug}`, lastModified: p.updatedAt, changeFrequency: 'monthly' as const, priority: 0.5 })),
       ...posts.map((p) => ({ url: `${SITE_URL}/blog/${p.slug}`, lastModified: p.updatedAt, changeFrequency: 'monthly' as const, priority: 0.5 })),
     ];
-  } catch {
-    // Never fail the sitemap if the database is briefly unavailable.
+  } catch (e) {
+    // Never fail the sitemap if the database is briefly unavailable — an empty
+    // one would tell crawlers the shop has no products.
+    console.error('[sitemap] falling back to static entries', e);
     return staticEntries;
   }
 }

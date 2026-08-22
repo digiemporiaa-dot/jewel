@@ -1,5 +1,96 @@
 # Changelog
 
+## Phase 3 · Item 6b — Structured data, robots, sitemap and the SEO screen · 2026-08-22
+
+The second half of item 6: the parts an operator can see and switch.
+
+### Structured data, out of the page components
+
+`Product`, `Organization`, `WebSite`, `LocalBusiness` and `BreadcrumbList` are
+now built by tested functions in `lib/seo/jsonld.ts` rather than assembled
+inline. A malformed node does not break a page — it silently stops producing
+rich results, which is the kind of failure nobody notices for months, so it is
+exactly the kind that needs tests.
+
+Two rules run through all of it:
+
+- **Never publish a claim the shop has not made.** An `aggregateRating` is
+  emitted only when reviews actually exist behind it — a rating with nothing
+  behind it is the most common cause of a structured-data penalty. An `offers`
+  node is omitted entirely when there is no price, because "price on request" is
+  a real state for jewellery and publishing a zero would be a lie. A
+  `PostalAddress` containing only a country is dropped rather than published.
+- **Escape for the script tag.** `JSON.stringify` escapes quotes but not `</`,
+  so a product named `</script><script>…` would close the tag early and have the
+  rest parsed as HTML. `serialiseJsonLd` escapes `<`, `>` and `&` to their
+  unicode forms — JSON-transparent, so the parsed value is unchanged.
+
+`LocalBusiness` returns null unless there is a real address, even when the
+setting is switched on. A jeweller with a showroom wants to appear in local
+results; claiming a location they do not have can get a business dropped from
+local results altogether, so the switch alone is not enough.
+
+Opening hours are validated on read — day names against the real seven, times
+against `HH:MM` — and malformed rows are dropped. Google can disqualify a whole
+page's rich results over one bad node.
+
+### robots.txt and the sitemap follow the settings
+
+`indexingEnabled` off means `Disallow: /`, an empty sitemap and `noindex` on
+every page — the correct state while a shop is being set up.
+
+Operators can add extra disallow paths; they cannot remove the built-in ones.
+The bag, checkout, account and admin areas are not part of that list, because
+making them editable invites somebody to delete `/checkout` from it.
+
+The sitemap now filters on `noIndex`, so it never advertises a page whose own
+meta tag tells crawlers to stay away — a contradiction Search Console reports as
+an error.
+
+### The SEO screen
+
+**System → SEO** holds the title template, defaults, indexing switch, robots
+paths, showroom listing and verification codes, plus a catalogue-wide audit:
+how many pages have no description, no social image, or are hidden from search;
+which pages share a title; and every page with something wrong, worst first.
+
+Validated on save, because each of these fails quietly:
+
+- a title template without `%s` (every page would get an identical title);
+- a robots path with a space or no leading slash (written verbatim into
+  robots.txt);
+- one coordinate without the other (half a geo node is invalid structured data).
+
+There is no free-text HTML field anywhere on the screen — same rule as the
+marketing tags and email templates. Verification codes are stored as values and
+rendered by Next into `<meta>`, never into a script.
+
+### Verified
+
+`tsc` clean, `next build` clean, lint clean, **404 tests across 26 files** (27
+new). End to end against a production build, driving the real admin screen:
+
+- switching the showroom listing on published `JewelryStore` with its geo
+  coordinates, price range and address, alongside `Organization` and `WebSite`;
+- a lone latitude was rejected;
+- a template without `%s` was rejected;
+- a disallow path with no leading slash was rejected, while `/preview` and
+  `/internal` reached robots.txt and `/checkout` stayed disallowed;
+- switching indexing off flipped robots.txt to `Disallow: /`, emptied the
+  sitemap (43 → 0 URLs) and put `noindex, nofollow, nocache` on the home and
+  product pages — and switching it back restored all 43;
+- marking one product `noIndex` gave it a `noindex` meta tag and removed it from
+  the sitemap (43 → 42).
+
+### Note for the operator
+
+Cached settings are invalidated by saving in the admin, not by editing the
+database directly — `unstable_cache` persists to `.next/cache` and survives a
+restart. Change SEO settings through the screen.
+
+The showroom listing is left **off** so it is switched on deliberately, once the
+address in Settings is confirmed correct.
+
 ## Phase 3 · Item 6a — SEO foundations · 2026-08-22
 
 Every page already emitted a title, a description and a canonical. None of it

@@ -1,31 +1,58 @@
 import type { MetadataRoute } from 'next';
+import { getSeoSettings, siteUrl } from '@/lib/seo/settings';
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000').replace(/\/$/, '');
+export const dynamic = 'force-dynamic';
 
 /**
- * robots.txt (brief §28). Private and transactional areas are excluded from
- * crawling; the sitemap is advertised.
+ * robots.txt.
+ *
+ * The private areas below are not configurable, deliberately: a bag, a checkout
+ * and an account page must never be crawlable, and making that an editable list
+ * is inviting somebody to remove `/checkout` from it. What an operator *can* add
+ * is extra paths, and what they can do is turn the whole site off.
  */
-export default function robots(): MetadataRoute.Robots {
+const ALWAYS_DISALLOW = [
+  '/admin',
+  '/admin/',
+  '/api/',
+  '/cart',
+  '/checkout',
+  '/my-account',
+  '/order/',
+  '/wishlist',
+  '/search',
+];
+
+/** Keep only what is safe to write into a robots.txt rule. */
+function cleanPaths(paths: string[]): string[] {
+  return paths
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0 && !p.includes('\n') && !p.includes('\r'))
+    .map((p) => (p.startsWith('/') ? p : `/${p}`));
+}
+
+export default async function robots(): Promise<MetadataRoute.Robots> {
+  const base = siteUrl();
+  const seo = await getSeoSettings();
+
+  // The master switch. While a shop is being set up this keeps the whole site
+  // out of search; the admin warns loudly if it is still off after launch.
+  if (!seo.indexingEnabled) {
+    return {
+      rules: [{ userAgent: '*', disallow: '/' }],
+      host: base,
+    };
+  }
+
   return {
     rules: [
       {
         userAgent: '*',
         allow: '/',
-        disallow: [
-          '/admin',
-          '/admin/',
-          '/api/',
-          '/cart',
-          '/checkout',
-          '/my-account',
-          '/order/',
-          '/wishlist',
-          '/search',
-        ],
+        disallow: [...ALWAYS_DISALLOW, ...cleanPaths(seo.robotsDisallow)],
       },
     ],
-    sitemap: `${SITE_URL}/sitemap.xml`,
-    host: SITE_URL,
+    sitemap: `${base}/sitemap.xml`,
+    host: base,
   };
 }
