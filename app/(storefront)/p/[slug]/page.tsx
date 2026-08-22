@@ -15,6 +15,8 @@ import BuyBox from './BuyBox';
 import { parseTenures } from '@/lib/emi';
 import { buildMetadata } from '@/lib/seo/metadata';
 import { productLd, breadcrumbLd, serialiseJsonLd } from '@/lib/seo/jsonld';
+import VideoEmbed from '@/components/storefront/VideoEmbed';
+import { fromStored } from '@/lib/video/parse';
 import { siteUrl } from '@/lib/seo/settings';
 
 export const dynamic = 'force-dynamic';
@@ -65,6 +67,8 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
     tenures: parseTenures(store.emiTenures),
   };
 
+  const productVideo = fromStored(detail.videoUrl);
+
   const priceForSchema = detail.priceFrom ?? detail.variants.find((v) => v.breakup)?.breakup?.unitTotal ?? null;
   const inStock = detail.variants.some((v) => v.inStock);
 
@@ -106,6 +110,15 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
         {/* Gallery */}
         <div>
           <Gallery images={detail.images.filter((i) => i.type === 'IMAGE')} name={detail.name} />
+          {/* Re-parsed rather than trusted from the row: a value edited straight
+              into the database faces the same validation an operator's does. */}
+          {productVideo && (
+            <VideoEmbed
+              video={productVideo}
+              title={`${detail.name} — video`}
+              className="mt-4"
+            />
+          )}
         </div>
 
         {/* Buy box */}

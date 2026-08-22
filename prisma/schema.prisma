@@ -206,6 +206,7 @@ enum FollowUpStatus {
 
 enum CmsBlockType {
   HERO
+  VIDEO
   RICH_TEXT
   IMAGE_TEXT
   PRODUCT_GRID
@@ -751,6 +752,13 @@ model Product {
   canonicalUrl   String?
   /// Keep this page out of search results while leaving it reachable by link.
   noIndex        Boolean @default(false)
+
+  /// A YouTube or Vimeo video for this piece, stored as `provider:id`.
+  ///
+  /// Never markup. The address an operator types is validated on save and the
+  /// iframe is built in code from a fixed template, so this column cannot carry
+  /// operator-supplied HTML onto a customer-facing page.
+  videoUrl    String?
 
   publishedAt DateTime?
   // HSN classification for the GST invoice. 7113 is "articles of jewellery and

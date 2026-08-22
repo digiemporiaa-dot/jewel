@@ -18,7 +18,7 @@ export type ProductDefaults = Partial<{
   netWeight: string; grossWeight: string; wastagePct: string; makingChargeRuleId: string; fixedPrice: string;
   gstPercent: string; gstInclusive: boolean; fulfilmentType: string; leadTimeDays: string; advancePercent: string;
   certification: string; hsnCode: string; isActive: boolean; isFeatured: boolean; isBestSeller: boolean; isNewArrival: boolean;
-  occasion: string; tags: string; seoTitle: string; seoDescription: string;
+  occasion: string; tags: string; videoUrl: string; seoTitle: string; seoDescription: string;
 }>;
 
 function Submit({ label }: { label: string }) {
@@ -154,6 +154,16 @@ export default function ProductForm({
           <Field label="Occasions (comma-separated)"><input name="occasion" defaultValue={defaults.occasion} placeholder="Wedding, Gifting" className="inp" /></Field>
           <Field label="Tags (comma-separated)"><input name="tags" defaultValue={defaults.tags} placeholder="gold, ring, 22k" className="inp" /></Field>
         </Grid>
+      </Section>
+
+      <Section title="Video">
+        <Field label="YouTube or Vimeo address">
+          <input name="videoUrl" defaultValue={defaults.videoUrl} placeholder="https://www.youtube.com/watch?v=…" className="inp" />
+        </Field>
+        <p className="text-xs text-ink-soft">
+          Paste the video&rsquo;s web address, not its embed code. Embed code is not accepted —
+          the player is built here from the address you give.
+        </p>
       </Section>
 
       <Section title="SEO">

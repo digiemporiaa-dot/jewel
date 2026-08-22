@@ -2,6 +2,7 @@ import 'server-only';
 import { prisma } from '@/lib/prisma';
 import type { Prisma, PricingMode } from '@prisma/client';
 import { productSchema, variantSchema, splitList, type ProductInput } from '@/lib/validations/products';
+import { parseVideo, toStored } from '@/lib/video/parse';
 
 const PAGE_SIZE = 20;
 
@@ -121,6 +122,9 @@ function toData(input: ProductInput): Prisma.ProductCreateInput {
     isNewArrival: input.isNewArrival,
     occasion: splitList(input.occasion),
     tags: splitList(input.tags),
+    // Stored canonically as `provider:id`, so nothing downstream re-parses a
+    // URL and nothing but a validated id ever reaches the page.
+    videoUrl: storeVideo(input.videoUrl),
     seoTitle: input.seoTitle || null,
     seoDescription: input.seoDescription || null,
     publishedAt: input.isActive ? new Date() : null,
@@ -245,4 +249,13 @@ export async function deleteVariant(variantId: string) {
   const { recomputeProductPrices } = await import('@/lib/pricing/resolve');
   await recomputeProductPrices([variant.productId]);
   return { ok: true as const };
+}
+
+/** Canonical stored form for a validated video address. */
+function storeVideo(value: string | null | undefined): string | null {
+  if (!value?.trim()) return null;
+  const parsed = parseVideo(value);
+  // The schema already rejected anything invalid; this is the belt to that
+  // braces, so a caller bypassing validation still cannot store markup.
+  return parsed.ok ? toStored(parsed.video) : null;
 }

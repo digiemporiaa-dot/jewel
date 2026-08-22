@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { parseVideo } from '@/lib/video/parse';
 
 const optionalDecimal = z
   .string()
@@ -47,6 +48,23 @@ export const productSchema = z
     isNewArrival: z.coerce.boolean().default(false),
     occasion: z.string().trim().optional().default(''), // comma-separated in the form
     tags: z.string().trim().optional().default(''),
+    /**
+     * A YouTube or Vimeo address, never an embed snippet.
+     *
+     * Validated by the same parser the CMS block uses, so the rejection message
+     * an operator sees is identical wherever they paste the wrong thing.
+     */
+    videoUrl: z
+      .string()
+      .trim()
+      .max(500)
+      .optional()
+      .nullable()
+      .superRefine((value, ctx) => {
+        if (!value) return;
+        const res = parseVideo(value);
+        if (!res.ok) ctx.addIssue({ code: z.ZodIssueCode.custom, message: res.error });
+      }),
     seoTitle: z.string().trim().max(160).optional().nullable(),
     seoDescription: z.string().trim().max(320).optional().nullable(),
   })

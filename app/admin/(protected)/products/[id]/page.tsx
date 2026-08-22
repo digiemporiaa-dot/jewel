@@ -36,6 +36,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
     certification: product.certification ?? '', hsnCode: product.hsnCode ?? '7113', isActive: product.isActive, isFeatured: product.isFeatured,
     isBestSeller: product.isBestSeller, isNewArrival: product.isNewArrival,
     occasion: product.occasion.join(', '), tags: product.tags.join(', '),
+    videoUrl: product.videoUrl ?? '',
     seoTitle: product.seoTitle ?? '', seoDescription: product.seoDescription ?? '',
   };
 

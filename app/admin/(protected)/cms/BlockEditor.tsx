@@ -34,6 +34,14 @@ const FIELDS: Record<string, { key: string; label: string; kind: 'text' | 'texta
     { key: 'ctaLabel', label: 'Button label', kind: 'text' },
     { key: 'ctaHref', label: 'Button link', kind: 'text' },
   ],
+  VIDEO: [
+    { key: 'heading', label: 'Heading', kind: 'text' },
+    // "Address, not embed code" is in the label because that is where an
+    // operator is looking when they are about to paste the wrong thing.
+    { key: 'videoUrl', label: 'YouTube or Vimeo address (not embed code)', kind: 'text' },
+    { key: 'posterUrl', label: 'Still image URL (optional; needed for Vimeo)', kind: 'text' },
+    { key: 'caption', label: 'Caption', kind: 'textarea' },
+  ],
   RICH_TEXT: [
     { key: 'heading', label: 'Heading', kind: 'text' },
     { key: 'body', label: 'Body (one paragraph per line)', kind: 'textarea' },

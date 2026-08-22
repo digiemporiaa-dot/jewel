@@ -104,6 +104,9 @@ function caps(controls: readonly StyleControl[], overrides: Partial<BlockStyle> 
 export const BLOCK_STYLE_CAPABILITIES = {
   HERO: caps(['background', 'spacing', 'align', 'width'], { background: 'paper-2' }),
   RICH_TEXT: caps(['background', 'spacing', 'align', 'width']),
+  // No `align`: the player fills its container, so there is no text axis to
+  // align — only the heading and caption, which follow the block's own width.
+  VIDEO: caps(['background', 'spacing', 'width']),
   IMAGE_TEXT: caps(['background', 'spacing', 'width', 'mediaSide']),
   PRODUCT_GRID: caps(['background', 'spacing', 'width']),
   COLLECTION_GRID: caps(['background', 'spacing', 'align', 'width', 'columns']),

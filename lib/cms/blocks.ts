@@ -1,5 +1,12 @@
 import { z } from 'zod';
 import type { CmsBlockType } from '@prisma/client';
+import { parseVideo, toStored } from '@/lib/video/parse';
+
+/** Canonical stored form. Unreachable for invalid input — superRefine ran first. */
+function canonicalVideo(value: string): string {
+  const parsed = parseVideo(value);
+  return parsed.ok ? toStored(parsed.video) : '';
+}
 
 /**
  * Fixed CMS block definitions (brief §42). Each block type has a strict schema —
@@ -32,6 +39,37 @@ export const imageTextSchema = z.object({
   imagePosition: z.enum(['left', 'right']).default('left'),
   ctaLabel: z.string().trim().max(40).optional().default(''),
   ctaHref: z.string().trim().max(200).optional().default(''),
+});
+
+/**
+ * A single video.
+ *
+ * `videoUrl` holds a web address or an ID, never markup. It is validated by
+ * `parseVideo` on save and the iframe is built in code — the same rule as the
+ * marketing tags, and for the same reason: a CMS field that accepts an embed
+ * snippet is a field that accepts a script.
+ */
+export const videoSchema = z.object({
+  heading: z.string().trim().max(120).optional().default(''),
+  caption: z.string().trim().max(300).optional().default(''),
+  videoUrl: z
+    .string()
+    .trim()
+    .max(500)
+    // Empty is allowed so a block can be added and filled in afterwards; the
+    // renderer shows nothing until there is a valid video. Anything non-empty
+    // must pass the parser, which is what refuses embed code.
+    .superRefine((value, ctx) => {
+      if (value === '') return;
+      const res = parseVideo(value);
+      if (!res.ok) ctx.addIssue({ code: z.ZodIssueCode.custom, message: res.error });
+    })
+    // Stored canonically as `provider:id`, so the renderer never re-parses a URL
+    // and nothing but a validated id reaches the page.
+    .transform((value) => (value === '' ? '' : canonicalVideo(value)))
+    .default(''),
+  /** Optional still. Vimeo does not serve one at a predictable address. */
+  posterUrl: z.string().trim().max(500).optional().default(''),
 });
 
 export const productGridSchema = z.object({
@@ -84,6 +122,7 @@ export const ctaSchema = z.object({
 
 export const BLOCK_SCHEMAS = {
   HERO: heroSchema,
+  VIDEO: videoSchema,
   RICH_TEXT: richTextSchema,
   IMAGE_TEXT: imageTextSchema,
   PRODUCT_GRID: productGridSchema,
@@ -97,6 +136,7 @@ export const BLOCK_SCHEMAS = {
 
 export const BLOCK_LABELS: Record<CmsBlockType, string> = {
   HERO: 'Hero',
+  VIDEO: 'Video',
   RICH_TEXT: 'Rich text',
   IMAGE_TEXT: 'Image + text',
   PRODUCT_GRID: 'Product grid',
@@ -118,6 +158,7 @@ export function parseBlockData(type: CmsBlockType, data: unknown) {
 export function defaultBlockData(type: CmsBlockType): Record<string, unknown> {
   switch (type) {
     case 'HERO': return { eyebrow: '', heading: 'A new heading', subheading: '', imageUrl: '', mobileImageUrl: '', ctaLabel: '', ctaHref: '' };
+    case 'VIDEO': return { heading: '', caption: '', videoUrl: '', posterUrl: '' };
     case 'RICH_TEXT': return { heading: '', body: 'Write something here.', align: 'left' };
     case 'IMAGE_TEXT': return { heading: '', body: '', imageUrl: '', imagePosition: 'left', ctaLabel: '', ctaHref: '' };
     case 'PRODUCT_GRID': return { heading: 'Featured', source: 'featured', limit: 4 };

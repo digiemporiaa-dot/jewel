@@ -6,6 +6,8 @@ import ProductRow from '@/components/storefront/ProductRow';
 import { getFeaturedProducts, getNewArrivals, getBestSellers, getActiveCollections } from '@/lib/catalog';
 import { parseBlockData } from '@/lib/cms/blocks';
 import { styleFor } from '@/lib/cms/style';
+import VideoEmbed from '@/components/storefront/VideoEmbed';
+import { fromStored } from '@/lib/video/parse';
 
 /**
  * Renders a CMS block. Content comes from typed fields only — never raw HTML —
@@ -23,6 +25,26 @@ export default async function BlockRenderer({ type, data }: { type: CmsBlockType
   const s = styleFor(type, data);
 
   switch (type) {
+    case 'VIDEO': {
+      const b = d as unknown as { heading: string; caption: string; videoUrl: string; posterUrl: string };
+      // Re-validated on the way out, not trusted from the row. A value edited
+      // directly in the database has to pass the same parser an operator's
+      // input does, and a block with nothing valid in it renders nothing.
+      const video = fromStored(b.videoUrl);
+      if (!video) return null;
+      return (
+        <section className={s.section}>
+          <div className={s.inner}>
+            {b.heading && <h2 className={cn('text-2xl sm:text-3xl mb-4', s.isDark && 'text-paper')}>{b.heading}</h2>}
+            <VideoEmbed video={video} title={b.heading || 'Video'} poster={b.posterUrl} />
+            {b.caption && (
+              <p className={cn('mt-3 text-sm text-ink-soft', s.isDark && 'text-paper/70')}>{b.caption}</p>
+            )}
+          </div>
+        </section>
+      );
+    }
+
     case 'HERO': {
       const b = d as unknown as { eyebrow: string; heading: string; subheading: string; imageUrl: string; ctaLabel: string; ctaHref: string };
       return (

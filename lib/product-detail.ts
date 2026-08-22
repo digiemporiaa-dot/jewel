@@ -40,6 +40,7 @@ export type ProductDetail = {
   priceFrom: string | null;
   priceTo: string | null;
   defaultVariantId: string | null;
+  videoUrl: string | null;
   seoTitle: string | null;
   seoDescription: string | null;
   ogImageUrl: string | null;
@@ -115,6 +116,7 @@ export async function getProductDetail(slug: string): Promise<ProductDetail | nu
     priceFrom: pricing?.priceFrom ?? null,
     priceTo: pricing?.priceTo ?? null,
     defaultVariantId: defaultVariant?.id ?? null,
+    videoUrl: product.videoUrl,
     seoTitle: product.seoTitle,
     seoDescription: product.seoDescription,
     ogImageUrl: product.ogImageUrl,

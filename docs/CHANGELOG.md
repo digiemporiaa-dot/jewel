@@ -1,5 +1,79 @@
 # Changelog
 
+## Phase 3 · Item 8 — Video embeds · 2026-08-22
+
+Products and CMS pages can carry a YouTube or Vimeo video.
+
+### The rule: no embed code, ever
+
+An admin field that accepts markup and puts it on a customer-facing page is the
+same vector as a "paste your tracking script here" box — and a video field is
+exactly where somebody would assume it is harmless. So an operator supplies a
+**web address or an ID**, `parseVideo` validates it, and the iframe is built in
+code from a fixed template.
+
+Pasting an embed snippet is **rejected, not parsed**. Extracting the `src` out of
+it would be friendlier and would teach precisely the wrong habit; the next field
+to accept markup would be the one that mattered. The rejection says what to do
+instead.
+
+What is refused, with a reason: anything containing angle brackets, other video
+hosts, lookalike hostnames (`youtube.com.evil.example`), non-http schemes, and
+YouTube URLs that carry no video id. What is accepted: watch, share, embed,
+Shorts, mobile and no-cookie URLs, Vimeo plain, player and channel URLs, a bare
+id of either kind, and a host with no scheme — because that is how people paste.
+
+The address is stored canonically as `provider:id`, so nothing downstream ever
+re-parses a URL, and a value written straight into the database still has to
+pass the same parser before it renders.
+
+### Nothing third-party loads until somebody asks
+
+Until the play button is pressed there is no iframe on the page — only an image
+and a button. The usual argument is performance; the one that decides it here is
+that an embed loaded on sight is a third-party frame running on every product
+page view, and this shop's consent banner covers marketing tags, not a player
+somebody dropped into a page.
+
+YouTube goes through **youtube-nocookie.com**, which sets no tracking cookie
+before play, with `rel=0` so the end cards stay on the shop's own channel rather
+than offering a competitor's video. Vimeo gets `dnt=1`. The iframe is granted
+exactly the permissions a player needs — notably not camera, microphone,
+geolocation or payment — and there is a `<noscript>` link out for anyone whose
+browser will not run it.
+
+Vimeo has no thumbnail at a predictable address, so it shows the shop's own
+placeholder rather than pulling in a third-party thumbnail proxy nobody agreed
+to. An operator can supply a still instead.
+
+### frame-src widens only when there is something to frame
+
+The two embed hosts are added to the policy **only when the shop actually has a
+video**, unioned into the same 30-second lookup the marketing-tag hosts already
+use so the Edge makes one request rather than two. A permanently widened
+`frame-src` is a permanently widened attack surface for the majority of shops
+that never embed anything.
+
+It fails closed: a database error means no hosts, so an embed does not render.
+Failing open would mean widening the policy on a blip — a security decision made
+by accident.
+
+### Verified
+
+`tsc` clean, `next build` clean, lint clean, **496 tests across 28 files** (38
+new). End to end against a production build:
+
+- with no video configured, `frame-src` was untouched: `https://api.razorpay.com
+  https://checkout.razorpay.com`;
+- after configuring one it became `… https://www.youtube-nocookie.com`;
+- the product page served **zero iframes** before the click, with the poster,
+  play button and `<noscript>` fallback present;
+- clicking play produced one iframe on `https://www.youtube-nocookie.com` with
+  `autoplay=1`, and **no CSP violations**;
+- pasting `<iframe src="…youtube.com/embed/…">` into the admin was refused;
+- pasting `https://youtu.be/…?t=30` was accepted and stored as
+  `youtube:dQw4w9WgXcQ`.
+
 ## Phase 3 · Item 7 — URL redirects · 2026-08-22
 
 Renaming a product broke every link to it that already existed: in Google's
