@@ -68,12 +68,12 @@ export async function listProducts(params: ProductListParams) {
   };
 }
 
-/** Reference data for the product form (categories, metals, purities, making rules). */
 /** How many products are sitting in the archive, for the toggle's badge. */
 export async function countDeletedProducts(): Promise<number> {
   return prisma.product.count({ where: { deletedAt: { not: null } } });
 }
 
+/** Reference data for the product form (categories, metals, purities, making rules). */
 export async function getProductFormRefs() {
   const [categories, metals, purities, makingRules] = await Promise.all([
     prisma.category.findMany({ where: { isActive: true }, select: { id: true, name: true }, orderBy: { order: 'asc' } }),
@@ -213,10 +213,12 @@ export async function updateProduct(id: string, raw: unknown) {
   return { ok: true as const, id };
 }
 
-export async function deleteProduct(id: string) {
-  await prisma.product.delete({ where: { id } });
-  return { ok: true as const };
-}
+// `deleteProduct` used to live here and issued a real `prisma.product.delete`.
+// It was replaced by `softDeleteProduct` and then left behind, exported and
+// called by nothing — a loaded hard delete sitting in the module the product
+// admin already imports. Wiring it back up would null the `productId` of every
+// order line that referenced the product, which is the exact outcome the soft
+// delete exists to prevent, so it is gone rather than deprecated.
 
 // ── Variants ─────────────────────────────────────────────────────────────────
 

@@ -9,7 +9,14 @@ export const dynamic = 'force-dynamic';
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const page = await getPublishedPage(slug);
-  if (!page) return { title: 'Not found', robots: { index: false, follow: false } };
+  // `notFound()` here, not a "Not found" metadata object.
+  //
+  // `generateMetadata` resolving successfully commits the response headers, so
+  // a `notFound()` later in the page body renders the not-found UI inside a
+  // body that has already been sent as **200**. Google indexes those as thin
+  // duplicate pages, and every renamed slug quietly becomes one. Throwing from
+  // metadata sets the status before anything is flushed.
+  if (!page) notFound();
   return buildMetadata({
     path: `/pages/${slug}`,
     fallbackTitle: page.title,

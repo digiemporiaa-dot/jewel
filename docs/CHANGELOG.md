@@ -1,5 +1,79 @@
 # Changelog
 
+## Repo audit · 2026-08-22
+
+A full pass over the repository rather than over a feature. Four things found,
+all fixed.
+
+### Every dynamic storefront route was returning 200 for a missing page
+
+Reported twice before as affecting `/p/*` and `/pages/*`; it was actually
+**products, categories, CMS pages and blog posts** — every route backed by a
+database lookup. Only genuinely unmatched top-level paths 404'd correctly.
+
+The cause was not `notFound()`, `force-dynamic` or `generateMetadata`. Probe
+routes exercising each of those in isolation returned a correct 404. It was
+`app/(storefront)/loading.tsx`: a `loading.tsx` creates a Suspense boundary, and
+the shell is flushed — **committing a 200** — before the page below it finishes
+its database work. `notFound()` then rendered the not-found screen inside an
+already-successful response. Removing that one file fixed all four routes at
+once, confirmed by measurement.
+
+That also explains why it looked inconsistent: a page fast enough to resolve
+before the flush 404'd correctly, and a page waiting on Prisma did not.
+
+The skeleton now lives on `/search`, which is the only storefront grid that
+cannot 404 — a query with no matches is a valid page saying so. It was showing a
+product-grid skeleton in front of single product pages and blog posts anyway.
+
+`generateMetadata` in all four routes now calls `notFound()` instead of returning
+a "Not found" title, which is honest about what is happening and holds if a
+Suspense boundary is ever reintroduced above them.
+
+### A hard delete left loaded in the drawer
+
+`deleteProduct` — a real `prisma.product.delete` — was replaced by
+`softDeleteProduct` and then left behind: exported, called by nothing, sitting in
+the module the product admin already imports. Wiring it back up would null the
+`productId` of every order line that referenced the product, which is precisely
+what the soft delete exists to prevent. Deleted rather than deprecated.
+
+### One JSON-LD site skipped the escaper
+
+`serialiseJsonLd` exists so a value containing `</script>` cannot close the tag
+early and have the rest parsed as HTML. Three of the four JSON-LD sites used it.
+The blog post's `Article` block used raw `JSON.stringify`, with the post title,
+excerpt and author name — all operator input — inside it.
+
+### Six environment variables the code reads and `.env.example` never mentioned
+
+`SMS_PROVIDER`, `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_ID`, `OTP_DEBUG_PHONES`,
+`SITE_URL` and `INTERNAL_BASE_URL`. On a resale deployment the first three mean
+**no customer can sign in or check out** — OTP silently falls back to printing
+codes to the server log. Documented, with a warning that `OTP_DEBUG_PHONES` is a
+sign-in bypass for any number listed, and with the cron endpoints and their
+intervals spelled out where the secret is defined.
+
+`docs/ADMIN.md` was 42 commits behind and described none of Phase 3. Rewritten
+to cover what the console actually does, plus the two things that are
+configuration rather than code and without which a live shop is broken.
+
+### Checked and found clean
+
+No `any`, no `eval`/`new Function`/`innerHTML`, no TODO or FIXME markers, no
+`@ts-ignore`. No secret reaches a client component — the Meta CAPI token is
+passed pre-masked. `.env` is untracked. No schema drift: 14 migrations, database
+up to date. The remaining unused exports are harmless.
+
+**Dependencies:** 10 high-severity advisories, all transitive through Next 15 —
+`postcss` and `sharp`, fixed by a Next 16 major upgrade, which is a decision to
+take deliberately rather than at the end of an audit. The `nodemailer` advisory
+has no fix available and is **not reachable here**: it requires a message-level
+`raw` option, and `sendMail` is called with only `from`, `to`, `subject`, `html`
+and `text`.
+
+640 tests passing.
+
 ## Phase 3 · Item 8 completion — video inside written content · 2026-08-22
 
 The spec asked for video in the standalone block **and inside RICH_TEXT blocks

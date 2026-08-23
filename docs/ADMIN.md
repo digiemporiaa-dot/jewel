@@ -54,13 +54,76 @@ queries are defensive (fall back to zero) so the panel always renders.
 - **Reviews** (`/admin/reviews`) — moderation queue. Customers may only review
   products they actually purchased (re-verified server-side), and nothing appears
   on the storefront until approved.
-- **CMS** (`/admin/cms`) — block-based pages. Ten fixed block types, each with its
-  own schema; **no free-form HTML editor**, so content can never inject markup.
+- **CMS** (`/admin/cms`) — block-based pages. Eleven fixed block types, each with
+  its own schema; **no free-form HTML editor**, so content can never inject markup.
 - **Blog** (`/admin/blog`) — posts with SEO fields and Article structured data.
 - **Campaigns** (`/admin/campaigns`) — automation toggles, configurable
   abandoned-cart delays (abandon-after, three stages, minimum gap) and editable
   message templates. Runs via `POST /api/cron/abandoned-cart` and
   `POST /api/cron/campaigns` with the `CRON_SECRET` bearer token.
+
+## Phase 3 additions
+
+### Compliance and money
+
+- **GST invoices** — HSN per line, place of supply, CGST/SGST vs IGST derived from
+  the shipping state, and an HSN summary. The breakup is frozen onto the order:
+  rates and the seller's state can change, and a reprinted invoice must show what
+  was actually charged. Invoice numbers are sequential per financial year and
+  allocated inside the order transaction, so two concurrent orders cannot share one.
+- **Coupons** (`/admin/coupons`) — scoped to a price *component*, defaulting to
+  **making charges**. A flat percentage off a ₹4,00,000 necklace gives away money
+  from gold sold at cost. Scope by category, collection, metal, purity and weight;
+  redemption count increments inside the order transaction.
+- **EMI** — enabled in Razorpay checkout and shown from a tenure table in Settings,
+  labelled indicative because the bank sets the real rate.
+
+### Marketing and content
+
+- **Templates** (`/admin/marketing/templates`) — every customer email: order
+  placed, payment, shipped, delivered, abandoned cart, back in stock, price drop,
+  welcome, birthday, anniversary, appointment. Subject and body are editable with a
+  live preview and a test send. Variables come from a fixed per-template list and
+  are substituted literally — there is no expression language. Bodies are sanitised
+  on save. A missing or inactive template falls back to the built-in copy, so an
+  order confirmation can never silently not send.
+- **SEO** (`/admin/seo`) — site defaults, indexing switch, robots rules, local
+  business data, and a report of pages missing a title, description or social image.
+  Every product, category, collection, page and post also has its own
+  **Search & social** panel: title, description, social image, canonical override
+  and hide-from-search, with warnings for a long title, an off-site canonical, a
+  social image below 1200×630, and a live page hidden from search.
+- **Redirects** (`/admin/redirects`) — list, search, hit counts and CSV import.
+  A 301 is created **automatically whenever a slug changes** on a product,
+  category, collection, page or post; loops and chains are rejected on save.
+- **Enquiries** — the WhatsApp button logs a lead before opening WhatsApp,
+  deduplicated per shopper per day. Abandoned carts raise a lead with their value.
+
+### Merchandising
+
+- **Video** — a YouTube or Vimeo **address**, never embed code, on products, in a
+  Video block, and on its own line inside a blog post or rich text. Nothing loads
+  until the visitor presses play.
+- **Images** — one upload field everywhere (products, CMS, blog, categories,
+  collections, social images, logo and favicon), with progress and alt text.
+- **Rate ticker** (`/admin/rates`) — the scrolling strip at the top of the site.
+  On/off, which purities and in what order, speed, background and an optional
+  message. It has no rate field: it shows the same rates the shop prices from.
+- **Trust signals** — the hallmark and certificate on a product page, with a
+  verification link where the issuer publishes one, plus a ring and bangle size
+  guide beside the size selector.
+
+### Working with lists
+
+- **Date filters** on orders and CRM — presets and a custom range, counted in
+  **IST** so the last day of a range includes the whole day. Count and value for
+  the range, filters kept across pagination, and CSV export of exactly what is
+  on screen.
+- **Removal** — products and customers are soft-deleted, orders are archived, and
+  only a lead is really deleted. Each needs its SKU, phone number or name typed to
+  confirm, and each writes an audit entry. Archive views restore. A customer's
+  personal details can be erased for a data request while their orders and
+  invoices remain.
 
 ## Roadmap (by phase)
 
@@ -70,3 +133,18 @@ queries are defensive (fall back to zero) so the panel always renders.
 - **Phase 5** — Shipments (Shiprocket), AWB, tracking.
 - **Phase 6** — CRM, CMS, blog, reviews, appointments, campaigns.
 - **Phase 7** — Audit log UI, observability.
+- **Phase 3 (this round)** — GST invoicing, coupons, EMI, email templates,
+  enquiry capture, SEO control, redirects, video, uploads, rate ticker, trust
+  signals, date filters, soft delete.
+
+## Before a shop goes live
+
+Two things are configuration, not code, and nothing works without them:
+
+1. **A scheduler must call the cron endpoints** with `Authorization: Bearer
+   $CRON_SECRET`. Nothing calls them by itself. Until one does, the shop keeps
+   pricing from whatever metal rate was last entered by hand, and abandoned-cart,
+   birthday, back-in-stock and price-drop mail is never sent. See `.env.example`
+   for the four endpoints and suggested intervals.
+2. **SMTP must be configured**, or no email leaves the system — including order
+   confirmations. Templates can be written and previewed either way.

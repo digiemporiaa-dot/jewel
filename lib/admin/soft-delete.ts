@@ -24,9 +24,6 @@ export { anonymisedFields, isArchivable };
 
 export type Result = { ok: true } | { ok: false; error: string };
 
-/** The filter every default read applies. Exported so it reads the same everywhere. */
-export const LIVE = { deletedAt: null } as const;
-
 // ── Products ─────────────────────────────────────────────────────────────────
 
 /**

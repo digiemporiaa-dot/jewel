@@ -7,6 +7,7 @@ import { formatDate } from '@/lib/utils/format';
 import ProductImage from '@/components/storefront/ProductImage';
 import { buildMetadata } from '@/lib/seo/metadata';
 import Prose from '@/components/storefront/Prose';
+import { serialiseJsonLd } from '@/lib/seo/jsonld';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +16,14 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const post = await getPublishedPost(slug);
-  if (!post) return { title: 'Not found', robots: { index: false, follow: false } };
+  // `notFound()` here, not a "Not found" metadata object.
+  //
+  // `generateMetadata` resolving successfully commits the response headers, so
+  // a `notFound()` later in the page body renders the not-found UI inside a
+  // body that has already been sent as **200**. Google indexes those as thin
+  // duplicate pages, and every renamed slug quietly becomes one. Throwing from
+  // metadata sets the status before anything is flushed.
+  if (!post) notFound();
 
   const meta = await buildMetadata({
     path: `/blog/${slug}`,
@@ -64,7 +72,11 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
   return (
     <article className="shell py-10 sm:py-14">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(articleLd) }} />
+      {/* serialiseJsonLd, not JSON.stringify: a post title or author name
+          containing "</script>" would otherwise close the tag early and the
+          rest would be parsed as HTML. The other three JSON-LD sites already
+          used it; this one was missed. */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serialiseJsonLd(articleLd) }} />
 
       <div className="max-w-2xl mx-auto">
         <nav className="text-xs text-ink-soft mb-4">

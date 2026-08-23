@@ -29,7 +29,14 @@ const SITE_URL = siteUrl();
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const p = await getProductDetail(slug);
-  if (!p) return { title: 'Not found', robots: { index: false, follow: false } };
+  // `notFound()` here, not a "Not found" metadata object.
+  //
+  // `generateMetadata` resolving successfully commits the response headers, so
+  // a `notFound()` later in the page body renders the not-found UI inside a
+  // body that has already been sent as **200**. Google indexes those as thin
+  // duplicate pages, and every renamed slug quietly becomes one. Throwing from
+  // metadata sets the status before anything is flushed.
+  if (!p) notFound();
 
   // The canonical is always the bare product path. Variant choice lives in
   // component state rather than the URL, so one product is one canonical and
