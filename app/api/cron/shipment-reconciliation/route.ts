@@ -4,6 +4,7 @@ import { isAuthorizedCron } from '@/lib/cron';
 import { refreshTracking } from '@/lib/shipping/shipments';
 import { isTerminalShipmentStatus } from '@/lib/shipping/status';
 import { ShipmentStatus } from '@prisma/client';
+import { runJob } from '@/lib/system/jobs';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs'; // Prisma needs the Node runtime, never Edge.
@@ -22,23 +23,28 @@ async function handler(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const active = await prisma.shipment.findMany({
-    where: { awb: { not: null }, status: { notIn: [ShipmentStatus.DELIVERED, ShipmentStatus.RTO_DELIVERED, ShipmentStatus.CANCELLED] } },
-    select: { orderId: true, status: true },
-    take: 200,
+  const result = await runJob('shipment-reconciliation', async () => {
+    const active = await prisma.shipment.findMany({
+      where: { awb: { not: null }, status: { notIn: [ShipmentStatus.DELIVERED, ShipmentStatus.RTO_DELIVERED, ShipmentStatus.CANCELLED] } },
+      select: { orderId: true, status: true },
+      take: 200,
+    });
+
+    let refreshed = 0;
+    for (const s of active) {
+      if (isTerminalShipmentStatus(s.status)) continue;
+      try {
+        await refreshTracking(s.orderId);
+        refreshed += 1;
+      } catch (e) {
+        // One courier failing must not abandon the rest of the queue.
+        console.error('[cron] reconcile failed for order', s.orderId, e);
+      }
+    }
+    return { checked: active.length, refreshed };
   });
 
-  let refreshed = 0;
-  for (const s of active) {
-    if (isTerminalShipmentStatus(s.status)) continue;
-    try {
-      await refreshTracking(s.orderId);
-      refreshed += 1;
-    } catch (e) {
-      console.error('[cron] reconcile failed for order', s.orderId, e);
-    }
-  }
-  return NextResponse.json({ ok: true, checked: active.length, refreshed });
+  return NextResponse.json({ ok: true, ...result });
 }
 
 // Vercel Cron invokes scheduled jobs with **GET** and an

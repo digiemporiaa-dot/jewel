@@ -2,6 +2,9 @@ import { requirePermission } from '@/lib/auth/guard';
 import { getDashboardStats } from '@/lib/admin/dashboard';
 import { formatCurrency, formatNumber } from '@/lib/utils/format';
 import StatCard from '@/components/admin/StatCard';
+import SystemHealth from '@/components/admin/SystemHealth';
+import { systemHealth } from '@/lib/system/health';
+import { can } from '@/lib/auth/rbac';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,9 +16,13 @@ export default async function AdminDashboard({
   const staff = await requirePermission('dashboard.view');
   const { denied } = await searchParams;
   const stats = await getDashboardStats();
+  // Only shown to staff who could act on it; a dispatch user cannot fix SMTP.
+  const health = can(staff.role, 'settings.manage') ? await systemHealth() : null;
 
   return (
     <div>
+      {health && <SystemHealth checks={health.checks} jobs={health.jobs} />}
+
       <header className="mb-6">
         <h1 className="font-heading text-2xl">Dashboard</h1>
         <p className="text-sm text-ink-soft">

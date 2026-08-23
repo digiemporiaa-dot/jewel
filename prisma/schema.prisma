@@ -380,6 +380,25 @@ model RateTickerSettings {
   updatedAt DateTime @updatedAt
 }
 
+/// One row per scheduled job, rewritten on every run.
+///
+/// The application cannot schedule itself: something outside the container has
+/// to call the cron endpoints. Without a record of when each last ran, a
+/// scheduler that was never configured — or that quietly stopped — looks exactly
+/// like a shop where nothing needed doing. This is what lets the admin say so.
+model JobRun {
+  /// The job's endpoint name, e.g. "recompute-prices".
+  name String @id
+
+  lastRunAt      DateTime
+  lastStatus     String // ok | failed
+  lastMessage    String?
+  lastDurationMs Int?
+  /// Runs since the row was created — a counter that never moves is the signal.
+  runCount       Int      @default(0)
+  updatedAt      DateTime @updatedAt
+}
+
 model SeoSettings {
   id String @id @default("default")
 

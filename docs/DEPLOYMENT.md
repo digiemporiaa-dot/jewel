@@ -177,6 +177,53 @@ curl -X POST https://your-domain/api/cron/recompute-prices \
   -H "Authorization: Bearer $CRON_SECRET"
 ```
 
+**Nothing calls these by itself.** Until a scheduler does, the shop keeps selling
+at whatever metal rate was last entered by hand, and no abandoned-cart, birthday,
+back-in-stock or price-drop email is ever sent. Neither failure shows an error
+anywhere — that is the whole reason this section matters.
+
+### Ready to paste
+
+Coolify → **Scheduled Tasks**, one per row above. On a plain host, `crontab -e`:
+
+```cron
+# Maya Jewellers scheduled jobs. Replace the domain and export CRON_SECRET.
+*/15 * * * *  curl -fsS -X POST https://your-domain/api/cron/recompute-prices        -H "Authorization: Bearer $CRON_SECRET" >/dev/null
+0    * * * *  curl -fsS -X POST https://your-domain/api/cron/shipment-reconciliation -H "Authorization: Bearer $CRON_SECRET" >/dev/null
+*/30 * * * *  curl -fsS -X POST https://your-domain/api/cron/abandoned-cart          -H "Authorization: Bearer $CRON_SECRET" >/dev/null
+30   3 * * *  curl -fsS -X POST https://your-domain/api/cron/campaigns               -H "Authorization: Bearer $CRON_SECRET" >/dev/null
+```
+
+`03:30` UTC is 09:00 IST — cron runs in the server's timezone, so set the hour in
+whatever the host uses, not in local time.
+
+On Vercel, `vercel.json` instead:
+
+```json
+{
+  "crons": [
+    { "path": "/api/cron/recompute-prices",        "schedule": "*/15 * * * *" },
+    { "path": "/api/cron/shipment-reconciliation", "schedule": "0 * * * *" },
+    { "path": "/api/cron/abandoned-cart",          "schedule": "*/30 * * * *" },
+    { "path": "/api/cron/campaigns",               "schedule": "30 3 * * *" }
+  ]
+}
+```
+
+Vercel Cron sends **GET** with the bearer token automatically; every endpoint
+accepts both verbs through the identical secret-protected handler.
+
+### Confirming it actually runs
+
+Every run is recorded — success or failure — and the admin **Dashboard** shows
+each job's last run, its run count and its last error. A job reading *never run*
+means the scheduler was never wired to it; a run count that stops moving means it
+has stopped. That panel also flags the other things that fail silently: missing
+SMTP, an unconfigured payment webhook, OTP still writing codes to the log, and a
+live metal rate more than two days old.
+
+Check it once after deploying, and again an hour later.
+
 ## Backups
 
 The database is the only stateful component (media lives in R2/S3, which has its

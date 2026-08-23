@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isAuthorizedCron } from '@/lib/cron';
 import { runOccasionCampaigns } from '@/lib/campaigns';
+import { runJob } from '@/lib/system/jobs';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs'; // Prisma needs the Node runtime, never Edge.
@@ -15,7 +16,7 @@ async function handler(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   try {
-    const result = await runOccasionCampaigns();
+    const result = await runJob('campaigns', () => runOccasionCampaigns());
     return NextResponse.json({ ok: true, ...result });
   } catch (e) {
     console.error('[cron] campaigns failed', e);

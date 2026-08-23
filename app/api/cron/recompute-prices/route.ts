@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { isAuthorizedCron } from '@/lib/cron';
 import { recomputeProductPrices } from '@/lib/pricing/resolve';
+import { runJob } from '@/lib/system/jobs';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs'; // Prisma needs the Node runtime, never Edge.
@@ -18,7 +19,7 @@ async function handler(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   try {
-    const updated = await recomputeProductPrices();
+    const updated = await runJob('recompute-prices', () => recomputeProductPrices());
     return NextResponse.json({ ok: true, updated });
   } catch (e) {
     console.error('[cron] recompute-prices failed', e);

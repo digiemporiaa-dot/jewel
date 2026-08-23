@@ -1,5 +1,56 @@
 # Changelog
 
+## The two silent failures now say so · 2026-08-23
+
+Two things stood between this build and a working shop, and neither produced an
+error anywhere: **nothing was calling the cron endpoints**, and **SMTP was
+unconfigured**. Both were reported in every hand-over as operator notes, which is
+another way of saying nobody would find them.
+
+They are configuration, not code. What was missing was the code that says so.
+
+### Every scheduled run is now recorded
+
+A `JobRun` row per job — last run, status, message, duration, run count —
+rewritten on every call, success *or* failure. The failure case matters as much:
+a job running hourly and failing every time looks identical to a healthy one if
+only successes are written down.
+
+That is what makes the distinction possible at all. Without it, a scheduler
+nobody ever configured looks exactly like a shop where nothing needed doing.
+
+### A health panel on the first screen an operator opens
+
+The admin dashboard now leads with what is quietly broken, and only for staff who
+could act on it — a dispatch user cannot fix SMTP:
+
+- **Email** — no SMTP means nothing is sent, including order confirmations.
+- **Scheduler** — every job listed with when it last ran. *Never run* means it was
+  never wired up; a run count that stops moving means it stopped.
+- **Metal rates** — a live rate more than two days old is being quoted to
+  shoppers as today's, and every price on the site derives from it.
+- **Payments** — missing Razorpay keys, and separately a missing webhook secret,
+  which means an order paid for while the browser was closed is never marked paid.
+- **Customer sign-in** — OTP still writing codes to the server log, so no
+  customer can sign in or check out as a returning one.
+- **OTP debug numbers** — anyone with log access can sign in as those numbers.
+- **Storage** and **analytics**, as warnings rather than failures.
+
+Every entry names the remedy. A warning with no remedy is noise.
+
+### And the scheduler config, ready to paste
+
+`docs/DEPLOYMENT.md` gains a copy-paste crontab, a `vercel.json` equivalent, the
+note that `03:30` UTC is 09:00 IST because cron runs in the server's timezone,
+and a "confirming it actually runs" step pointing at the new panel.
+
+Verified live: with nothing configured the dashboard flags email, the scheduler
+and customer sign-in, and lists all four jobs as never run. Calling two endpoints
+with the secret recorded both — status, duration and a summary of what they did —
+and the panel updated to match.
+
+650 tests passing.
+
 ## Saved addresses, and the gateway's own record of a payment · 2026-08-22
 
 Two columns the audit found unused turned out to be one missing feature and one
