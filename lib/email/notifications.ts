@@ -1,6 +1,7 @@
 import 'server-only';
 import { prisma } from '@/lib/prisma';
 import { sendTemplate } from '@/lib/templates';
+import { isCampaignEnabled } from '@/lib/campaigns';
 
 /**
  * Order and payment emails.
@@ -93,6 +94,9 @@ export async function sendPaymentConfirmation(orderId: string): Promise<void> {
  */
 export async function sendOrderShipped(orderId: string): Promise<void> {
   try {
+    // Transactional, but switchable: a shop that tracks parcels over WhatsApp
+    // has a real reason to turn this off, and the admin card says what it costs.
+    if (!(await isCampaignEnabled('ORDER_UPDATE'))) return;
     const order = await prisma.order.findUnique({ where: { id: orderId }, include: { shipment: true } });
     if (!order || !order.contactEmail) return;
 
@@ -118,6 +122,7 @@ export async function sendOrderShipped(orderId: string): Promise<void> {
 
 export async function sendOrderDelivered(orderId: string): Promise<void> {
   try {
+    if (!(await isCampaignEnabled('ORDER_UPDATE'))) return;
     const order = await prisma.order.findUnique({ where: { id: orderId } });
     if (!order || !order.contactEmail) return;
 
@@ -146,6 +151,7 @@ export async function sendOrderDelivered(orderId: string): Promise<void> {
  */
 export async function sendWelcome(customerId: string): Promise<void> {
   try {
+    if (!(await isCampaignEnabled('NEW_CUSTOMER'))) return;
     const customer = await prisma.customer.findFirst({
       where: { id: customerId, deletedAt: null },
       select: { id: true, name: true, email: true, _count: { select: { orders: true } } },

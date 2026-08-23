@@ -1,5 +1,73 @@
 # Changelog
 
+## Four campaign switches that were connected to nothing · 2026-08-23
+
+Reported from the shop: the campaigns screen "doesn't work, won't edit, won't
+open." Both halves of that were true, and the second one was the serious one.
+
+### The switches lied
+
+Seven automations were listed. Only three — abandoned cart, birthday,
+anniversary — were ever consulted before sending. The other four were not:
+
+| Campaign | What the switch did | What actually happened |
+|---|---|---|
+| New customer welcome | wrote `isActive: false` | welcome email sent anyway |
+| Back in stock | wrote `isActive: false` | back-in-stock email sent anyway |
+| Price drop | wrote `isActive: false` | price-drop email sent anyway |
+| Order shipped & delivered | wrote `isActive: false` | both sent anyway |
+
+An operator turned one off, got "Saved", and stopped looking. That is worse than
+having no switch: a missing control sends you to find another way, a lying one
+does not.
+
+All four now call `isCampaignEnabled` before doing anything. Two rules in that
+check, both chosen so the failure mode is a send rather than a silence:
+
+- **No row means on.** A shop that never opened the screen keeps today's
+  behaviour, and switching something off stays a deliberate act.
+- **An unreadable row means on.** A database hiccup must not quietly stop the
+  shop telling a customer their parcel shipped.
+
+For back-in-stock and price-drop the guard sits *before* the queue is read, not
+inside the loop. Those two senders clear `notifyBackInStock` and rewrite
+`priceAtAdd` as they go; a guard in the wrong place would have consumed every
+waiting request while sending nothing — the same defect that was caught in these
+senders once before, for the same reason.
+
+Order shipped/delivered is transactional and can still be switched off, because
+a shop that tracks parcels over WhatsApp has a real reason to. The card now says
+plainly what switching it off costs the customer.
+
+### The cards were dead ends
+
+A heading, a checkbox and a Save button. Nothing to read, nothing to open, and no
+route to the wording. On a phone the panel explaining that wording lives under
+Marketing → Email Templates sits below all seven cards, so the honest experience
+was scrolling past four blank boxes.
+
+Each card now carries its description, when it fires, which cron drives it (or
+that it needs none), and an **Edit wording →** link straight to its own template.
+
+`lib/campaigns/registry.ts` holds that table — type, template key, trigger,
+transactional — and both the admin screen and the senders read it. Adding a
+campaign means adding a row and calling the check; there is no longer a way to
+add a switch without wiring it, because `tests/campaign-registry.test.ts` asserts
+every listed campaign is consulted somewhere in the senders.
+
+### Two silent failures made visible
+
+- **No SMTP.** The warning existed on the templates page only, so a shop could
+  switch five campaigns on here and never learn that none of them can send. It is
+  now the first thing on the campaigns screen, and repeated on any card that is
+  switched on while mail is unconfigured.
+- **Timing fields on campaigns that have none.** Only abandoned cart has delays
+  the code reads. A test asserts the editor offers them nowhere else.
+
+`tests/campaign-switch.test.ts` calls the senders for real with the database and
+mailer stubbed: switch off, nothing sent and no state consumed; switch on, sent
+and the flag cleared.
+
 ## The homepage becomes content · 2026-08-23
 
 The busiest page on the site was a hardcoded React component. Changing the hero

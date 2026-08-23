@@ -10,6 +10,28 @@ export async function getCampaign(type: string) {
   return prisma.campaign.findFirst({ where: { type } });
 }
 
+/**
+ * Is this automation switched on?
+ *
+ * Every sender calls this before doing anything. Missing row means **on**: a
+ * shop that has never opened the campaigns screen keeps the behaviour it has
+ * today, and turning something off is always a deliberate act rather than a
+ * side effect of a screen nobody visited.
+ *
+ * A failed lookup also means on. A database hiccup must not silently stop the
+ * shop telling a customer their order shipped — the send retrying is recoverable,
+ * a send that never happened is not.
+ */
+export async function isCampaignEnabled(type: string): Promise<boolean> {
+  try {
+    const campaign = await getCampaign(type);
+    return campaign?.isActive ?? true;
+  } catch (e) {
+    console.error('[campaigns] could not read switch, assuming on', type, e);
+    return true;
+  }
+}
+
 async function reminderConfig(): Promise<{ enabled: boolean; config: ReminderConfig }> {
   const campaign = await getCampaign('ABANDONED_CART');
   if (!campaign) return { enabled: true, config: DEFAULT_REMINDER_CONFIG };

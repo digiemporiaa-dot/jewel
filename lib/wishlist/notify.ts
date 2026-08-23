@@ -2,6 +2,7 @@ import 'server-only';
 import Decimal from 'decimal.js';
 import { prisma } from '@/lib/prisma';
 import { sendTemplate } from '@/lib/templates';
+import { isCampaignEnabled } from '@/lib/campaigns';
 
 /**
  * Back-in-stock and price-drop emails for saved pieces.
@@ -43,6 +44,11 @@ const REACHABLE = {
  * a piece that already had stock is not "back".
  */
 export async function notifyBackInStock(productId: string): Promise<number> {
+  // Checked before the queue is read, not inside the loop. A switched-off
+  // campaign must leave every waiting request exactly where it is — the same
+  // rule as an undelivered send below, for the same reason.
+  if (!(await isCampaignEnabled('BACK_IN_STOCK'))) return 0;
+
   const product = await prisma.product.findFirst({
     where: { id: productId, isActive: true, deletedAt: null },
     select: { id: true, name: true, slug: true, priceFrom: true },
@@ -94,6 +100,9 @@ export async function notifyBackInStock(productId: string): Promise<number> {
  */
 export async function notifyPriceDrops(productIds: string[]): Promise<number> {
   if (productIds.length === 0) return 0;
+  // Before any `priceAtAdd` is rewritten: switching the campaign off must not
+  // quietly move everyone's baseline and lose the drops they were waiting for.
+  if (!(await isCampaignEnabled('PRICE_DROP'))) return 0;
 
   const products = await prisma.product.findMany({
     where: { id: { in: productIds }, isActive: true, deletedAt: null, priceFrom: { not: null } },

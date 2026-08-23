@@ -68,10 +68,14 @@ queries are defensive (fall back to zero) so the panel always renders.
     `/` falls back to it rather than 404ing.
   - `/pages/home` permanently redirects to `/`, and the sitemap lists `/` only.
 - **Blog** (`/admin/blog`) — posts with SEO fields and Article structured data.
-- **Campaigns** (`/admin/campaigns`) — automation toggles, configurable
-  abandoned-cart delays (abandon-after, three stages, minimum gap) and editable
-  message templates. Runs via `POST /api/cron/abandoned-cart` and
-  `POST /api/cron/campaigns` with the `CRON_SECRET` bearer token.
+- **Campaigns** (`/admin/campaigns`) — the seven emails the shop sends on its own.
+  Each card says when it fires, what drives it, and links straight to the wording
+  it sends. Switching one off stops it. Configurable abandoned-cart delays
+  (abandon-after, three stages, minimum gap). Scheduled ones run via
+  `POST /api/cron/abandoned-cart`, `POST /api/cron/campaigns` and
+  `POST /api/cron/recompute-prices` with the `CRON_SECRET` bearer token; the rest
+  send immediately. **Nothing sends at all without SMTP** — the page says so at
+  the top when it is unconfigured.
 
 ## Phase 3 additions
 
