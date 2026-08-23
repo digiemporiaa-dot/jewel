@@ -5,6 +5,7 @@ import { getSessionToken } from '@/lib/session';
 import { getCart } from '@/lib/cart';
 import { getStoreSettings } from '@/lib/store';
 import { getCurrentCustomer } from '@/lib/customer-session';
+import { listAddresses } from '@/lib/addresses';
 import CheckoutClient from './CheckoutClient';
 import { privateMetadata } from '@/lib/seo/metadata';
 
@@ -15,6 +16,8 @@ export const metadata: Metadata = privateMetadata('Checkout');
 export default async function CheckoutPage() {
   const token = await getSessionToken();
   const [cart, store, customer] = await Promise.all([getCart(token), getStoreSettings(), getCurrentCustomer()]);
+  // Only a signed-in customer has an address book; a guest sees the blank form.
+  const savedAddresses = customer ? await listAddresses(customer.id) : [];
 
   if (cart.lines.length === 0) redirect('/cart');
 
@@ -54,6 +57,12 @@ export default async function CheckoutPage() {
           quantity: l.quantity,
           ...(l.variantLabel ? { item_variant: l.variantLabel } : {}),
         }))}
+        savedAddresses={savedAddresses.map((a) => ({
+          id: a.id, label: a.label, name: a.name, phone: a.phone,
+          line1: a.line1, line2: a.line2, city: a.city, state: a.state,
+          pincode: a.pincode, isDefault: a.isDefault,
+        }))}
+        customerName={customer?.name ?? null}
         verifiedPhone={customer?.phoneVerified ? customer.phone : null}
         panRequired={panRequired}
         codAllowed={codAllowed}

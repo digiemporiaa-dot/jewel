@@ -1,5 +1,54 @@
 # Changelog
 
+## Saved addresses, and the gateway's own record of a payment · 2026-08-22
+
+Two columns the audit found unused turned out to be one missing feature and one
+missing safeguard.
+
+### The `Address` model had never had a row written to it
+
+`Address` — with an `isDefault` flag — has existed since the first schema, and
+nothing ever wrote to it. There was no address book, no `/my-account/addresses`,
+and checkout snapshotted an address onto the order and forgot it. A returning
+customer retyped their full address on every purchase, which at these values is
+where an order is abandoned: nobody re-enters a Delhi address to spend ₹1.2 lakh
+a second time.
+
+The comment in the checkout action said it best. It read *"persist the
+contact/address on the customer for reuse"* and saved the name and the email.
+
+Now: an address book under **My account → Addresses** (add, edit, remove, set
+default), the default filled into checkout on arrival, a picker for the others,
+and "Somewhere else" for a new one. Editing a prefilled field detaches it from
+the saved address, so an amended address is a new one rather than a silent edit
+to a saved entry.
+
+Every order also remembers its address, deduplicated on line 1 and pincode —
+ordering three times from home leaves one row, not three. Best-effort: a
+saved-address write must never fail a checkout.
+
+**Ownership lives in the `where` clause**, not in a check before it. An address
+id in a form field is a guess at somebody else's id until the query proves
+otherwise, and `updateMany`/`deleteMany` scoped by `customerId` simply match
+nothing. There are tests for exactly that.
+
+**Exactly one default**, enforced inside the transaction that sets it: two would
+make checkout's preselection arbitrary. The first address saved becomes the
+default whether or not it was asked for — otherwise the feature does nothing on
+the order that matters most, the second one. Deleting the default promotes the
+next most recent.
+
+### `Payment.rawPayload` was never filled
+
+A chargeback arrives months later and is argued from the gateway's record — the
+method, the card network, the acquirer reference. `WebhookEvent` keeps the
+envelope, but it is keyed by event and pruned by event age. The payment entity
+is now stored on the payment row it belongs to, and it is written only: every
+amount and status decision still comes from our own rows.
+
+Tests: 10 new, against a real database because ownership and the single-default
+invariant are enforced in SQL rather than in application logic. 650 passing.
+
 ## Repo audit · 2026-08-22
 
 A full pass over the repository rather than over a feature. Four things found,

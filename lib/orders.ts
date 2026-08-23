@@ -352,6 +352,17 @@ export async function confirmPayment(params: {
   providerOrderId?: string;
   capturedAmount?: string; // rupees, from provider; validated against order
   source: 'callback' | 'webhook';
+  /**
+   * The gateway's own payment entity, stored verbatim on the payment row.
+   *
+   * A chargeback arrives months later and is argued from the gateway's record
+   * of what happened — the method, the card network, the acquirer reference.
+   * `WebhookEvent` keeps the envelope, but that is keyed by event and is pruned
+   * by event age; this is the copy attached to the payment being disputed.
+   * Never read back as trusted input: every amount and status decision below
+   * comes from our own rows.
+   */
+  rawPayload?: unknown;
 }): Promise<{ ok: boolean; alreadyProcessed?: boolean }> {
   return prisma.$transaction(async (tx) => {
     const order = await tx.order.findUnique({ where: { id: params.orderId }, include: { payments: true } });
@@ -369,7 +380,15 @@ export async function confirmPayment(params: {
 
     await tx.payment.update({
       where: { id: pending.id },
-      data: { status: PaymentStatus.CAPTURED, providerPaymentId: params.providerPaymentId, providerOrderId: params.providerOrderId ?? pending.providerOrderId, capturedAt: new Date() },
+      data: {
+        status: PaymentStatus.CAPTURED,
+        providerPaymentId: params.providerPaymentId,
+        providerOrderId: params.providerOrderId ?? pending.providerOrderId,
+        capturedAt: new Date(),
+        ...(params.rawPayload !== undefined
+          ? { rawPayload: params.rawPayload as Prisma.InputJsonValue }
+          : {}),
+      },
     });
 
     const newPaid = new Decimal(order.amountPaid.toString()).plus(pending.amount.toString());

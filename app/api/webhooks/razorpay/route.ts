@@ -70,7 +70,9 @@ async function processEvent(eventType: string, payload: RazorpayWebhookPayload):
       if (!entity) return;
       const orderId = await orderIdFromProviderOrder(entity.order_id);
       if (!orderId) return; // unknown order — recorded, nothing to do
-      await confirmPayment({ orderId, providerPaymentId: entity.id, providerOrderId: entity.order_id, source: 'webhook' });
+      // The gateway's own entity is kept on the payment row. A chargeback is
+      // argued months later from the gateway's record, not from ours.
+      await confirmPayment({ orderId, providerPaymentId: entity.id, providerOrderId: entity.order_id, source: 'webhook', rawPayload: entity });
       return;
     }
     case 'payment.failed': {

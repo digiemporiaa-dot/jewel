@@ -35,6 +35,7 @@ export default async function AccountPage() {
 
       <div className="mt-8 grid sm:grid-cols-2 gap-4">
         <Card href="/my-account/orders" title="Orders" desc="Track and view your orders" />
+        <Card href="/my-account/addresses" title="Addresses" desc="Where your orders are delivered" />
         <Card href="/wishlist" title="Wishlist" desc="Your saved pieces" />
         <Card href="/appointments" title="Appointments" desc="Book a showroom visit" />
         <Card href="/c/new-arrivals" title="Continue shopping" desc="Explore new arrivals" />

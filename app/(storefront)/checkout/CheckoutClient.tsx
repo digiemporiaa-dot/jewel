@@ -13,12 +13,23 @@ declare global {
   interface Window { Razorpay?: new (opts: unknown) => { open: () => void } }
 }
 
+/** The fields checkout needs from a saved address. */
+export type SavedAddressOption = {
+  id: string; label: string | null; name: string; phone: string;
+  line1: string; line2: string | null; city: string; state: string; pincode: string;
+  isDefault: boolean;
+};
+
 export default function CheckoutClient({
   summary, lines, verifiedPhone, panRequired, codAllowed, brandName, analyticsItems,
+  savedAddresses, customerName,
 }: {
   summary: SummaryTotals; lines: SummaryLine[];
   verifiedPhone: string | null; panRequired: boolean; codAllowed: boolean; brandName: string;
   analyticsItems: EventItem[];
+  /** Addresses this customer has already saved, default first. */
+  savedAddresses: SavedAddressOption[];
+  customerName: string | null;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -27,8 +38,12 @@ export default function CheckoutClient({
   // once on mount. The ref survives React's development double-invoke of effects.
   const checkoutTracked = useRef(false);
 
+  // The default address, when there is one, fills the form on arrival. Retyping
+  // a shipping address is where a ₹1.2 lakh order gets abandoned.
+  const preset = savedAddresses[0] ?? null;
+
   // Contact + OTP
-  const [name, setName] = useState('');
+  const [name, setName] = useState(preset?.name ?? customerName ?? '');
   const [phone, setPhone] = useState(verifiedPhone ?? '');
   const [email, setEmail] = useState('');
   const [verified, setVerified] = useState(!!verifiedPhone);
@@ -37,7 +52,18 @@ export default function CheckoutClient({
   const [devCode, setDevCode] = useState<string | null>(null);
 
   // Address
-  const [addr, setAddr] = useState({ line1: '', line2: '', city: '', state: '', pincode: '' });
+  const [addressId, setAddressId] = useState<string | null>(preset?.id ?? null);
+  const [addr, setAddr] = useState({
+    line1: preset?.line1 ?? '', line2: preset?.line2 ?? '',
+    city: preset?.city ?? '', state: preset?.state ?? '', pincode: preset?.pincode ?? '',
+  });
+
+  function applySavedAddress(saved: SavedAddressOption) {
+    setAddressId(saved.id);
+    setName(saved.name);
+    if (!verifiedPhone) setPhone(saved.phone);
+    setAddr({ line1: saved.line1, line2: saved.line2 ?? '', city: saved.city, state: saved.state, pincode: saved.pincode });
+  }
   const [pan, setPan] = useState('');
   const [method, setMethod] = useState<'RAZORPAY' | 'COD' | 'BANK_TRANSFER'>('RAZORPAY');
 
@@ -172,8 +198,47 @@ export default function CheckoutClient({
 
         {/* Address */}
         <Section step="2" title="Shipping address">
+          {savedAddresses.length > 0 && (
+            <div className="mb-4 space-y-2">
+              <p className="text-xs text-ink-soft">Deliver to a saved address</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {savedAddresses.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => applySavedAddress(s)}
+                    aria-pressed={addressId === s.id}
+                    className={cn(
+                      'border p-3 text-left text-sm transition-colors',
+                      addressId === s.id ? 'border-velvet bg-paper-2' : 'border-line hover:border-brass'
+                    )}
+                  >
+                    <span className="block font-medium">
+                      {s.label ?? s.name}
+                      {s.isDefault && <span className="ml-2 text-xs text-brass">Default</span>}
+                    </span>
+                    <span className="mt-0.5 block text-xs text-ink-soft">
+                      {s.line1}, {s.city} {s.pincode}
+                    </span>
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => { setAddressId(null); setAddr({ line1: '', line2: '', city: '', state: '', pincode: '' }); }}
+                  aria-pressed={addressId === null}
+                  className={cn(
+                    'border p-3 text-left text-sm transition-colors',
+                    addressId === null ? 'border-velvet bg-paper-2' : 'border-line hover:border-brass'
+                  )}
+                >
+                  <span className="block font-medium">Somewhere else</span>
+                  <span className="mt-0.5 block text-xs text-ink-soft">Enter a new address</span>
+                </button>
+              </div>
+            </div>
+          )}
           <div className="space-y-3">
-            <Input label="Address line 1" value={addr.line1} onChange={(v) => setAddr({ ...addr, line1: v })} />
+            <Input label="Address line 1" value={addr.line1} onChange={(v) => { setAddressId(null); setAddr({ ...addr, line1: v }); }} />
             <Input label="Address line 2 (optional)" value={addr.line2} onChange={(v) => setAddr({ ...addr, line2: v })} />
             <div className="grid sm:grid-cols-3 gap-3">
               <Input label="City" value={addr.city} onChange={(v) => setAddr({ ...addr, city: v })} />

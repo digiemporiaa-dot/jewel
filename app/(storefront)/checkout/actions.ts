@@ -14,6 +14,7 @@ import { getCart } from '@/lib/cart';
 import { evaluateCoupon, applyDiscountToTotals } from '@/lib/coupons/apply';
 import { createRazorpayOrder, verifyRazorpayPayment, publicKeyId } from '@/lib/payments/razorpay';
 import { sendOrderConfirmation, sendPaymentConfirmation } from '@/lib/email/notifications';
+import { rememberAddress } from '@/lib/addresses';
 
 // ── OTP ──────────────────────────────────────────────────────────────────────
 
@@ -91,8 +92,20 @@ export async function placeOrder(input: unknown): Promise<PlaceResult> {
       couponCode: d.couponCode || null,
     });
 
-    // Persist the contact/address on the customer for reuse (best-effort).
+    // Persist the contact and the address on the customer for reuse
+    // (best-effort — neither may fail a checkout). The comment here promised the
+    // address too and only ever saved the name and email, which is why a
+    // returning customer retyped their address on every order.
     prisma.customer.update({ where: { id: customerId }, data: { name: d.contactName, email: d.contactEmail || undefined } }).catch(() => {});
+    void rememberAddress(customerId, {
+      name: d.contactName,
+      phone: d.contactPhone,
+      line1: d.shippingAddress.line1,
+      line2: d.shippingAddress.line2 ?? null,
+      city: d.shippingAddress.city,
+      state: d.shippingAddress.state,
+      pincode: d.shippingAddress.pincode,
+    });
 
     if (result.paymentMethod === 'BANK_TRANSFER') {
       sendOrderConfirmation(result.orderId);
