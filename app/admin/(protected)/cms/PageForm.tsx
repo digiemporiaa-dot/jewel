@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPageAction, updatePageAction, deletePageAction } from './actions';
 import SeoPanel from '@/components/admin/SeoPanel';
+import { isHomeSlug, storefrontPathForPage } from '@/lib/cms/home';
 
 export type PageDefaults = {
   id?: string;
@@ -18,6 +19,7 @@ export default function PageForm({ defaults = {} }: { defaults?: PageDefaults })
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [status, setStatus] = useState(defaults.status ?? 'DRAFT');
+  const isHome = Boolean(defaults.slug && isHomeSlug(defaults.slug));
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -39,7 +41,22 @@ export default function PageForm({ defaults = {} }: { defaults?: PageDefaults })
     <form onSubmit={submit} className="border border-line bg-white p-5 space-y-3 text-sm">
       <div className="grid sm:grid-cols-2 gap-3">
         <L label="Title"><input name="title" defaultValue={defaults.title} required className="p-inp" /></L>
-        <L label="Slug"><input name="slug" defaultValue={defaults.slug} required placeholder="about" className="p-inp" /></L>
+        <L label={isHome ? 'Address (fixed)' : 'Slug'}>
+          {/* `readOnly`, not `disabled`: a disabled input is not submitted, and
+              the slug is required. The server refuses a changed homepage slug
+              too — this only stops the honest mistake. */}
+          <input
+            name="slug" defaultValue={defaults.slug} required placeholder="about"
+            readOnly={isHome}
+            className={isHome ? 'p-inp bg-paper-2 text-ink-soft' : 'p-inp'}
+          />
+          {isHome && (
+            <span className="mt-1 block text-xs text-ink-soft">
+              This page is your storefront homepage, served at <code>/</code>. Set the
+              status to Draft to fall back to the built-in default layout.
+            </span>
+          )}
+        </L>
         <L label="Status">
           <select name="status" value={status} onChange={(e) => setStatus(e.target.value)} className="p-inp">
             <option value="DRAFT">Draft</option>
@@ -53,7 +70,7 @@ export default function PageForm({ defaults = {} }: { defaults?: PageDefaults })
       </div>
       <SeoPanel
         prefix="cms"
-        publicPath={defaults.slug ? `/pages/${defaults.slug}` : undefined}
+        publicPath={defaults.slug ? storefrontPathForPage(defaults.slug) : undefined}
         isPublished={defaults.status === 'PUBLISHED'}
         defaults={{
           seoTitle: defaults.seoTitle, seoDescription: defaults.seoDescription,
@@ -66,7 +83,7 @@ export default function PageForm({ defaults = {} }: { defaults?: PageDefaults })
 
       <div className="flex gap-2">
         <button disabled={pending} className="btn-primary text-xs">{pending ? 'Saving…' : defaults.id ? 'Save page' : 'Create page'}</button>
-        {defaults.id && <button type="button" onClick={remove} disabled={pending} className="btn-outline text-xs text-red-700 border-red-300">Delete page</button>}
+        {defaults.id && !isHome && <button type="button" onClick={remove} disabled={pending} className="btn-outline text-xs text-red-700 border-red-300">Delete page</button>}
       </div>
       <style>{`.p-inp{width:100%;border:1px solid var(--line);padding:.5rem .625rem;font-size:.875rem;outline:none}.p-inp:focus{border-color:var(--brass)}`}</style>
     </form>

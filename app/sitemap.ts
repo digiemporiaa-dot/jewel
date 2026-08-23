@@ -1,6 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { prisma } from '@/lib/prisma';
 import { getSeoSettings, siteUrl } from '@/lib/seo/settings';
+import { HOME_SLUG } from '@/lib/cms/home';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 3600;
@@ -46,6 +47,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       prisma.cmsPage.findMany({
         where: {
           noIndex: false,
+          // The homepage is a CmsPage but it is served at `/`, which the static
+          // entries above already list. Including it here would advertise
+          // `/pages/home`, an address that only redirects.
+          slug: { not: HOME_SLUG },
           OR: [
             { status: 'PUBLISHED' },
             { status: 'SCHEDULED', scheduledAt: { lte: new Date() } },

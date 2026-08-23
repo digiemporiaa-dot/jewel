@@ -1,5 +1,74 @@
 # Changelog
 
+## The homepage becomes content · 2026-08-23
+
+The busiest page on the site was a hardcoded React component. Changing the hero
+picture or the headline meant editing `app/(storefront)/page.tsx` and
+redeploying — and the hero had no image support at all, just a coloured panel
+with the brand name in it. For a build that gets redeployed for other jewellers
+with configuration changes only, that is the wrong shape: the design is the
+template, the words and pictures belong to the shop.
+
+The homepage is now the CMS page with the reserved slug `home`, served at `/`.
+
+### One design, two sources
+
+The blueprint in `lib/cms/home.ts` is both the default homepage and the thing
+"Set up homepage" copies into the database. A shop that has never opened the CMS
+renders it from memory; a shop that has, renders its own rows. There is no
+hardcoded homepage sitting beside a CMS one, quietly drifting out of step.
+
+That property was checked rather than assumed: the rendered text of `/` with no
+`home` row is byte-for-byte identical to `/` immediately after setting one up.
+Clicking the button costs a jeweller nothing and gains them the controls.
+
+Draft status is the way back. Unpublishing the homepage falls through to the
+blueprint instead of 404ing the shop's front door, which is what makes it safe
+to unpublish one while reworking it.
+
+### What was missing before blocks could express it
+
+- **`CATEGORY_GRID`** — a new block type (migration
+  `20260823010000_add_category_grid_block`). "Shop by Category" was the one band
+  no existing block could produce. It reads categories live, so adding one to the
+  catalogue puts it on the homepage without anyone editing a block.
+- **A second hero button.** The design always had two — shop the catalogue, or
+  come to the showroom — and a jeweller whose real business is walk-ins would
+  have lost the second one. Optional: leave both fields blank for one button.
+- **Eyebrow and "View all" on product grids**, which the hardcoded rows had and
+  the block did not.
+- **Wishlist state in CMS product grids.** `savedIds` is now threaded into
+  `BlockRenderer` from the page, once per request rather than once per grid.
+
+### Two addresses for one page is duplicate content
+
+`/pages/home` permanently redirects to `/` (308, thrown from `generateMetadata`
+so the status is set before anything is flushed). The sitemap excludes the `home`
+slug — `/` is already a static entry — and the SEO report audits it at `/` under
+its own **Homepage** kind rather than at an address that only redirects.
+
+The homepage's canonical is deliberately *not* overridable from the SEO panel.
+`noIndex`, title, description and OG image all apply; the canonical does not,
+because `/` is the canonical home of the site by definition and a typo in that
+field would point the front door at someone else's.
+
+### Guard rails
+
+- The slug is read-only in the editor **and** refused server-side. Renaming it
+  would silently drop the shop back to the default with no clue why, and `/` is
+  not a target the redirect table can express.
+- The homepage cannot be deleted — it holds every edit ever made to it, and
+  unpublishing already achieves the same visible result.
+- `bootstrapHomepage` is idempotent like the rest of `prisma/bootstrap.ts`: it
+  creates the page when missing and never touches one that exists.
+
+### Verified in a browser, not just in tests
+
+Signed into the admin, opened the homepage editor, confirmed the slug is
+read-only and the delete button absent, changed the hero heading through the form
+and watched `/` change. Separately: deleted the row, confirmed `/` still rendered
+the full page, clicked **Set up homepage**, and got all eight blocks back.
+
 ## Next 16 · 2026-08-23
 
 Ten high-severity advisories, all transitive through Next 15 — `postcss`

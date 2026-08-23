@@ -45,6 +45,14 @@ export const heroSchema = z.object({
   imageAlt: z.string().trim().max(160).optional().default(''),
   ctaLabel: z.string().trim().max(40).optional().default(''),
   ctaHref: z.string().trim().max(200).optional().default(''),
+  /**
+   * A second button. The hero has always shown two in the design — "shop this"
+   * next to "come and see us" — and a jeweller whose real business is walk-ins
+   * needs the showroom link beside the catalogue one, not instead of it.
+   * Optional: leave both fields blank and the hero renders one button as before.
+   */
+  ctaLabel2: z.string().trim().max(40).optional().default(''),
+  ctaHref2: z.string().trim().max(200).optional().default(''),
 });
 
 export const richTextSchema = z.object({
@@ -96,14 +104,32 @@ export const videoSchema = z.object({
 });
 
 export const productGridSchema = z.object({
+  eyebrow: z.string().trim().max(60).optional().default(''),
   heading: z.string().trim().max(120).optional().default(''),
   source: z.enum(['featured', 'new', 'bestsellers']).default('featured'),
   limit: z.coerce.number().int().min(2).max(12).default(4),
+  /** Optional "View all" link. A row of eight is a taster, not the catalogue. */
+  viewAllHref: z.string().trim().max(200).optional().default(''),
 });
 
 export const collectionGridSchema = z.object({
   heading: z.string().trim().max(120).optional().default(''),
   limit: z.coerce.number().int().min(1).max(12).default(3),
+});
+
+/**
+ * Top-level categories, as pictures.
+ *
+ * Categories are structural — a shop reorders them in the catalogue, not here —
+ * so this block chooses how many to show and what to call the band, and reads
+ * the rest live. That way adding a category puts it on the homepage without
+ * anyone remembering to come back and edit a block.
+ */
+export const categoryGridSchema = z.object({
+  eyebrow: z.string().trim().max(60).optional().default(''),
+  heading: z.string().trim().max(120).optional().default(''),
+  limit: z.coerce.number().int().min(2).max(12).default(8),
+  viewAllHref: z.string().trim().max(200).optional().default(''),
 });
 
 export const bannerSchema = z.object({
@@ -150,6 +176,7 @@ export const BLOCK_SCHEMAS = {
   IMAGE_TEXT: imageTextSchema,
   PRODUCT_GRID: productGridSchema,
   COLLECTION_GRID: collectionGridSchema,
+  CATEGORY_GRID: categoryGridSchema,
   BANNER: bannerSchema,
   FAQ: faqSchema,
   TRUST_ROW: trustRowSchema,
@@ -164,6 +191,7 @@ export const BLOCK_LABELS: Record<CmsBlockType, string> = {
   IMAGE_TEXT: 'Image + text',
   PRODUCT_GRID: 'Product grid',
   COLLECTION_GRID: 'Collection grid',
+  CATEGORY_GRID: 'Category grid',
   BANNER: 'Banner',
   FAQ: 'FAQ',
   TRUST_ROW: 'Trust row',
@@ -180,12 +208,13 @@ export function parseBlockData(type: CmsBlockType, data: unknown) {
 /** Sensible starting content when an admin adds a new block. */
 export function defaultBlockData(type: CmsBlockType): Record<string, unknown> {
   switch (type) {
-    case 'HERO': return { eyebrow: '', heading: 'A new heading', subheading: '', imageUrl: '', mobileImageUrl: '', imageAlt: '', ctaLabel: '', ctaHref: '' };
+    case 'HERO': return { eyebrow: '', heading: 'A new heading', subheading: '', imageUrl: '', mobileImageUrl: '', imageAlt: '', ctaLabel: '', ctaHref: '', ctaLabel2: '', ctaHref2: '' };
     case 'VIDEO': return { heading: '', caption: '', videoUrl: '', posterUrl: '' };
     case 'RICH_TEXT': return { heading: '', body: 'Write something here.', align: 'left' };
     case 'IMAGE_TEXT': return { heading: '', body: '', imageUrl: '', imageAlt: '', imagePosition: 'left', ctaLabel: '', ctaHref: '' };
-    case 'PRODUCT_GRID': return { heading: 'Featured', source: 'featured', limit: 4 };
+    case 'PRODUCT_GRID': return { eyebrow: '', heading: 'Featured', source: 'featured', limit: 4, viewAllHref: '' };
     case 'COLLECTION_GRID': return { heading: 'Collections', limit: 3 };
+    case 'CATEGORY_GRID': return { eyebrow: 'Explore', heading: 'Shop by Category', limit: 8, viewAllHref: '/collections' };
     case 'BANNER': return { text: 'Announcement', ctaLabel: '', ctaHref: '', tone: 'velvet' };
     case 'FAQ': return { heading: 'Frequently asked', items: [{ question: 'A question?', answer: 'An answer.' }] };
     case 'TRUST_ROW': return { items: [{ title: 'BIS Hallmarked', subtitle: 'Certified purity' }] };

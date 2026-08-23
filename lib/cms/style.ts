@@ -110,6 +110,7 @@ export const BLOCK_STYLE_CAPABILITIES = {
   IMAGE_TEXT: caps(['background', 'spacing', 'width', 'mediaSide']),
   PRODUCT_GRID: caps(['background', 'spacing', 'width']),
   COLLECTION_GRID: caps(['background', 'spacing', 'align', 'width', 'columns']),
+  CATEGORY_GRID: caps(['background', 'spacing', 'align', 'width', 'columns'], { columns: 4 }),
   BANNER: caps(['background', 'spacing', 'width'], { background: 'velvet', align: 'center' }),
   FAQ: caps(['background', 'spacing', 'align', 'width'], { align: 'center' }),
   TRUST_ROW: caps(['background', 'spacing', 'align', 'width', 'columns'], { align: 'center', columns: 4 }),

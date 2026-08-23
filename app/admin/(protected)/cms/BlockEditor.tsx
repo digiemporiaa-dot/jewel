@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils/cn';
 import ImageUploadField from '@/components/admin/ImageUploadField';
 import { BLOCK_LABELS } from '@/lib/cms/blocks';
+import { storefrontPathForPage } from '@/lib/cms/home';
 import {
   resolveBlockStyle, parseBlockStyle, styleControlsFor, styleOptions,
   STYLE_CONTROL_LABELS, STYLE_OPTION_LABELS,
@@ -47,6 +48,8 @@ const FIELDS: Record<string, Field[]> = {
     { key: 'mobileImageUrl', label: 'Mobile image (optional)', kind: 'image', hint: 'Used below 640px.' },
     { key: 'ctaLabel', label: 'Button label', kind: 'text' },
     { key: 'ctaHref', label: 'Button link', kind: 'text' },
+    { key: 'ctaLabel2', label: 'Second button label (optional)', kind: 'text' },
+    { key: 'ctaHref2', label: 'Second button link', kind: 'text', hint: 'Leave both blank to show one button.' },
   ],
   VIDEO: [
     { key: 'heading', label: 'Heading', kind: 'text' },
@@ -68,13 +71,21 @@ const FIELDS: Record<string, Field[]> = {
     { key: 'ctaHref', label: 'Button link', kind: 'text' },
   ],
   PRODUCT_GRID: [
+    { key: 'eyebrow', label: 'Eyebrow', kind: 'text' },
     { key: 'heading', label: 'Heading', kind: 'text' },
     { key: 'source', label: 'Source', kind: 'select', options: ['featured', 'new', 'bestsellers'] },
     { key: 'limit', label: 'How many', kind: 'number' },
+    { key: 'viewAllHref', label: '"View all" link (optional)', kind: 'text' },
   ],
   COLLECTION_GRID: [
     { key: 'heading', label: 'Heading', kind: 'text' },
     { key: 'limit', label: 'How many', kind: 'number' },
+  ],
+  CATEGORY_GRID: [
+    { key: 'eyebrow', label: 'Eyebrow', kind: 'text' },
+    { key: 'heading', label: 'Heading', kind: 'text' },
+    { key: 'limit', label: 'How many', kind: 'number', hint: 'Top-level categories, in catalogue order.' },
+    { key: 'viewAllHref', label: '"View all" link (optional)', kind: 'text' },
   ],
   BANNER: [
     { key: 'text', label: 'Text', kind: 'text' },
@@ -211,6 +222,7 @@ function BlockCard({
           ) : (
           <label key={f.key} className={cn('block', f.kind === 'textarea' && 'sm:col-span-2')}>
             <span className="block mb-1 text-xs text-ink-soft">{f.label}</span>
+            {f.hint && <span className="block mb-1 text-[11px] text-ink-soft/80">{f.hint}</span>}
             {f.kind === 'textarea' ? (
               <textarea value={String(data[f.key] ?? '')} onChange={(e) => set(f.key, e.target.value)} rows={3} className="b-inp" />
             ) : f.kind === 'select' ? (
@@ -283,7 +295,7 @@ function BlockCard({
       <div className="flex items-center gap-3">
         <button onClick={() => onSave(data)} disabled={pending} className="btn-primary text-xs">Save block</button>
         <a
-          href={`/pages/${pageSlug}`}
+          href={storefrontPathForPage(pageSlug)}
           target="_blank"
           rel="noreferrer"
           className="text-xs underline decoration-line-strong underline-offset-4 hover:text-brass"

@@ -1,6 +1,7 @@
 import 'server-only';
 import { prisma } from '@/lib/prisma';
 import { PublishStatus } from '@prisma/client';
+import { isHomeSlug } from '@/lib/cms/home';
 
 /** A destination offered by the link picker, grouped for the <optgroup>. */
 export type LinkOption = { group: string; label: string; href: string };
@@ -38,7 +39,11 @@ export async function getLinkOptions(): Promise<LinkOption[]> {
     { group: 'Store', label: 'Search', href: '/search' },
     ...categories.map((c) => ({ group: 'Categories', label: c.name, href: `/c/${c.slug}` })),
     ...collections.map((c) => ({ group: 'Collections', label: c.name, href: `/collection/${c.slug}` })),
-    ...pages.map((p) => ({ group: 'Pages', label: p.title, href: `/pages/${p.slug}` })),
+    // The homepage is already offered as "Home → /" above; it has no
+    // `/pages/home` address to link to.
+    ...pages
+      .filter((p) => !isHomeSlug(p.slug))
+      .map((p) => ({ group: 'Pages', label: p.title, href: `/pages/${p.slug}` })),
   ];
 }
 

@@ -8,7 +8,7 @@ import {
   MakingChargeScope,
 } from '@prisma/client';
 import bcrypt from 'bcryptjs';
-import { bootstrapNavigation, bootstrapPolicyPages } from './bootstrap';
+import { bootstrapNavigation, bootstrapPolicyPages, bootstrapHomepage } from './bootstrap';
 
 const prisma = new PrismaClient();
 
@@ -667,6 +667,10 @@ async function seedContent() {
 
   // The seven pages the footer links to, created as DRAFT for the client to fill in.
   await bootstrapPolicyPages(prisma);
+
+  // The homepage, as editable blocks. `/` looks identical with or without this
+  // row — the difference is whether a jeweller can change it themselves.
+  await bootstrapHomepage(prisma);
 
   await prisma.blogPost.createMany({
     data: [

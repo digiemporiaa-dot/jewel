@@ -11,6 +11,8 @@ import { resolveBlockStyle, syncLegacyFields } from '@/lib/cms/style';
 import { CmsBlockType, PublishStatus, type Prisma } from '@prisma/client';
 import { recordSlugChange } from '@/lib/redirects';
 import { seoFieldsSchema, seoFieldsFromForm, seoFieldsToData } from '@/lib/validations/seo-fields';
+import { HOME_SLUG, HOME_PAGE_TITLE, HOME_BLUEPRINT, isHomeSlug, storefrontPathForPage } from '@/lib/cms/home';
+import { resolveBlockStyle as resolveStyle } from '@/lib/cms/style';
 
 export type Result = { ok: boolean; error?: string };
 
@@ -56,6 +58,13 @@ export async function updatePageAction(id: string, fd: FormData): Promise<Result
   if (clash) return { ok: false, error: 'That slug is already in use' };
 
   const before = await prisma.cmsPage.findUnique({ where: { id }, select: { slug: true } });
+  // The homepage is identified by its slug, and `/` is not a redirect target the
+  // redirect table can express. Renaming it would silently drop the shop back to
+  // the built-in default with no clue why, so the field is read-only in the
+  // editor and refused here as well.
+  if (before && isHomeSlug(before.slug) && !isHomeSlug(parsed.data.slug)) {
+    return { ok: false, error: 'The homepage slug cannot be changed.' };
+  }
   const page = await prisma.cmsPage.update({
     where: { id },
     data: {
@@ -73,17 +82,75 @@ export async function updatePageAction(id: string, fd: FormData): Promise<Result
   await writeAudit({ userId: staff.id, action: 'CMS_PAGE_UPDATE', entity: 'CmsPage', entityId: id, after: { status: parsed.data.status } });
   revalidatePath('/admin/cms');
   revalidatePath(`/admin/cms/${id}`);
-  revalidatePath(`/pages/${page.slug}`);
+  revalidatePath(storefrontPathForPage(page.slug));
   return { ok: true };
 }
 
 export async function deletePageAction(id: string): Promise<Result> {
   const staff = await assertPermission('cms.manage');
   const page = await prisma.cmsPage.findUnique({ where: { id }, select: { slug: true } });
+  // Deleting the homepage would not take the shop's front door offline — `/`
+  // falls back to the blueprint — but it would throw away every edit made to it
+  // with no way back. Unpublish it instead; that has the same visible effect and
+  // keeps the content.
+  if (page && isHomeSlug(page.slug)) {
+    return { ok: false, error: 'The homepage cannot be deleted. Set its status to Draft to fall back to the default layout.' };
+  }
   await prisma.cmsPage.delete({ where: { id } });
   await writeAudit({ userId: staff.id, action: 'CMS_PAGE_DELETE', entity: 'CmsPage', entityId: id, before: page });
   revalidatePath('/admin/cms');
   redirect('/admin/cms');
+}
+
+/**
+ * Materialise the homepage.
+ *
+ * Until this runs, `/` renders the blueprint from lib/cms/home.ts and there is
+ * nothing to edit. This copies that same blueprint into ordinary CmsPage and
+ * CmsBlock rows, published, so what the shop sees on the storefront the moment
+ * afterwards is byte-for-byte what it saw the moment before — and every word and
+ * picture in it is now a form field.
+ *
+ * One transaction: a page created without its blocks would replace a finished
+ * homepage with an empty one.
+ */
+export async function createHomepageAction(): Promise<Result> {
+  const staff = await assertPermission('cms.manage');
+
+  const existing = await prisma.cmsPage.findUnique({ where: { slug: HOME_SLUG }, select: { id: true } });
+  if (existing) {
+    // Not an error worth showing — someone clicked twice, or two people did.
+    redirect(`/admin/cms/${existing.id}`);
+  }
+
+  const page = await prisma.cmsPage.create({
+    data: {
+      slug: HOME_SLUG,
+      title: HOME_PAGE_TITLE,
+      status: PublishStatus.PUBLISHED,
+      publishedAt: new Date(),
+      blocks: {
+        create: HOME_BLUEPRINT.map((block, order) => ({
+          type: block.type,
+          order,
+          // Through the same resolver a hand-edited block goes through, so the
+          // stored style is complete rather than the partial object written here.
+          data: { ...block.data, style: resolveStyle(block.type, block.data) } as Prisma.InputJsonValue,
+        })),
+      },
+    },
+  });
+
+  await writeAudit({
+    userId: staff.id,
+    action: 'CMS_PAGE_CREATE',
+    entity: 'CmsPage',
+    entityId: page.id,
+    after: { slug: HOME_SLUG, blocks: HOME_BLUEPRINT.length },
+  });
+  revalidatePath('/admin/cms');
+  revalidatePath('/');
+  redirect(`/admin/cms/${page.id}`);
 }
 
 // ── Blocks ───────────────────────────────────────────────────────────────────
@@ -141,7 +208,7 @@ export async function saveBlockAction(blockId: string, data: unknown): Promise<R
   });
 
   revalidatePath(`/admin/cms/${block.pageId}`);
-  revalidatePath(`/pages/${block.page.slug}`);
+  revalidatePath(storefrontPathForPage(block.page.slug));
   return { ok: true };
 }
 

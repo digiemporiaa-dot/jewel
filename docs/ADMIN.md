@@ -54,8 +54,19 @@ queries are defensive (fall back to zero) so the panel always renders.
 - **Reviews** (`/admin/reviews`) — moderation queue. Customers may only review
   products they actually purchased (re-verified server-side), and nothing appears
   on the storefront until approved.
-- **CMS** (`/admin/cms`) — block-based pages. Eleven fixed block types, each with
+- **CMS** (`/admin/cms`) — block-based pages. Twelve fixed block types, each with
   its own schema; **no free-form HTML editor**, so content can never inject markup.
+- **The homepage is one of those pages.** It is the CMS page with the reserved
+  slug `home`, served at `/` — hero image (desktop and mobile), headline,
+  subheading, both buttons, the category band, the three product rows, the
+  editorial band and the trust row, all editable. Notes:
+  - If the row does not exist yet, `/admin/cms` offers **Set up homepage**.
+    Clicking it changes nothing a customer sees: it copies the built-in default
+    layout into editable blocks, exactly as rendered.
+  - Its address is fixed. The slug field is read-only and the page cannot be
+    deleted. To go back to the built-in default, set its status to **Draft** —
+    `/` falls back to it rather than 404ing.
+  - `/pages/home` permanently redirects to `/`, and the sitemap lists `/` only.
 - **Blog** (`/admin/blog`) — posts with SEO fields and Article structured data.
 - **Campaigns** (`/admin/campaigns`) — automation toggles, configurable
   abandoned-cart delays (abandon-after, three stages, minimum gap) and editable

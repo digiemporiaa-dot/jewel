@@ -5,6 +5,7 @@ import { getCmsPageForEdit } from '@/lib/cms';
 import PageHeader from '@/components/admin/PageHeader';
 import PageForm from '../PageForm';
 import BlockEditor from '../BlockEditor';
+import { storefrontPathForPage } from '@/lib/cms/home';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,8 +23,8 @@ export default async function EditCmsPage({ params }: { params: Promise<{ id: st
 
   return (
     <div className="space-y-6">
-      <PageHeader title={page.title} description={`/pages/${page.slug}`} action={{ label: 'Back to CMS', href: '/admin/cms' }} />
-      <Link href={`/pages/${page.slug}`} className="text-sm underline underline-offset-4 hover:text-brass">View on storefront</Link>
+      <PageHeader title={page.title} description={storefrontPathForPage(page.slug)} action={{ label: 'Back to CMS', href: '/admin/cms' }} />
+      <Link href={storefrontPathForPage(page.slug)} className="text-sm underline underline-offset-4 hover:text-brass">View on storefront</Link>
 
       <PageForm
         defaults={{

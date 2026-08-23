@@ -3,8 +3,9 @@ import type { CmsBlockType } from '@prisma/client';
 import { cn } from '@/lib/utils/cn';
 import ProductImage from '@/components/storefront/ProductImage';
 import ProductRow from '@/components/storefront/ProductRow';
-import { getFeaturedProducts, getNewArrivals, getBestSellers, getActiveCollections } from '@/lib/catalog';
+import { getFeaturedProducts, getNewArrivals, getBestSellers, getActiveCollections, getTopCategories } from '@/lib/catalog';
 import { parseBlockData } from '@/lib/cms/blocks';
+import { getStoreSettings } from '@/lib/store';
 import { styleFor } from '@/lib/cms/style';
 import VideoEmbed from '@/components/storefront/VideoEmbed';
 import { fromStored } from '@/lib/video/parse';
@@ -18,8 +19,18 @@ import Prose from '@/components/storefront/Prose';
  * Presentation comes from `data.style`, resolved by lib/cms/style.ts into fixed
  * Tailwind classes. A block with no stored style resolves to the values that
  * reproduce its original appearance, so published pages do not shift.
+ *
+ * `savedIds` is threaded in rather than read here: the wishlist lookup is one
+ * query per request, and a page with three product grids would otherwise run it
+ * three times to get the same answer.
  */
-export default async function BlockRenderer({ type, data }: { type: CmsBlockType; data: unknown }) {
+export default async function BlockRenderer({
+  type, data, savedIds,
+}: {
+  type: CmsBlockType;
+  data: unknown;
+  savedIds?: Set<string>;
+}) {
   const parsed = parseBlockData(type, data);
   if (!parsed.success) return null;
   const d = parsed.data as Record<string, never>;
@@ -51,10 +62,15 @@ export default async function BlockRenderer({ type, data }: { type: CmsBlockType
         eyebrow: string; heading: string; subheading: string;
         imageUrl: string; mobileImageUrl?: string; imageAlt?: string;
         ctaLabel: string; ctaHref: string;
+        ctaLabel2?: string; ctaHref2?: string;
       };
       // The heading is the fallback description, not a substitute for one: an
       // operator who writes real alt text gets it used.
       const heroAlt = b.imageAlt?.trim() || b.heading;
+      // A hero with no picture yet shows the shop's name, the way it did before
+      // the homepage became content. A single initial taken from the headline —
+      // a lone "H" from "Heirloom gold…" — reads as a rendering fault.
+      const { brandName } = await getStoreSettings();
       return (
         <section className={s.section}>
           <div className={cn(s.inner, 'grid lg:grid-cols-2 gap-8 items-center')}>
@@ -62,11 +78,18 @@ export default async function BlockRenderer({ type, data }: { type: CmsBlockType
               {b.eyebrow && <p className={cn('eyebrow', s.isDark && 'text-paper/70')}>{b.eyebrow}</p>}
               <h1 className={cn('mt-3 text-4xl sm:text-5xl', s.heading)}>{b.heading}</h1>
               {b.subheading && <p className={cn('mt-4 max-w-md', s.muted, s.style.align === 'center' && 'mx-auto')}>{b.subheading}</p>}
-              {b.ctaLabel && b.ctaHref && (
-                <Link href={b.ctaHref} className={cn('btn-primary mt-7 inline-flex', s.isDark && 'bg-brass hover:bg-brass/90')}>
-                  {b.ctaLabel}
-                </Link>
-              )}
+              <div className={cn('mt-7 flex flex-wrap gap-3', s.style.align === 'center' && 'justify-center')}>
+                {b.ctaLabel && b.ctaHref && (
+                  <Link href={b.ctaHref} className={cn('btn-primary inline-flex', s.isDark && 'bg-brass hover:bg-brass/90')}>
+                    {b.ctaLabel}
+                  </Link>
+                )}
+                {b.ctaLabel2 && b.ctaHref2 && (
+                  <Link href={b.ctaHref2} className={cn('btn-outline inline-flex', s.isDark && 'border-paper/40 text-paper hover:text-brass hover:border-brass')}>
+                    {b.ctaLabel2}
+                  </Link>
+                )}
+              </div>
             </div>
             <div className={cn('aspect-[4/3] border overflow-hidden', s.border)}>
               {b.mobileImageUrl ? (
@@ -74,11 +97,11 @@ export default async function BlockRenderer({ type, data }: { type: CmsBlockType
                   {/* A hero crop that works on a wide screen rarely works at
                       360px. Two elements rather than one `srcSet` because the
                       two files are different crops, not two sizes of one. */}
-                  <ProductImage src={b.mobileImageUrl} alt={heroAlt} monogram={b.heading.charAt(0)} className="w-full h-full sm:hidden" />
-                  <ProductImage src={b.imageUrl || null} alt={heroAlt} monogram={b.heading.charAt(0)} className="w-full h-full hidden sm:block" />
+                  <ProductImage src={b.mobileImageUrl} alt={heroAlt} monogram={brandName} className="w-full h-full sm:hidden" />
+                  <ProductImage src={b.imageUrl || null} alt={heroAlt} monogram={brandName} className="w-full h-full hidden sm:block" />
                 </>
               ) : (
-                <ProductImage src={b.imageUrl || null} alt={heroAlt} monogram={b.heading.charAt(0)} className="w-full h-full" />
+                <ProductImage src={b.imageUrl || null} alt={heroAlt} monogram={brandName} className="w-full h-full" />
               )}
             </div>
           </div>
@@ -125,7 +148,10 @@ export default async function BlockRenderer({ type, data }: { type: CmsBlockType
     }
 
     case 'PRODUCT_GRID': {
-      const b = d as unknown as { heading: string; source: 'featured' | 'new' | 'bestsellers'; limit: number };
+      const b = d as unknown as {
+        eyebrow?: string; heading: string;
+        source: 'featured' | 'new' | 'bestsellers'; limit: number; viewAllHref?: string;
+      };
       const products =
         b.source === 'new' ? await getNewArrivals(b.limit)
         : b.source === 'bestsellers' ? await getBestSellers(b.limit)
@@ -135,7 +161,60 @@ export default async function BlockRenderer({ type, data }: { type: CmsBlockType
       if (products.length === 0) return null;
       return (
         <section className={s.section}>
-          <ProductRow title={b.heading || 'Featured'} products={products} sectionClassName={s.inner} />
+          <ProductRow
+            eyebrow={b.eyebrow || undefined}
+            title={b.heading || 'Featured'}
+            products={products}
+            viewAllHref={b.viewAllHref || undefined}
+            savedIds={savedIds}
+            sectionClassName={s.inner}
+          />
+        </section>
+      );
+    }
+
+    case 'CATEGORY_GRID': {
+      const b = d as unknown as { eyebrow?: string; heading: string; limit: number; viewAllHref?: string };
+      const categories = await getTopCategories(b.limit);
+      if (categories.length === 0) return null;
+      return (
+        <section className={s.section}>
+          <div className={s.inner}>
+            <div className="flex items-end justify-between gap-4">
+              <div className={s.align}>
+                {b.eyebrow && <p className={cn('eyebrow', s.isDark && 'text-paper/70')}>{b.eyebrow}</p>}
+                {b.heading && <h2 className={cn('mt-2 text-3xl', s.heading)}>{b.heading}</h2>}
+              </div>
+              {b.viewAllHref && (
+                <Link
+                  href={b.viewAllHref}
+                  className={cn(
+                    'hidden sm:inline shrink-0 text-sm underline underline-offset-4 hover:text-brass',
+                    s.isDark ? 'decoration-paper/40 text-paper' : 'decoration-line-strong'
+                  )}
+                >
+                  View all
+                </Link>
+              )}
+            </div>
+            <div className={cn('mt-8 grid gap-4', s.columns)}>
+              {categories.map((c) => (
+                <Link key={c.id} href={`/c/${c.slug}`} className={cn('group block border transition-colors hover:border-line-strong', s.border)}>
+                  <div className="aspect-square overflow-hidden">
+                    {/* A category with no picture falls back to its monogram —
+                        the same treatment products get, so a half-populated
+                        catalogue still looks deliberate. */}
+                    <ProductImage src={c.imageUrl} alt={c.name} monogram={c.name.charAt(0)} className="w-full h-full transition-transform duration-500 group-hover:scale-[1.03]" />
+                  </div>
+                  <div className="p-3 text-center">
+                    <span className={cn('text-sm tracking-[0.08em] uppercase group-hover:text-brass transition-colors', s.muted)}>
+                      {c.name}
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
         </section>
       );
     }

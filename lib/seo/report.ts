@@ -2,6 +2,7 @@ import 'server-only';
 import { prisma } from '@/lib/prisma';
 import { resolveSeo, auditSeo, duplicateTitles, canonicalOffSite, type SeoWarning } from '@/lib/seo/resolve';
 import { seoDefaults } from '@/lib/seo/settings';
+import { isHomeSlug, storefrontPathForPage } from '@/lib/cms/home';
 
 /**
  * What is wrong with this shop's SEO, across every page at once.
@@ -15,7 +16,7 @@ import { seoDefaults } from '@/lib/seo/settings';
 export type PageReport = {
   path: string;
   label: string;
-  kind: 'Product' | 'Category' | 'Collection' | 'Page' | 'Post';
+  kind: 'Product' | 'Category' | 'Collection' | 'Homepage' | 'Page' | 'Post';
   title: string;
   warnings: SeoWarning[];
 };
@@ -124,8 +125,10 @@ export async function buildSeoReport(): Promise<SeoReport> {
       })
     ),
     ...pages.map((p) =>
-      audit('Page', `/pages/${p.slug}`, p.title, {
-        path: `/pages/${p.slug}`, fallbackTitle: p.title,
+      // The homepage is a CmsPage served at `/`. Auditing it under
+      // `/pages/home` would report on an address that only redirects.
+      audit(isHomeSlug(p.slug) ? 'Homepage' : 'Page', storefrontPathForPage(p.slug), p.title, {
+        path: storefrontPathForPage(p.slug), fallbackTitle: p.title,
         seoTitle: p.seoTitle, seoDescription: p.seoDescription,
         ogImageUrl: p.ogImageUrl, canonicalUrl: p.canonicalUrl, noIndex: p.noIndex,
       })

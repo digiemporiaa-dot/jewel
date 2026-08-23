@@ -1,4 +1,6 @@
 import { PrismaClient, PublishStatus, type Prisma } from '@prisma/client';
+import { HOME_SLUG, HOME_PAGE_TITLE, HOME_BLUEPRINT } from '../lib/cms/home';
+import { resolveBlockStyle } from '../lib/cms/style';
 
 /**
  * Idempotent content bootstrap: navigation menus and the policy pages the footer
@@ -207,11 +209,47 @@ export async function bootstrapPolicyPages(prisma: PrismaClient): Promise<{ crea
   return { created };
 }
 
+/**
+ * Give the shop an editable homepage.
+ *
+ * `/` renders the blueprint in lib/cms/home.ts whether or not this has run, so
+ * this is not what puts a homepage on the site — it is what puts one in the
+ * admin. Creating it here means a jeweller finds the hero image and headline as
+ * form fields the first time they look, instead of finding nothing and
+ * concluding the homepage is off-limits.
+ *
+ * Idempotent, like everything else in this file: an existing `home` page is left
+ * exactly as its owner edited it.
+ */
+export async function bootstrapHomepage(prisma: PrismaClient): Promise<{ created: boolean }> {
+  const exists = await prisma.cmsPage.findUnique({ where: { slug: HOME_SLUG }, select: { id: true } });
+  if (exists) return { created: false };
+
+  await prisma.cmsPage.create({
+    data: {
+      slug: HOME_SLUG,
+      title: HOME_PAGE_TITLE,
+      status: PublishStatus.PUBLISHED,
+      publishedAt: new Date(),
+      blocks: {
+        create: HOME_BLUEPRINT.map((block, order) => ({
+          type: block.type,
+          order,
+          data: { ...block.data, style: resolveBlockStyle(block.type, block.data) } as Prisma.InputJsonValue,
+        })),
+      },
+    },
+  });
+  return { created: true };
+}
+
 export async function bootstrapContent(prisma: PrismaClient): Promise<void> {
   const nav = await bootstrapNavigation(prisma);
   const pages = await bootstrapPolicyPages(prisma);
+  const home = await bootstrapHomepage(prisma);
   console.info(
-    `[bootstrap] menus created: ${nav.menusCreated}, nav items created: ${nav.itemsCreated}, policy pages created: ${pages.created}`
+    `[bootstrap] menus created: ${nav.menusCreated}, nav items created: ${nav.itemsCreated}, ` +
+    `policy pages created: ${pages.created}, homepage created: ${home.created}`
   );
 }
 

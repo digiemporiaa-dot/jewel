@@ -1,6 +1,7 @@
 import 'server-only';
 import { prisma } from '@/lib/prisma';
 import { PublishStatus } from '@prisma/client';
+import { HOME_SLUG } from '@/lib/cms/home';
 
 /** A page is visible publicly when PUBLISHED, or SCHEDULED with a past date. */
 export async function getPublishedPage(slug: string) {
@@ -14,6 +15,19 @@ export async function getPublishedPage(slug: string) {
     page.status === PublishStatus.PUBLISHED ||
     (page.status === PublishStatus.SCHEDULED && page.scheduledAt !== null && page.scheduledAt <= new Date());
   return live ? page : null;
+}
+
+/**
+ * The homepage, if the shop has one.
+ *
+ * `null` means "never set up", not "broken": `/` falls back to the blueprint in
+ * lib/cms/home.ts so a fresh install still has a finished-looking homepage.
+ * Draft and scheduled-for-later behave the same way, which is what makes it safe
+ * to unpublish the homepage while reworking it — visitors see the default, not
+ * a 404 on the shop's front door.
+ */
+export async function getHomePage() {
+  return getPublishedPage(HOME_SLUG);
 }
 
 export async function listCmsPages() {
