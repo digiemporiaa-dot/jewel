@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Script from 'next/script';
 import type { PublicTagConfig } from '@/lib/marketing/tags';
 import { readConsentCookie, mayLoadTags, type ConsentChoice } from '@/lib/marketing/consent';
+import { useConsentChoice, useHydrated } from '@/lib/marketing/use-consent';
 import { CONSENT_COOKIE } from '@/lib/marketing/consent';
 
 /**
@@ -25,19 +26,11 @@ import { CONSENT_COOKIE } from '@/lib/marketing/consent';
  *    only it loads and the rest are configured inside it.
  */
 export default function TagScripts({ config }: { config: PublicTagConfig }) {
-  const [choice, setChoice] = useState<ConsentChoice | null>(null);
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    setChoice(readConsentCookie());
-    setReady(true);
-
-    // The banner writes the cookie and dispatches this; re-read rather than
-    // lifting state, so the two components stay independent.
-    const onChange = () => setChoice(readConsentCookie());
-    window.addEventListener(`${CONSENT_COOKIE}:change`, onChange);
-    return () => window.removeEventListener(`${CONSENT_COOKIE}:change`, onChange);
-  }, []);
+  // Through the store, not an effect. This gates whether third-party scripts
+  // load at all, so a first render that does not yet know the answer is the one
+  // render that must not happen.
+  const choice = useConsentChoice();
+  const ready = useHydrated();
 
   // Nothing renders during the first paint: reading the cookie is a client-only
   // operation, and guessing would risk loading a tag the visitor declined.

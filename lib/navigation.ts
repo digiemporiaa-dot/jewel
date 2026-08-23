@@ -1,4 +1,4 @@
-import { unstable_cache, revalidateTag } from 'next/cache';
+import { unstable_cache, updateTag } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 
 export type NavLink = {
@@ -164,5 +164,10 @@ export async function getFooterMenus(): Promise<{ key: MenuKey; title: string; l
 
 /** Invalidate every cached menu. Call after any navigation mutation. */
 export function revalidateNavigation(): void {
-  revalidateTag(NAV_CACHE_TAG);
+  // `updateTag`, not `revalidateTag`. Next 16 split the two: `revalidateTag` now
+  // takes a cache-life profile and marks a tag stale, while `updateTag` expires it
+  // immediately with read-your-own-writes semantics — which is exactly what an
+  // admin save needs. Every caller of this is a Server Action, which is the only
+  // place `updateTag` may be called from.
+  updateTag(NAV_CACHE_TAG);
 }

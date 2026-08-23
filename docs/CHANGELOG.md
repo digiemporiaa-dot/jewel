@@ -1,5 +1,68 @@
 # Changelog
 
+## Next 16 · 2026-08-23
+
+Ten high-severity advisories, all transitive through Next 15 — `postcss`
+source-map path traversal and the `sharp`/libvips CVEs — and every one of them
+only fixed by the major. Taken deliberately rather than left in the report.
+
+Three left, covering two distinct issues, and neither is reachable:
+
+- **nodemailer**, no fix published. It needs a message-level `raw` option;
+  `sendMail` is called with `from`, `to`, `subject`, `html` and `text`.
+- **deepmerge-ts**, via `prisma`'s config loader, which parses our own config
+  file at CLI start. The fix is Prisma 7 — a second major, on top of this one,
+  and not something to fold into the same change. The Prisma CLI has to stay in
+  production dependencies because `prisma migrate deploy` runs at container start.
+
+### What the major actually changed here
+
+**`revalidateTag` split in two.** It now takes a cache-life profile and marks a
+tag stale; `updateTag` expires one immediately with read-your-own-writes
+semantics. All four cache-bust helpers — marketing tags, navigation, rate ticker,
+SEO settings — are called only from Server Actions, which is the only place
+`updateTag` is allowed, and "the admin just saved, the next render must see it"
+is exactly what it is for.
+
+This is the change that could have failed silently, so it was checked in a
+browser rather than assumed: saving the ticker message and the SEO title each
+reached the storefront on the next request.
+
+**`next lint` was removed.** The rules are unchanged — `next/core-web-vitals`,
+exactly what `.eslintrc.json` extended — but they run through the ESLint CLI now.
+`eslint-config-next` 16 publishes flat config directly, so no compatibility shim
+is involved.
+
+### Three React 19 rule violations in existing code
+
+The new `react-hooks/set-state-in-effect` rule caught three real ones. All fixed
+properly rather than silenced:
+
+- **ConsentBanner** and **TagScripts** each read the consent cookie in an effect
+  and called `setState`. That renders twice, and on the component that decides
+  whether third-party scripts load at all, the first of those renders is the one
+  where they have not loaded yet. Both now read through one shared
+  `useSyncExternalStore` — with `null` as the server snapshot, because a server
+  cannot read `document.cookie` and saying so is what keeps hydration honest. The
+  duplication between the two went with it.
+- **ProductImage** reset a `failed` boolean in an effect on every `src` change.
+  It now tracks *which src failed*, so `failed` is derived and a new src is
+  un-failed with no effect at all. The SSR-404-before-hydration check moved from
+  an effect to a ref callback, which is where it belongs: it runs when the
+  element attaches, and it no longer costs a second render on every product card
+  on the page.
+
+`tsconfig.json` picks up Next 16's `jsx: "react-jsx"` and its dev types path.
+
+Verified on a real build: every storefront and admin route, 404s still returning
+404 after the earlier `loading.tsx` fix, middleware still applying the CSP and
+the admin redirect, the consent banner accepting and staying dismissed, the rate
+marquee still animating, add-to-bag through to the cart, admin sign-in and the
+product list. No JavaScript errors — the only 404s are the seed's placeholder
+image paths, which the monogram fallback is there to handle.
+
+650 tests passing.
+
 ## The two silent failures now say so · 2026-08-23
 
 Two things stood between this build and a working shop, and neither produced an

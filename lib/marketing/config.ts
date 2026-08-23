@@ -1,5 +1,5 @@
 import 'server-only';
-import { unstable_cache, revalidateTag } from 'next/cache';
+import { unstable_cache, updateTag } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { toPublicTagConfig, EMPTY_TAG_CONFIG, type PublicTagConfig } from '@/lib/marketing/tags';
 
@@ -64,5 +64,10 @@ export async function getCapiCredentials(): Promise<{ pixelId: string; token: st
 
 /** Invalidate the cached configuration. Called after every admin save. */
 export function revalidateTagConfig(): void {
-  revalidateTag(TAG_CACHE_TAG);
+  // `updateTag`, not `revalidateTag`. Next 16 split the two: `revalidateTag` now
+  // takes a cache-life profile and marks a tag stale, while `updateTag` expires it
+  // immediately with read-your-own-writes semantics — which is exactly what an
+  // admin save needs. Every caller of this is a Server Action, which is the only
+  // place `updateTag` may be called from.
+  updateTag(TAG_CACHE_TAG);
 }

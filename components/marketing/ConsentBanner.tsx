@@ -10,6 +10,7 @@ import {
   shouldShowBanner,
   type ConsentChoice,
 } from '@/lib/marketing/consent';
+import { useConsentChoice, useHydrated } from '@/lib/marketing/use-consent';
 import { updateGoogleConsent } from '@/lib/marketing/events';
 
 /**
@@ -21,22 +22,23 @@ import { updateGoogleConsent } from '@/lib/marketing/events';
  * again from the footer link, so a decline is never a one-way door.
  */
 export default function ConsentBanner({ config }: { config: PublicTagConfig }) {
-  const [choice, setChoice] = useState<ConsentChoice | null>(null);
-  const [ready, setReady] = useState(false);
+  // Read through a store rather than an effect: a synchronous `setState` in an
+  // effect renders twice, and the first of those renders is the one where the
+  // visitor's decision is not yet known.
+  const choice = useConsentChoice();
+  const ready = useHydrated();
   const [reopened, setReopened] = useState(false);
 
   useEffect(() => {
-    setChoice(readConsentCookie());
-    setReady(true);
-
     const onReopen = () => setReopened(true);
     window.addEventListener(`${CONSENT_COOKIE}:reopen`, onReopen);
     return () => window.removeEventListener(`${CONSENT_COOKIE}:reopen`, onReopen);
   }, []);
 
   const decide = useCallback((next: ConsentChoice) => {
+    // The write dispatches the change event, which the store is subscribed to,
+    // so the new choice arrives the same way it would from another component.
     writeConsentCookie(next);
-    setChoice(next);
     setReopened(false);
     updateGoogleConsent(next === 'granted');
     // Tell TagScripts to re-read the cookie, so accepting takes effect on this

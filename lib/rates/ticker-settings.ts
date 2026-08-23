@@ -1,5 +1,5 @@
 import 'server-only';
-import { unstable_cache, revalidateTag } from 'next/cache';
+import { unstable_cache, updateTag } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { resolveSettings, type TickerRate, type TickerSettings } from '@/lib/rates/ticker';
 
@@ -72,5 +72,10 @@ export async function getTickerData(): Promise<TickerData> {
 
 /** Call after saving a rate or the ticker's own settings. */
 export function revalidateRateTicker(): void {
-  revalidateTag(RATE_TICKER_TAG);
+  // `updateTag`, not `revalidateTag`. Next 16 split the two: `revalidateTag` now
+  // takes a cache-life profile and marks a tag stale, while `updateTag` expires it
+  // immediately with read-your-own-writes semantics — which is exactly what an
+  // admin save needs. Every caller of this is a Server Action, which is the only
+  // place `updateTag` may be called from.
+  updateTag(RATE_TICKER_TAG);
 }

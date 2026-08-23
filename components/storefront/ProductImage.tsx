@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils/cn';
 
 /**
@@ -23,17 +23,24 @@ export default function ProductImage({
   className?: string;
   sizes?: string;
 }) {
-  const [failed, setFailed] = useState(!src);
-  const imgRef = useRef<HTMLImageElement>(null);
+  // The *src that failed*, not a boolean. Deriving `failed` from it means a new
+  // src is automatically un-failed, with no effect to reset anything — a gallery
+  // whose first image is missing no longer keeps showing the monogram after the
+  // shopper picks a thumbnail that loads.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const failed = !src || failedSrc === src;
 
-  useEffect(() => {
-    // Reset on every src change. Without this a single failed image latches the
-    // fallback on for good, so a gallery whose first image is missing keeps
-    // showing the monogram even after the shopper picks a thumbnail that loads.
-    setFailed(!src);
-    const img = imgRef.current;
-    if (img && img.complete && img.naturalWidth === 0) setFailed(true);
-  }, [src]);
+  // A ref callback rather than an effect. The check exists for the SSR case
+  // where the image 404s before hydration attaches `onError`, so it has to run
+  // when the element attaches — and doing it here keeps a synchronous state
+  // update out of an effect, where it would cost a second render on every
+  // product card on the page.
+  const measure = useCallback(
+    (img: HTMLImageElement | null) => {
+      if (img && img.complete && img.naturalWidth === 0) setFailedSrc(img.getAttribute('src'));
+    },
+    []
+  );
 
   if (failed || !src) {
     return (
@@ -46,12 +53,12 @@ export default function ProductImage({
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      ref={imgRef}
+      ref={measure}
       src={src}
       alt={alt}
       sizes={sizes}
       loading="lazy"
-      onError={() => setFailed(true)}
+      onError={() => setFailedSrc(src)}
       className={cn('object-cover', className)}
     />
   );
