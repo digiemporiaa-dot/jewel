@@ -64,6 +64,7 @@ export const ADMIN_NAV: AdminNavSection[] = [
       { label: 'Campaigns', href: '/admin/campaigns', permission: 'settings.manage' },
       { label: 'Email Templates', href: '/admin/marketing/templates', permission: 'settings.manage' },
       { label: 'Tracking & Pixels', href: '/admin/marketing/tags', permission: 'settings.manage' },
+      { label: 'Spin to Win', href: '/admin/marketing/spin', permission: 'settings.manage' },
     ],
   },
   {

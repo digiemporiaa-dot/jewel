@@ -68,6 +68,21 @@ queries are defensive (fall back to zero) so the panel always renders.
     `/` falls back to it rather than 404ing.
   - `/pages/home` permanently redirects to `/`, and the sitemap lists `/` only.
 - **Blog** (`/admin/blog`) — posts with SEO fields and Article structured data.
+- **Spin to Win** (`/admin/marketing/spin`) — the prize wheel. Each segment has a
+  label, a weight (the odds column shows what that weight actually works out to,
+  and that figure is what customers are shown), and either a discount or nothing.
+  Four things the form will not let you do, each because it costs real money or
+  misleads a customer:
+  - discount the order total or metal value — only making charges and stone
+    value are offered, because gold sells at the live rate with no margin in it;
+  - set a percentage without a rupee cap;
+  - build a wheel where every outcome wins;
+  - give one segment all the weight, so every spin lands there.
+
+  Prizes are ordinary coupon codes, single-use, non-stackable, and locked to the
+  mobile number that won them. Un-tick **Live** to take the whole thing off the
+  site — no deploy. Changes are audited with the prize table attached, so "what
+  odds were we running last Tuesday" has an answer.
 - **Campaigns** (`/admin/campaigns`) — the seven emails the shop sends on its own.
   Each card says when it fires, what drives it, and links straight to the wording
   it sends. Switching one off stops it. Configurable abandoned-cart delays

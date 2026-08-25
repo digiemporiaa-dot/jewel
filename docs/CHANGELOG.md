@@ -1,5 +1,86 @@
 # Changelog
 
+## Spin to win, without the dark patterns · 2026-08-24
+
+A wheel offering up to 10% off a first order. Two rules decide the whole design.
+
+### The server picks the prize
+
+The browser asks to spin, the server draws, mints the coupon and returns the
+result, and the animation eases to the segment it was told about. A
+client-chosen outcome would be a fairness problem and a way to mint yourself a
+coupon, in that order of how it would be found and the reverse order of what it
+would cost.
+
+`randomInt(0, totalWeight)` is crypto-grade and, taking an integer bound, has no
+modulo bias. `pickSegment` walks the cumulative range and clamps an out-of-range
+roll — falling through the loop would have made every stray roll win the last
+prize, a rigged wheel produced by an off-by-one.
+
+The advertised odds come from the same weights the draw uses, so the disclosure
+cannot drift from what happens. Weighted odds are permitted under the CCPA
+dark-pattern guidelines; misrepresenting them is not. Four wheels are refused
+outright by the schema: one with a segment of weight zero (drawn, shown, and
+unwinnable), one where a single segment holds all the weight, one where every
+outcome wins, and one with fewer than two segments.
+
+Losing spins are recorded. Without them the results screen would report a 100%
+win rate and the odds actually delivered could never be checked against the ones
+advertised.
+
+### A prize is a real coupon, and the scope is the money
+
+Everything goes through the existing coupon engine — same validation at
+checkout, same redemption counting, same audit trail. A second discount path
+would be a second place for a ₹40,000 mistake to live.
+
+`ORDER_TOTAL` and `METAL_VALUE` are not offered at all. Gold sells at the live
+rate with effectively no markup, so 10% off a ₹4,00,000 necklace is ₹40,000
+of which almost none is margin. Making charges and stone value are the only
+scopes on the form, and a percentage without a rupee cap is rejected — an
+uncapped percentage on a jewellery cart is unbounded downside on one spin.
+
+### One spin per number, checked where the number is proven
+
+The limit is per phone, via the customer record that phone owns — not per
+browser session, because a cookie is cleared in two clicks. A hashed IP is the
+second line, set well above one spin so it stops scripted farming rather than a
+family sharing a connection. `ipHash` is an HMAC with the app secret, never the
+address: an IP is personal data and nothing here needs one to answer "has this
+source spun twenty times today".
+
+No OTP at popup time — paying for an SMS to open a modal is a bill on every
+bounce. Instead the code carries `boundPhone` and `checkCouponWindow` refuses it
+on any other number, **including when no number has been verified at all**. That
+last part is the one that matters: failing open would mean a won code forwarded
+to a friend works perfectly as long as nobody signs in. The verified number is
+read from the customer record inside `evaluateCoupon` rather than passed in, so
+a new call site cannot forget it and quietly unlock every bound code.
+
+### Where it may appear
+
+Never on the cart, the checkout or an order page — an interstitial over a
+payment flow costs more in abandoned baskets than the coupon earns. Never on
+first paint. Desktop opens on exit intent; mobile has no cursor to leave the
+viewport, so it waits for 30 seconds or half the page and arrives as a bottom
+sheet rather than the full-screen interstitial Google demotes. Dismissed pauses
+it for 30 days, spinning ends it for good.
+
+Escape closes it, focus is trapped while it is open and returned to where it
+came from, and `prefers-reduced-motion` gets the answer without the spin.
+
+### The bug this nearly shipped with
+
+The first working version wrote the "you have spun" cookie on success — and that
+same cookie is what suppresses the wheel. The dialog unmounted at the instant the
+prize was awarded, so the customer never saw what they had won. Fixed by
+snapshotting the offer when the wheel opens: once open, the dialog owns its data
+and nothing outside can pull it out from under them.
+
+It is the second time in this pair of changes that the state recording "you are
+finished" also destroyed the message explaining what just happened, and both were
+found by driving the flow in a browser rather than by a test.
+
 ## A real signup, and consent that means something · 2026-08-24
 
 A customer record used to appear out of nowhere: the OTP at checkout created one

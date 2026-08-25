@@ -536,6 +536,7 @@ model Customer {
   leads         Lead[]
   callLogs      CallLog[]
   notifications Notification[]
+  spinResults   SpinResult[]
 
   @@index([email])
   @@index([createdAt])
@@ -1083,13 +1084,93 @@ model Coupon {
   excludeDiscounted Boolean  @default(false)
   firstOrderOnly    Boolean  @default(false)
   stackable         Boolean  @default(false)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
 
-  orders Order[]
+  /// Locks a code to one mobile number.
+  ///
+  /// Set on prizes won at the spin wheel, where the number is given but not yet
+  /// verified. `perUserLimit` cannot carry this on its own: it keys off
+  /// `customerId`, and a guest checkout has none — so a won code would otherwise
+  /// be reusable by anyone it was forwarded to. The check happens at checkout,
+  /// where the phone has been through OTP.
+  boundPhone String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders      Order[]
+  spinResults SpinResult[]
 
   @@index([code])
   @@index([isActive])
+  @@index([boundPhone])
+}
+
+/// A spin-to-win wheel.
+///
+/// One row is one running promotion. `segments` holds the prize table as JSON
+/// rather than a child table because a segment is only ever read as a whole set
+/// — the odds of one prize are meaningless without the others — and because a
+/// finished campaign must keep the exact table it ran with. Its shape is
+/// validated by lib/spin/segments.ts on every read and write.
+model SpinCampaign {
+  id       String  @id @default(cuid())
+  name     String
+  isActive Boolean @default(false)
+
+  /// SpinSegment[] — see lib/spin/segments.ts. Label, weight, and the coupon
+  /// terms each prize issues.
+  segments Json
+
+  /// How many times one mobile number may spin this campaign, ever.
+  perPhoneLimit Int @default(1)
+
+  startsAt DateTime?
+  endsAt   DateTime?
+
+  /// How long a won coupon stays usable.
+  couponValidityDays Int @default(30)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  results SpinResult[]
+
+  @@index([isActive])
+}
+
+/// One spin, and what it produced.
+///
+/// Written for losing spins too. Without the losses the results screen would
+/// report a 100% win rate, and the odds actually delivered could never be
+/// checked against the odds advertised — which is the thing the CCPA dark-pattern
+/// guidelines are about.
+model SpinResult {
+  id         String  @id @default(cuid())
+  campaignId String
+  campaign   SpinCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+
+  /// The segment as it was labelled at the time. Denormalised on purpose: the
+  /// campaign's prize table can be edited afterwards, and a result must still
+  /// say what this person was actually shown.
+  segmentLabel String
+
+  /// Null for a losing segment — there is no coupon to point at.
+  couponId String?
+  coupon   Coupon? @relation(fields: [couponId], references: [id])
+
+  /// Salted hash of the caller's IP, for rate limiting only. Never the raw
+  /// address: an IP is personal data under DPDP and there is no reason to keep
+  /// one to answer "has this network spun twenty times today".
+  ipHash String
+
+  createdAt DateTime @default(now())
+
+  @@index([campaignId, createdAt])
+  @@index([customerId])
+  @@index([ipHash, createdAt])
 }
 
 // ─── Orders ──────────────────────────────────────────────────────────────────

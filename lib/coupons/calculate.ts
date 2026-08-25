@@ -229,6 +229,11 @@ export type CouponWindow = {
   perUserLimit: number | null;
   firstOrderOnly: boolean;
   minOrder: string | null;
+  /**
+   * Locks the code to one mobile number. Set on spin-wheel prizes, where the
+   * number was given at the popup and verified later at checkout.
+   */
+  boundPhone?: string | null;
 };
 
 export type CouponContext = {
@@ -239,11 +244,17 @@ export type CouponContext = {
   customerOrderCount: number;
   /** Cart value the `minOrder` threshold is measured against. */
   cartValue: string;
+  /**
+   * The OTP-verified number on this checkout, when there is one. Only consulted
+   * for a code that is bound to a number; `undefined` means "not supplied",
+   * which a bound code treats as a mismatch rather than as a pass.
+   */
+  verifiedPhone?: string | null;
 };
 
 export type CouponRejection =
   | 'INACTIVE' | 'NOT_STARTED' | 'EXPIRED' | 'USAGE_LIMIT_REACHED'
-  | 'PER_USER_LIMIT_REACHED' | 'NOT_FIRST_ORDER' | 'BELOW_MIN_ORDER';
+  | 'PER_USER_LIMIT_REACHED' | 'NOT_FIRST_ORDER' | 'BELOW_MIN_ORDER' | 'WRONG_PHONE';
 
 export const REJECTION_MESSAGES: Record<CouponRejection, string> = {
   INACTIVE: 'That code is no longer available',
@@ -253,6 +264,7 @@ export const REJECTION_MESSAGES: Record<CouponRejection, string> = {
   PER_USER_LIMIT_REACHED: 'You have already used that code',
   NOT_FIRST_ORDER: 'That code is for first orders only',
   BELOW_MIN_ORDER: 'Your bag does not meet the minimum for that code',
+  WRONG_PHONE: 'That code belongs to a different mobile number. Sign in with the number you won it on.',
 };
 
 /**
@@ -270,6 +282,10 @@ export function checkCouponWindow(window: CouponWindow, ctx: CouponContext): Cou
   if (window.usageLimit !== null && window.usageCount >= window.usageLimit) return 'USAGE_LIMIT_REACHED';
   if (window.perUserLimit !== null && ctx.customerUses >= window.perUserLimit) return 'PER_USER_LIMIT_REACHED';
   if (window.firstOrderOnly && ctx.customerOrderCount > 0) return 'NOT_FIRST_ORDER';
+  // Fails closed. A bound code with no verified number on the checkout is
+  // refused, not waved through — otherwise a won code forwarded to a friend
+  // works perfectly as long as nobody signs in.
+  if (window.boundPhone && window.boundPhone !== ctx.verifiedPhone) return 'WRONG_PHONE';
   if (window.minOrder !== null && new Decimal(ctx.cartValue).lt(new Decimal(window.minOrder))) {
     return 'BELOW_MIN_ORDER';
   }

@@ -130,7 +130,7 @@ export async function evaluateCoupon(params: {
   // Per-customer history. A guest with no customer record has no history, so a
   // per-user limit cannot bind — that is a known and accepted limitation of
   // guest checkout rather than something to pretend we can enforce.
-  const [customerUses, customerOrderCount] = params.customerId
+  const [customerUses, customerOrderCount, customer] = params.customerId
     ? await Promise.all([
         db.order.count({
           where: {
@@ -140,8 +140,17 @@ export async function evaluateCoupon(params: {
           },
         }),
         db.order.count({ where: { customerId: params.customerId, status: { notIn: ['CANCELLED'] } } }),
+        // The verified number, for codes locked to one.
+        //
+        // Read from the customer record rather than taken as an argument, and
+        // never from the submitted form: a Customer row exists only because an
+        // OTP was completed, so `phone` here *is* the proven number. Resolving
+        // it inside the one function every caller already goes through means a
+        // new call site cannot forget to pass it and quietly unlock every bound
+        // code in the system.
+        db.customer.findUnique({ where: { id: params.customerId }, select: { phone: true } }),
       ])
-    : [0, 0];
+    : [0, 0, null];
 
   const rejection = checkCouponWindow(
     {
@@ -153,12 +162,14 @@ export async function evaluateCoupon(params: {
       perUserLimit: coupon.perUserLimit,
       firstOrderOnly: coupon.firstOrderOnly,
       minOrder: coupon.minOrder?.toString() ?? null,
+      boundPhone: coupon.boundPhone,
     },
     {
       now: params.now ?? new Date(),
       customerUses,
       customerOrderCount,
       cartValue: params.cart.itemsTotal,
+      verifiedPhone: customer?.phone ?? null,
     }
   );
   if (rejection) return { ok: false, error: REJECTION_MESSAGES[rejection] };
