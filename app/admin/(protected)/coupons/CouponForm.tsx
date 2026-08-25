@@ -166,8 +166,8 @@ export default function CouponForm({
           <L label="Maximum discount (₹)"><input name="maxDiscount" defaultValue={defaults.maxDiscount} inputMode="decimal" className="c-inp" /></L>
           <L label="Total uses"><input name="usageLimit" defaultValue={defaults.usageLimit} inputMode="numeric" placeholder="Unlimited" className="c-inp" /></L>
           <L label="Uses per customer"><input name="perUserLimit" defaultValue={defaults.perUserLimit} inputMode="numeric" placeholder="Unlimited" className="c-inp" /></L>
-          <L label="Starts"><input type="datetime-local" name="startsAt" defaultValue={defaults.startsAt} className="c-inp" /></L>
-          <L label="Ends"><input type="datetime-local" name="endsAt" defaultValue={defaults.endsAt} className="c-inp" /></L>
+          <L label="Starts (IST)"><input type="datetime-local" name="startsAt" defaultValue={defaults.startsAt} className="c-inp" /></L>
+          <L label="Ends (IST)"><input type="datetime-local" name="endsAt" defaultValue={defaults.endsAt} className="c-inp" /></L>
         </div>
         <Check name="firstOrderOnly" defaultChecked={defaults.firstOrderOnly} label="First order only" />
         <Check

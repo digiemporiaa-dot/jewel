@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { assertPermission } from '@/lib/auth/guard';
 import { writeAudit } from '@/lib/audit';
 import { prisma } from '@/lib/prisma';
+import { istInputToUtc } from '@/lib/utils/datetime';
 import { parseBlockData, defaultBlockData } from '@/lib/cms/blocks';
 import { resolveBlockStyle, syncLegacyFields } from '@/lib/cms/style';
 import { CmsBlockType, PublishStatus, type Prisma } from '@prisma/client';
@@ -39,7 +40,7 @@ export async function createPageAction(fd: FormData): Promise<Result> {
       title: parsed.data.title,
       slug: parsed.data.slug,
       status: parsed.data.status,
-      scheduledAt: parsed.data.scheduledAt ? new Date(parsed.data.scheduledAt) : null,
+      scheduledAt: istInputToUtc(parsed.data.scheduledAt),
       publishedAt: parsed.data.status === PublishStatus.PUBLISHED ? new Date() : null,
       ...seoFieldsToData(parsed.data),
     },
@@ -71,7 +72,7 @@ export async function updatePageAction(id: string, fd: FormData): Promise<Result
       title: parsed.data.title,
       slug: parsed.data.slug,
       status: parsed.data.status,
-      scheduledAt: parsed.data.scheduledAt ? new Date(parsed.data.scheduledAt) : null,
+      scheduledAt: istInputToUtc(parsed.data.scheduledAt),
       publishedAt: parsed.data.status === PublishStatus.PUBLISHED ? new Date() : null,
       ...seoFieldsToData(parsed.data),
     },

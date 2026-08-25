@@ -6,14 +6,9 @@ import { formatDate } from '@/lib/utils/format';
 import { cn } from '@/lib/utils/cn';
 import { parseSegments, presentationSchema, ALLOWED_SCOPES, DEFAULT_SEGMENTS } from '@/lib/spin/segments';
 import SpinCampaignForm from './SpinCampaignForm';
+import { utcToIstInput } from '@/lib/utils/datetime';
 
 export const dynamic = 'force-dynamic';
-
-function toLocalInput(d: Date | null): string {
-  if (!d) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 export default async function SpinAdminPage() {
   await requirePermission('settings.manage');
@@ -96,8 +91,8 @@ export default async function SpinAdminPage() {
           isActive: campaign?.isActive ?? false,
           perPhoneLimit: campaign?.perPhoneLimit ?? 1,
           couponValidityDays: campaign?.couponValidityDays ?? 30,
-          startsAt: toLocalInput(campaign?.startsAt ?? null),
-          endsAt: toLocalInput(campaign?.endsAt ?? null),
+          startsAt: utcToIstInput(campaign?.startsAt ?? null),
+          endsAt: utcToIstInput(campaign?.endsAt ?? null),
           segments: stored?.ok ? stored.segments : DEFAULT_SEGMENTS,
           presentation: look.success ? look.data : {},
           coupons: eligibleCoupons.map((c) => ({

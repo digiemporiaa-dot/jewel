@@ -72,7 +72,7 @@ export default function LeadActions({
 
       <form onSubmit={submitFollowUp} className="border border-line bg-white p-4 space-y-3">
         <h2 className="font-heading text-base">Schedule follow-up</h2>
-        <L label="Due"><input name="dueAt" type="datetime-local" required className="c-inp" /></L>
+        <L label="Due (IST)"><input name="dueAt" type="datetime-local" required className="c-inp" /></L>
         <L label="Note"><input name="note" className="c-inp" /></L>
         <button disabled={pending} className="btn-outline text-xs">Schedule</button>
       </form>

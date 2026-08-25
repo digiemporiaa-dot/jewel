@@ -103,10 +103,10 @@ export default function SpinCampaignForm({ defaults }: { defaults: Defaults }) {
               </span>
             </label>
           </L>
-          <L label="Starts (optional)">
+          <L label="Starts (optional, IST)">
             <input type="datetime-local" value={form.startsAt} onChange={(e) => set('startsAt', e.target.value)} className="sp-inp" />
           </L>
-          <L label="Ends (optional)">
+          <L label="Ends (optional, IST)">
             <input type="datetime-local" value={form.endsAt} onChange={(e) => set('endsAt', e.target.value)} className="sp-inp" />
           </L>
         </div>

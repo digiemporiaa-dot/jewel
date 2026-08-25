@@ -85,6 +85,7 @@ describe('the signup form contract', () => {
     email: 'Ananya@Example.COM',
     dob: '1990-05-14',
     anniversary: '',
+    acceptTerms: true as const,
   };
 
   it('accepts a complete form and lower-cases the email', () => {
@@ -174,5 +175,54 @@ describe('a stored date of birth reaches the birthday campaign', () => {
     const dob = parseDateOnly('1992-01-01');
     expect(dob?.getMonth()).toBe(0);
     expect(dob?.getDate()).toBe(1);
+  });
+});
+
+describe('accepting the terms', () => {
+  const base = {
+    name: 'Ananya Sharma',
+    phone: '9810012345',
+    email: 'ananya@example.com',
+    dob: '1990-05-14',
+    anniversary: '',
+  };
+
+  it('is required', () => {
+    expect(signupSchema.safeParse({ ...base, acceptTerms: false }).success).toBe(false);
+    expect(signupSchema.safeParse(base).success).toBe(false);
+  });
+
+  it('says what to do rather than naming a field', () => {
+    const parsed = signupSchema.safeParse({ ...base, acceptTerms: false });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.issues.some((i) => /accept the terms/i.test(i.message))).toBe(true);
+    }
+  });
+
+  it('lets the form through once accepted', () => {
+    expect(signupSchema.safeParse({ ...base, acceptTerms: true }).success).toBe(true);
+  });
+
+  it('is enforced on the server, not only by the browser attribute', () => {
+    // A form post can skip the browser entirely, so `required` on the input is
+    // a courtesy and this schema is the actual rule.
+    expect(signupSchema.safeParse({ ...base, acceptTerms: 'yes' }).success).toBe(false);
+    expect(signupSchema.safeParse({ ...base, acceptTerms: 1 }).success).toBe(false);
+  });
+
+  it('does not grant marketing consent by being accepted', () => {
+    // The whole reason these are two boxes. A required box cannot carry
+    // marketing consent: DPDP wants that free and specific, and consent nobody
+    // could refuse without losing their account is neither. Bundling would also
+    // quietly empty the birthday campaign's audience.
+    const parsed = signupSchema.safeParse({ ...base, acceptTerms: true });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.marketingOptIn).toBe(false);
+  });
+
+  it('leaves marketing free to be granted separately', () => {
+    const parsed = signupSchema.safeParse({ ...base, acceptTerms: true, marketingOptIn: true });
+    expect(parsed.success && parsed.data.marketingOptIn).toBe(true);
   });
 });

@@ -516,6 +516,14 @@ model Customer {
   anniversary    DateTime?
   marketingOptIn Boolean   @default(false)
   phoneVerified  Boolean   @default(false)
+
+  /// When this customer agreed to the terms and the privacy policy.
+  ///
+  /// A timestamp rather than a boolean, because the useful question later is
+  /// *when* they agreed — which version of the terms that was — and a `true`
+  /// cannot answer it. Null for the records created implicitly by an OTP at
+  /// checkout, which nobody was ever shown terms for.
+  termsAcceptedAt DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 

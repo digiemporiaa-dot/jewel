@@ -1,5 +1,62 @@
 # Changelog
 
+## Admin datetimes are IST, and the terms box is real · 2026-08-25
+
+### The scheduling bug
+
+A `datetime-local` input submits a bare wall clock — `2026-08-25T14:26` — with
+no offset on it. `new Date(thatString)` therefore parsed it in the *container's*
+timezone, which in production is UTC. A campaign the shop set for 2:26 PM did
+not start until 7:56 PM IST, and an active, correctly configured wheel simply
+did not appear on the storefront.
+
+`lib/utils/datetime.ts` now owns both directions: every admin-entered wall clock
+is read as IST and stored as the UTC instant it names, and every stored instant
+is rendered back into IST for the input. What the shop types is what the shop
+sees.
+
+Applied everywhere one of these fields is read or written — spin campaigns,
+coupon start/end, CMS scheduled publish, blog publish date, CRM follow-up due
+date. There were already **four** copies of `toLocalInput` scattered across those
+screens, which is the drift this consolidates; all four are gone.
+
+Each field is now labelled **IST**, because a bare "Starts" box gives a shop no
+way to know which clock it is answering in — which is how this went unnoticed.
+
+**Not** fixed with `TZ=Asia/Kolkata` on the container. That would move every date
+comparison in the app at once, including the many already written against UTC:
+the birthday match in `lib/campaigns`, the IST day buckets in
+`lib/admin/date-range`, the UTC-midnight dates of birth. It would hide the same
+bug elsewhere rather than fix it here.
+
+A fixed +05:30 offset is correct rather than a shortcut — India has observed no
+daylight saving since 1945 and has one zone, so `Intl` gymnastics would buy
+nothing and add a way to be wrong.
+
+Verified against the reported case: `2026-08-25T14:26` stores as
+`2026-08-25T08:56:00.000Z`, reads back as `2026-08-25T14:26`, and the campaign is
+active at 14:30 IST.
+
+### Terms and conditions
+
+The signup form now requires accepting the Terms & Conditions and Privacy
+Policy, with both linked. Acceptance is stored as `Customer.termsAcceptedAt` — a
+timestamp rather than a boolean, because the question that gets asked later is
+*which version* somebody accepted, and a `true` cannot answer it. Null stays null
+for the records created implicitly by an OTP at checkout: nobody showed those
+customers any terms, and backfilling a consent they never gave would be worse
+than leaving the gap visible.
+
+Required is enforced in the schema, not only by the browser's `required`
+attribute — a form post can skip the browser entirely.
+
+**Marketing consent stays a separate, optional, unticked box.** Folding it into
+the required one was the obvious simplification and is the one thing that must
+not happen: the DPDP Act wants that consent free and specific, and consent nobody
+could refuse without losing their account is neither. It would also have quietly
+emptied the birthday campaign's audience, which only ever writes to customers who
+opted in. A test asserts that accepting the terms leaves `marketingOptIn` false.
+
 ## The wheel is the shop's now, and four holes are closed · 2026-08-24
 
 ### Security

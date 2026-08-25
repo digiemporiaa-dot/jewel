@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { assertPermission } from '@/lib/auth/guard';
 import { writeAudit } from '@/lib/audit';
 import { prisma } from '@/lib/prisma';
+import { istInputToUtc } from '@/lib/utils/datetime';
 import { CouponType, CouponScope, type Prisma } from '@prisma/client';
 
 export type Result = { ok: boolean; error?: string };
@@ -62,7 +63,14 @@ const couponSchema = z
     { message: 'Minimum weight cannot exceed the maximum', path: ['maxWeightGrams'] }
   )
   .refine(
-    (v) => !v.startsAt || !v.endsAt || new Date(v.startsAt) <= new Date(v.endsAt),
+    // Compared as instants, not as strings: both sides go through the same IST
+    // reader the write below uses, so the check and the stored value agree.
+    (v) => {
+      if (!v.startsAt || !v.endsAt) return true;
+      const from = istInputToUtc(v.startsAt);
+      const to = istInputToUtc(v.endsAt);
+      return !from || !to || from <= to;
+    },
     { message: 'The start date must come before the end date', path: ['endsAt'] }
   );
 
@@ -106,8 +114,8 @@ function toData(d: z.infer<typeof couponSchema>, fd: FormData) {
     perUserLimit: int(d.perUserLimit),
     minWeightGrams: num(d.minWeightGrams),
     maxWeightGrams: num(d.maxWeightGrams),
-    startsAt: d.startsAt ? new Date(d.startsAt) : null,
-    endsAt: d.endsAt ? new Date(d.endsAt) : null,
+    startsAt: istInputToUtc(d.startsAt),
+    endsAt: istInputToUtc(d.endsAt),
     isActive: d.isActive,
     excludeDiscounted: d.excludeDiscounted,
     firstOrderOnly: d.firstOrderOnly,

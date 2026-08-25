@@ -4,14 +4,9 @@ import { requirePermission } from '@/lib/auth/guard';
 import { getPostForEdit } from '@/lib/cms';
 import PageHeader from '@/components/admin/PageHeader';
 import PostForm from '../PostForm';
+import { utcToIstInput } from '@/lib/utils/datetime';
 
 export const dynamic = 'force-dynamic';
-
-function toLocalInput(d: Date | null): string {
-  if (!d) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 export default async function EditPostPage({ params }: { params: Promise<{ id: string }> }) {
   await requirePermission('blog.manage');
@@ -29,7 +24,7 @@ export default async function EditPostPage({ params }: { params: Promise<{ id: s
           category: post.category ?? '', tags: post.tags.join(', '),
           featuredImage: post.featuredImage ?? '', excerpt: post.excerpt ?? '',
           content: post.content, status: post.status,
-          publishedAt: toLocalInput(post.publishedAt),
+          publishedAt: utcToIstInput(post.publishedAt),
           seoTitle: post.seoTitle ?? '', seoDescription: post.seoDescription ?? '',
           ogImageUrl: post.ogImageUrl ?? '', canonicalUrl: post.canonicalUrl ?? '', noIndex: post.noIndex,
         }}

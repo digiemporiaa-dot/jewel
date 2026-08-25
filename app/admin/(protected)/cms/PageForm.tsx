@@ -65,7 +65,7 @@ export default function PageForm({ defaults = {} }: { defaults?: PageDefaults })
           </select>
         </L>
         {status === 'SCHEDULED' && (
-          <L label="Publish at"><input name="scheduledAt" type="datetime-local" defaultValue={defaults.scheduledAt} className="p-inp" /></L>
+          <L label="Publish at (IST)"><input name="scheduledAt" type="datetime-local" defaultValue={defaults.scheduledAt} className="p-inp" /></L>
         )}
       </div>
       <SeoPanel

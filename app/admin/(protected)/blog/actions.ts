@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { assertPermission } from '@/lib/auth/guard';
 import { writeAudit } from '@/lib/audit';
 import { prisma } from '@/lib/prisma';
+import { istInputToUtc } from '@/lib/utils/datetime';
 import { PublishStatus } from '@prisma/client';
 import { recordSlugChange } from '@/lib/redirects';
 import { seoFieldsSchema, seoFieldsFromForm, seoFieldsToData } from '@/lib/validations/seo-fields';
@@ -35,7 +36,7 @@ function toData(d: z.infer<typeof postSchema>) {
     excerpt: d.excerpt || null,
     content: d.content,
     status: d.status,
-    publishedAt: d.status === PublishStatus.PUBLISHED ? (d.publishedAt ? new Date(d.publishedAt) : new Date()) : null,
+    publishedAt: d.status === PublishStatus.PUBLISHED ? (istInputToUtc(d.publishedAt) ?? new Date()) : null,
     ...seoFieldsToData(d),
   };
 }

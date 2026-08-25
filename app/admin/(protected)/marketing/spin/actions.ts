@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { assertPermission } from '@/lib/auth/guard';
 import { writeAudit } from '@/lib/audit';
 import { prisma } from '@/lib/prisma';
+import { istInputToUtc } from '@/lib/utils/datetime';
 import type { Prisma } from '@prisma/client';
 // Only `parseSegments` is needed here. A `'use server'` file may export nothing
 // but async functions, so the default wheel is imported by the page instead.
@@ -25,11 +26,10 @@ const campaignSchema = z.object({
   endsAt: z.string().trim().optional().or(z.literal('')),
 });
 
-function toDate(value: string | undefined): Date | null {
-  if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
+// A `datetime-local` value is a bare wall clock. `new Date(value)` read it in
+// the container's timezone — UTC — so a window set for 2:26 PM did not open
+// until 7:56 PM IST. See lib/utils/datetime.ts.
+const toDate = istInputToUtc;
 
 /**
  * Create or update the wheel.

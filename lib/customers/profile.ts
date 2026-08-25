@@ -88,6 +88,10 @@ export async function saveCustomerProfile(params: {
         dob,
         anniversary,
         marketingOptIn: consent.granted,
+        // Stamped on acceptance. `input.acceptTerms` is `true` by the time it
+        // gets here — the schema admits nothing else — so this records when,
+        // which is the part that is useful later.
+        termsAcceptedAt: now,
       },
     });
   } catch (e) {

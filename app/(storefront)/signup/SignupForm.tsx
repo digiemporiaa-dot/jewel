@@ -33,6 +33,10 @@ export default function SignupForm({
     email: initial?.email ?? '',
     dob: initial?.dob ?? '',
     anniversary: initial?.anniversary ?? '',
+    // Never pre-ticked, even for somebody returning to complete their profile:
+    // agreeing is an act, and a box that arrives already ticked has not recorded
+    // one.
+    acceptTerms: false,
     // Unticked. Under the DPDP Act consent has to be freely given and specific,
     // and a box that arrives already ticked is not a choice the customer made.
     marketingOptIn: initial?.marketingOptIn ?? false,
@@ -169,20 +173,40 @@ export default function SignupForm({
             />
           </L>
 
-          {/* Its own control, its own decision. Never folded into the submit
-              button's label — "by creating an account you agree to receive
-              offers" is not consent, it is a condition of service. */}
+          {/* Required. Agreeing to the terms is a condition of having an
+              account, which is exactly why it is a box of its own and not
+              bundled with anything optional. */}
           <label className="flex items-start gap-2.5 border border-line bg-paper-2/50 p-3 text-sm">
+            <input
+              type="checkbox" required checked={form.acceptTerms}
+              onChange={(e) => set('acceptTerms', e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              I accept the{' '}
+              <Link href="/pages/terms" target="_blank" className="underline decoration-line-strong underline-offset-4 hover:text-brass">
+                Terms &amp; Conditions
+              </Link>{' '}
+              and the{' '}
+              <Link href="/pages/privacy" target="_blank" className="underline decoration-line-strong underline-offset-4 hover:text-brass">
+                Privacy Policy
+              </Link>
+              .
+            </span>
+          </label>
+
+          {/* Separate, optional, and unticked — deliberately not folded into the
+              box above. Under the DPDP Act marketing consent has to be free and
+              specific, and consent nobody could refuse without losing their
+              account is neither. */}
+          <label className="flex items-start gap-2.5 text-sm">
             <input
               type="checkbox" checked={form.marketingOptIn}
               onChange={(e) => set('marketingOptIn', e.target.checked)}
               className="mt-0.5"
             />
-            <span>
-              Send me new collections, private previews and metal-rate alerts.
-              <span className="mt-0.5 block text-xs text-ink-soft">
-                Optional. Your account works the same either way, and you can stop them at any time.
-              </span>
+            <span className="text-ink-soft">
+              Also send me offers, new collections and metal-rate alerts. Optional.
             </span>
           </label>
 

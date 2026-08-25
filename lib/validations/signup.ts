@@ -120,6 +120,20 @@ export const signupSchema = z.object({
     (v) => !v || parseDateOnly(v) !== null,
     'Enter the anniversary as a real date'
   ),
+  /**
+   * Agreeing to the terms. Required, and enforced here rather than only by the
+   * browser's `required` attribute — a form post can skip the browser entirely.
+   *
+   * Kept separate from `marketingOptIn` on purpose. A required box cannot carry
+   * marketing consent: the DPDP Act wants that consent free and specific, and
+   * consent nobody could refuse without losing the account is neither. Bundling
+   * them would also quietly empty the birthday campaign's audience, since it
+   * only ever writes to customers who opted in.
+   */
+  acceptTerms: z.literal(true, {
+    errorMap: () => ({ message: 'Please accept the terms and conditions to continue' }),
+  }),
+
   // Absent means no. A checkbox that is not ticked sends no value at all, and
   // that must read as a refusal rather than as a missing field.
   marketingOptIn: z.boolean().default(false),

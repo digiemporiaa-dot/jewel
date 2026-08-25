@@ -44,7 +44,7 @@ export default function PostForm({ defaults = {} }: { defaults?: PostDefaults })
             <option value="PUBLISHED">Published</option>
           </select>
         </L>
-        <L label="Publish date"><input name="publishedAt" type="datetime-local" defaultValue={defaults.publishedAt} className="p-inp" /></L>
+        <L label="Publish date (IST)"><input name="publishedAt" type="datetime-local" defaultValue={defaults.publishedAt} className="p-inp" /></L>
       </div>
       <ImageUploadField
         name="featuredImage"

@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { assertPermission } from '@/lib/auth/guard';
 import { writeAudit } from '@/lib/audit';
 import { prisma } from '@/lib/prisma';
+import { istInputToUtc } from '@/lib/utils/datetime';
 import { can } from '@/lib/auth/rbac';
 import { leadCreateSchema, leadUpdateSchema, followUpSchema, callLogSchema } from '@/lib/validations/crm';
 import { FollowUpStatus, LeadStatus } from '@prisma/client';
@@ -72,8 +73,11 @@ export async function addFollowUpAction(fd: FormData): Promise<Result> {
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' };
   if (!(await assertLeadAccess(parsed.data.leadId, staff))) return { ok: false, error: 'This lead is not assigned to you' };
 
-  const dueAt = new Date(parsed.data.dueAt);
-  if (Number.isNaN(dueAt.getTime())) return { ok: false, error: 'Invalid date' };
+  // Entered on the shop's clock, like every other admin datetime.
+  const dueAt = istInputToUtc(parsed.data.dueAt);
+  // Null now means "not a real moment" rather than an Invalid Date, so the
+  // check is a null check.
+  if (!dueAt) return { ok: false, error: 'Enter a valid date and time' };
 
   await prisma.followUp.create({
     data: { leadId: parsed.data.leadId, dueAt, note: parsed.data.note || null, assignedToId: staff.id },

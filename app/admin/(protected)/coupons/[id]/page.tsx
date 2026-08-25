@@ -6,14 +6,9 @@ import CouponForm from '../CouponForm';
 import { getCouponRefs } from '../refs';
 import { updateCouponAction } from '../actions';
 import CouponStatusButton from './CouponStatusButton';
+import { utcToIstInput } from '@/lib/utils/datetime';
 
 export const dynamic = 'force-dynamic';
-
-/** `datetime-local` wants `YYYY-MM-DDTHH:mm` with no zone suffix. */
-function toLocalInput(d: Date | null): string {
-  if (!d) return '';
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-}
 
 export default async function EditCouponPage({ params }: { params: Promise<{ id: string }> }) {
   await requirePermission('coupons.manage');
@@ -55,8 +50,8 @@ export default async function EditCouponPage({ params }: { params: Promise<{ id:
           perUserLimit: dec(coupon.perUserLimit),
           minWeightGrams: dec(coupon.minWeightGrams),
           maxWeightGrams: dec(coupon.maxWeightGrams),
-          startsAt: toLocalInput(coupon.startsAt),
-          endsAt: toLocalInput(coupon.endsAt),
+          startsAt: utcToIstInput(coupon.startsAt),
+          endsAt: utcToIstInput(coupon.endsAt),
           isActive: coupon.isActive,
           excludeDiscounted: coupon.excludeDiscounted,
           firstOrderOnly: coupon.firstOrderOnly,
