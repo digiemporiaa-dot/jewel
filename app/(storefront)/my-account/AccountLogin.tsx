@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { sendCheckoutOtp, verifyCheckoutOtp } from '@/app/(storefront)/checkout/actions';
 
 export default function AccountLogin() {
@@ -54,6 +55,17 @@ export default function AccountLogin() {
         </>
       )}
       {error && <p className="mt-3 text-sm text-red-700">{error}</p>}
+
+      {/* Signing in and signing up are the same OTP either way — the difference
+          is only whether we then ask for a name and a birthday. Saying so beats
+          leaving a first-time shopper wondering which button is theirs. */}
+      <p className="mt-4 border-t border-line pt-4 text-xs text-ink-soft">
+        First time here?{' '}
+        <Link href="/signup" className="underline decoration-line-strong underline-offset-4 hover:text-brass">
+          Create an account
+        </Link>{' '}
+        — same one-time code, and we save your details for next time.
+      </p>
     </div>
   );
 }

@@ -1,5 +1,70 @@
 # Changelog
 
+## A real signup, and consent that means something · 2026-08-24
+
+A customer record used to appear out of nowhere: the OTP at checkout created one
+with a phone number and nothing else. No name, no email, no date of birth — so
+the birthday campaign had nobody to send to and the shop knew nothing about
+anyone who had bought from it.
+
+`/signup` collects the rest, and `/my-account` prompts for it when it is missing.
+No migration: every column already existed on `Customer` and nothing wrote to
+them.
+
+### The order of the two steps is the design
+
+Verify the phone, *then* take the details. The number is the identity key for
+every order, coupon and OTP in the system, so it is proven before anything is
+attached to it, and the submitted form carries no phone field at all — it comes
+from the session the OTP established. Accepting it from the request body would
+let anyone claim any number's account.
+
+An existing record is filled in rather than refused. Somebody who has already
+ordered as a guest has a row keyed on that number; signing up should complete it,
+not collide with it.
+
+### Three DPDP obligations, in the code rather than in a policy page
+
+**Consent is free, specific and informed.** Marketing is its own unticked box,
+never folded into the submit button. "By creating an account you agree to receive
+offers" is a condition of service, not a choice — so `marketingOptIn` defaults to
+`false` and an absent checkbox reads as a refusal, which is what an unticked box
+actually submits.
+
+**Purpose limitation.** The reason for asking a date of birth is written beside
+the field, and `DOB_PURPOSE` is that exact sentence, shared by the form and the
+tests so the promise and the code cannot drift apart.
+
+**Children.** Marketing to under-18s needs verifiable parental consent, which a
+checkbox is not. A minor who ticks the box gets the account — refusing that would
+be the worse outcome — and is told plainly that the emails were not switched on,
+rather than having a silent `false` written where they think they said yes.
+
+That last one was nearly delivered broken. The first build called
+`router.refresh()` after saving; the page's server component then saw a complete
+profile and redirected to the account page, taking the explanation off screen
+before anyone could read it. Caught by driving the flow as a 12-year-old would
+in a real browser, not by a test.
+
+### Date of birth is stored at UTC midnight, deliberately
+
+`lib/campaigns` matches a birthday with `dob.getMonth()` and `dob.getDate()`, so
+how the value is anchored decides whether the email lands on the right day.
+`new Date('1990-05-14')` is UTC midnight and correct;
+`new Date('1990-05-14T00:00:00+05:30')` is the 13th in UTC and would wish every
+Indian customer a day early. `parseDateOnly` pins it, and rejects dates that
+`Date` would otherwise roll over — 30 February silently becoming 2 March is a
+birthday offer sent on the wrong day with nothing anywhere to explain it.
+
+### Email uniqueness, handled rather than thrown
+
+Checked first for a message worth reading, then the Postgres unique violation is
+caught as a backstop. Both paths, because neither alone is enough: the check
+loses to a concurrent signup, and the catch alone turns the common case into a
+stack trace. The check deliberately does *not* filter `deletedAt` — the index
+covers soft-deleted rows too, so filtering would let the check pass and the
+insert fail.
+
 ## Playfair Display and Montserrat · 2026-08-23
 
 Headings move from Bodoni Moda to **Playfair Display**, body text from Jost to
