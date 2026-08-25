@@ -51,3 +51,4 @@ export function baseCsp(): string {
     'upgrade-insecure-requests',
   ].join('; ');
 }
+

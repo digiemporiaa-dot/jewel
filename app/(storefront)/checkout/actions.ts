@@ -143,10 +143,20 @@ export async function confirmCheckoutPayment(params: {
   razorpayOrderId: string;
   signature: string;
 }): Promise<{ ok: boolean; orderNumber?: string; error?: string }> {
+  // Ownership first, and it fails closed.
+  //
+  // This used to read `if (customerId && order.customerId && ...)`, which let
+  // the check pass whenever either side was null. That mattered because a failed
+  // signature below calls `markPaymentFailed`, which releases the order's
+  // reserved stock — so anyone holding an order id could send a junk signature
+  // and kill a stranger's in-flight order. Every order created through checkout
+  // has a `customerId` (see `placeOrder`), so demanding a match costs nothing.
   const customerId = await getCustomerId();
+  if (!customerId) return { ok: false, error: 'Unauthorized' };
+
   const order = await prisma.order.findUnique({ where: { id: params.orderId }, select: { customerId: true, orderNumber: true } });
   if (!order) return { ok: false, error: 'Order not found' };
-  if (customerId && order.customerId && order.customerId !== customerId) return { ok: false, error: 'Unauthorized' };
+  if (order.customerId !== customerId) return { ok: false, error: 'Unauthorized' };
 
   // Verify the signature server-side before accepting the payment.
   if (!verifyRazorpayPayment(params.razorpayOrderId, params.razorpayPaymentId, params.signature)) {
@@ -164,7 +174,22 @@ export async function confirmCheckoutPayment(params: {
   }
 }
 
+/**
+ * The shopper closed the payment window.
+ *
+ * Exported server actions are reachable endpoints whether or not anything calls
+ * them, and this one releases reserved stock and fails the order. Unguarded, it
+ * was a way for anyone with an order id to cancel a stranger's checkout — so it
+ * proves ownership like every other order action, and says nothing about
+ * orders that are not the caller's.
+ */
 export async function abandonPayment(orderId: string): Promise<void> {
+  const customerId = await getCustomerId();
+  if (!customerId) return;
+
+  const order = await prisma.order.findUnique({ where: { id: orderId }, select: { customerId: true } });
+  if (!order || order.customerId !== customerId) return;
+
   await markPaymentFailed(orderId, 'abandoned by customer');
 }
 

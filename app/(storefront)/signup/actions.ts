@@ -83,6 +83,19 @@ export async function completeSignup(raw: unknown): Promise<SignupResult> {
     return { ok: false, error: 'Verify your mobile number first.' };
   }
 
+  // Limited per session and per address.
+  //
+  // "That email is already registered" is a true and useful message, and it is
+  // also an oracle: without a limit, one verified number could sit here and test
+  // whether any address in a list belongs to a customer of this shop. Filling in
+  // your own details takes a handful of attempts, so the ceiling costs an honest
+  // customer nothing.
+  const ip = await getClientIp();
+  for (const key of [`signup:save:${customerId}`, `signup:save:ip:${ip}`]) {
+    const rl = await checkLimit(key, LIMITS.publicAction);
+    if (!rl.allowed) return { ok: false, error: 'Too many attempts. Please wait a moment and try again.' };
+  }
+
   const parsed = signupSchema.omit({ phone: true }).safeParse(raw);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];

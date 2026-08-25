@@ -15,6 +15,7 @@ type CreateArgs = { data: Record<string, unknown> };
 
 const db = {
   spinCampaign: { findFirst: vi.fn() },
+  customer: { upsert: vi.fn(async () => ({ id: 'new-cust' })) },
   spinResult: {
     count: vi.fn(async () => 0),
     // Typed rather than bare `vi.fn()`, so `mock.calls` carries the argument
@@ -43,6 +44,7 @@ const LOSING_CAMPAIGN = { ...CAMPAIGN, segments: [{ label: 'Better luck next tim
 beforeEach(() => {
   vi.clearAllMocks();
   db.spinResult.count.mockResolvedValue(0);
+  db.customer.upsert.mockResolvedValue({ id: 'new-cust' });
   db.coupon.findUnique.mockResolvedValue(null);
   db.coupon.create.mockImplementation(async ({ data }: CreateArgs) => ({ ...data, id: 'c1' }));
   db.$transaction.mockImplementation(async (fn: (tx: typeof db) => Promise<unknown>) => fn(db));
@@ -171,5 +173,37 @@ describe('the stored IP', () => {
     const { spin, hashIp } = await import('@/lib/spin');
     await spin({ campaign: LOSING_CAMPAIGN, customerId: 'cust1', phone: '9810012345', ip: '203.0.113.42' });
     expect(recordedSpin().ipHash).toBe(hashIp('203.0.113.42'));
+  });
+});
+
+describe('a number the shop has never seen', () => {
+  it('gets a customer record only once every limit has passed', async () => {
+    const { spin } = await import('@/lib/spin');
+    const out = await spin({ campaign: CAMPAIGN, customerId: null, phone: '9810012345', ip: '1.2.3.4' });
+
+    expect(out.ok).toBe(true);
+    expect(db.customer.upsert).toHaveBeenCalledOnce();
+    expect(recordedSpin().customerId).toBe('new-cust');
+  });
+
+  it('leaves nothing behind when the connection is rate-limited', async () => {
+    // Probing the endpoint with a thousand numbers used to create a thousand
+    // customer rows, because the record was made before the limits were checked.
+    // Only the per-IP count runs for an unknown number, so this is that one.
+    db.spinResult.count.mockResolvedValueOnce(8);
+    const { spin } = await import('@/lib/spin');
+    const out = await spin({ campaign: CAMPAIGN, customerId: null, phone: '9810012345', ip: '1.2.3.4' });
+
+    expect(out.ok).toBe(false);
+    expect(db.customer.upsert).not.toHaveBeenCalled();
+    expect(db.coupon.create).not.toHaveBeenCalled();
+    expect(db.spinResult.create).not.toHaveBeenCalled();
+  });
+
+  it('has obviously never spun, so no count query is wasted on it', async () => {
+    const { spin } = await import('@/lib/spin');
+    await spin({ campaign: CAMPAIGN, customerId: null, phone: '9810012345', ip: '1.2.3.4' });
+    // Only the per-IP count runs; there is no customer to count spins for.
+    expect(db.spinResult.count).toHaveBeenCalledOnce();
   });
 });

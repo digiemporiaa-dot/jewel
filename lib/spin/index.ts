@@ -1,5 +1,6 @@
 import 'server-only';
 import { createHmac, randomInt } from 'node:crypto';
+import { unstable_cache } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { CouponType, CouponScope, Prisma } from '@prisma/client';
 import {
@@ -52,31 +53,62 @@ export type ActiveCampaign = {
  * table edited into an invalid shape directly in the database should take the
  * wheel off the site quietly, not 500 the storefront.
  */
-export async function activeCampaign(now = new Date()): Promise<ActiveCampaign | null> {
-  const row = await prisma.spinCampaign.findFirst({
-    where: {
-      isActive: true,
-      AND: [
-        { OR: [{ startsAt: null }, { startsAt: { lte: now } }] },
-        { OR: [{ endsAt: null }, { endsAt: { gte: now } }] },
-      ],
-    },
-    orderBy: { createdAt: 'desc' },
-  });
-  if (!row) return null;
+export const SPIN_CAMPAIGN_TAG = 'spin-campaign';
 
-  const parsed = parseSegments(row.segments);
-  if (!parsed.ok) {
-    console.error('[spin] campaign has invalid segments, treating as off', row.id, parsed.error);
-    return null;
-  }
-  return {
-    id: row.id,
-    name: row.name,
-    segments: parsed.segments,
-    perPhoneLimit: row.perPhoneLimit,
-    couponValidityDays: row.couponValidityDays,
-  };
+/**
+ * The one campaign currently running, or null.
+ *
+ * Cached under a tag and busted when an admin saves, because the wheel is
+ * mounted on every storefront page: without this it is a database query per page
+ * view for every visitor who has not yet dismissed it, to answer a question
+ * whose answer changes about once a month.
+ *
+ * The start/end window is applied *outside* the cache. Putting `now` inside a
+ * cached function would freeze the comparison at whatever time the entry was
+ * written, so a campaign would keep showing after its end date until somebody
+ * happened to press save.
+ *
+ * Malformed segments make a campaign inactive rather than throwing. A prize
+ * table edited into an invalid shape directly in the database should take the
+ * wheel off the site quietly, not 500 the storefront.
+ */
+const loadCampaign = unstable_cache(
+  async (): Promise<(ActiveCampaign & { startsAt: string | null; endsAt: string | null }) | null> => {
+    const row = await prisma.spinCampaign.findFirst({
+      where: { isActive: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!row) return null;
+
+    const parsed = parseSegments(row.segments);
+    if (!parsed.ok) {
+      console.error('[spin] campaign has invalid segments, treating as off', row.id, parsed.error);
+      return null;
+    }
+    return {
+      id: row.id,
+      name: row.name,
+      segments: parsed.segments,
+      perPhoneLimit: row.perPhoneLimit,
+      couponValidityDays: row.couponValidityDays,
+      // ISO strings, because `unstable_cache` round-trips its result through
+      // JSON and a `Date` would come back as a string that fails at `getTime`.
+      startsAt: row.startsAt?.toISOString() ?? null,
+      endsAt: row.endsAt?.toISOString() ?? null,
+    };
+  },
+  ['spin-campaign'],
+  { tags: [SPIN_CAMPAIGN_TAG] }
+);
+
+export async function activeCampaign(now = new Date()): Promise<ActiveCampaign | null> {
+  const row = await loadCampaign();
+  if (!row) return null;
+  if (row.startsAt && now < new Date(row.startsAt)) return null;
+  if (row.endsAt && now > new Date(row.endsAt)) return null;
+
+  const { startsAt: _s, endsAt: _e, ...campaign } = row;
+  return campaign;
 }
 
 /** What the customer is shown before spinning: the prizes and their real odds. */
@@ -96,7 +128,7 @@ export function publicSegments(campaign: ActiveCampaign): PublicSegment[] {
 export type SpinOutcome =
   | { ok: true; label: string; won: false }
   | { ok: true; label: string; won: true; code: string; terms: string; expiresAt: string }
-  | { ok: false; error: string; alreadySpun?: boolean };
+  | { ok: false; error: string; alreadySpun?: boolean; needsSignIn?: boolean };
 
 /** Human-readable, unambiguous: no O/0 or I/1 to mistype off a phone screen. */
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -126,15 +158,17 @@ const SCOPE_MAP: Record<CouponPrize['appliesTo'], CouponScope> = {
 /**
  * Spin once.
  *
- * `customerId` comes from the caller's session or from a record keyed on the
- * phone they gave. The phone is *not* verified at this point and deliberately
- * so: sending an OTP to open a popup costs the shop money on every bounce. The
- * code is bound to the number instead and checked at checkout, where the number
- * has been through OTP anyway.
+ * `customerId` is null for a number the shop has never seen. The record is
+ * created here, once every limit has passed, rather than by the caller — so
+ * probing the endpoint with a thousand numbers leaves nothing behind.
+ *
+ * The phone is *not* verified at this point and deliberately so: sending an OTP
+ * to open a popup costs the shop money on every bounce. The code is bound to the
+ * number instead and checked at checkout, where it has been through OTP anyway.
  */
 export async function spin(params: {
   campaign: ActiveCampaign;
-  customerId: string;
+  customerId: string | null;
   phone: string;
   ip: string;
   now?: Date;
@@ -144,9 +178,12 @@ export async function spin(params: {
 
   // Per phone, via the customer record the phone owns — not per browser session.
   // A cookie is cleared in two clicks; the point of this limit is that it is not.
-  const spinsForPhone = await prisma.spinResult.count({
-    where: { campaignId: params.campaign.id, customerId: params.customerId },
-  });
+  // A number with no record has obviously never spun.
+  const spinsForPhone = params.customerId
+    ? await prisma.spinResult.count({
+        where: { campaignId: params.campaign.id, customerId: params.customerId },
+      })
+    : 0;
   if (spinsForPhone >= params.campaign.perPhoneLimit) {
     return { ok: false, error: 'This number has already had its spin.', alreadySpun: true };
   }
@@ -162,6 +199,20 @@ export async function spin(params: {
     return { ok: false, error: 'Too many spins from this connection today. Try again tomorrow.' };
   }
 
+  // Only now is a record created for a number the shop has never seen. Every
+  // limit above has already passed, so this cannot be reached by probing.
+  //
+  // `upsert` rather than `create`: two spins racing on the same new number would
+  // otherwise both insert and one would hit the unique constraint on `phone`.
+  const customerId = params.customerId ?? (
+    await prisma.customer.upsert({
+      where: { phone: params.phone },
+      create: { phone: params.phone },
+      update: {},
+      select: { id: true },
+    })
+  ).id;
+
   // The draw. `randomInt` is crypto-grade and, taking an integer bound, uniform
   // over [0, total) with no modulo bias.
   const total = totalWeight(params.campaign.segments);
@@ -173,7 +224,7 @@ export async function spin(params: {
     // 100% win rate and the delivered odds could never be checked against the
     // advertised ones.
     await prisma.spinResult.create({
-      data: { campaignId: params.campaign.id, customerId: params.customerId, segmentLabel: segment.label, ipHash },
+      data: { campaignId: params.campaign.id, customerId, segmentLabel: segment.label, ipHash },
     });
     return { ok: true, label: segment.label, won: false };
   }
@@ -209,7 +260,7 @@ export async function spin(params: {
     await tx.spinResult.create({
       data: {
         campaignId: params.campaign.id,
-        customerId: params.customerId,
+        customerId,
         segmentLabel: segment.label,
         couponId: coupon.id,
         ipHash,

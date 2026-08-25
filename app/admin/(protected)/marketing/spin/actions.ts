@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, updateTag } from 'next/cache';
 import { z } from 'zod';
 import { assertPermission } from '@/lib/auth/guard';
 import { writeAudit } from '@/lib/audit';
@@ -9,6 +9,7 @@ import type { Prisma } from '@prisma/client';
 // Only `parseSegments` is needed here. A `'use server'` file may export nothing
 // but async functions, so the default wheel is imported by the page instead.
 import { parseSegments } from '@/lib/spin/segments';
+import { SPIN_CAMPAIGN_TAG } from '@/lib/spin';
 
 export type Result = { ok: boolean; error?: string };
 
@@ -93,8 +94,11 @@ export async function saveCampaignAction(input: {
     // not answer "what odds were we running on the 14th".
     after: { name: d.name, isActive: d.isActive, segments: segments.segments, couponValidityDays: d.couponValidityDays },
   });
+  // The storefront reads the campaign from a tagged cache, so the tag is what
+  // makes a save visible. `revalidatePath('/')` alone would leave every other
+  // page serving the old prize table.
+  updateTag(SPIN_CAMPAIGN_TAG);
   revalidatePath('/admin/marketing/spin');
-  revalidatePath('/');
   return { ok: true };
 }
 
@@ -112,7 +116,7 @@ export async function setCampaignActiveAction(id: string, isActive: boolean): Pr
     entityId: id,
     after: { isActive },
   });
+  updateTag(SPIN_CAMPAIGN_TAG);
   revalidatePath('/admin/marketing/spin');
-  revalidatePath('/');
   return { ok: true };
 }

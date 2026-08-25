@@ -5,6 +5,8 @@ import AccountLogin from './AccountLogin';
 import { logoutAction } from './actions';
 import { privateMetadata } from '@/lib/seo/metadata';
 import { profileGaps, GAP_LABELS } from '@/lib/validations/signup';
+import { liveOffersFor } from '@/lib/spin/offers';
+import { formatDate } from '@/lib/utils/format';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +24,7 @@ export default async function AccountPage() {
   }
 
   const gaps = profileGaps(customer);
+  const offers = await liveOffersFor(customer.id);
 
   return (
     <div className="shell py-10 max-w-2xl mx-auto">
@@ -35,6 +38,29 @@ export default async function AccountPage() {
           <button className="btn-outline text-xs">Sign out</button>
         </form>
       </div>
+
+      {/* A won code, somewhere it cannot be lost.
+          The wheel shows it once in a modal, which is a poor place to keep the
+          only copy of something worth money. */}
+      {offers.length > 0 && (
+        <div className="mt-6 border border-brass bg-brass/5 p-4">
+          <p className="font-heading text-base">{offers.length === 1 ? 'Your offer' : 'Your offers'}</p>
+          <ul className="mt-3 space-y-3">
+            {offers.map((offer) => (
+              <li key={offer.code} className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                <code className="border border-brass bg-paper px-2.5 py-1 font-heading text-lg tracking-[0.12em]">
+                  {offer.code}
+                </code>
+                <span className="text-sm text-ink-soft">
+                  {offer.terms}
+                  {offer.expiresAt && ` Expires ${formatDate(offer.expiresAt)}.`}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-xs text-ink-soft">Enter the code at checkout.</p>
+        </div>
+      )}
 
       {/* Only when something is actually missing. A permanent "complete your
           profile" banner that never goes away trains people to ignore it, and

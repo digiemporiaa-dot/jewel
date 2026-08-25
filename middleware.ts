@@ -88,6 +88,7 @@ async function withCsp(res: NextResponse, req: NextRequest, withTags: boolean): 
   const sources = withTags ? await getTagSources(req.nextUrl.origin) : NO_SOURCES;
   // No tags configured → the header is the base string, byte for byte.
   res.headers.set('Content-Security-Policy', hasCspSources(sources) ? appendCspSources(base, sources) : base);
+
   return res;
 }
 

@@ -45,6 +45,16 @@ export default function SpinWheel() {
 
   const dialogRef = useRef<HTMLDivElement>(null);
   const openerFocus = useRef<Element | null>(null);
+  /** What the server awarded, held from the moment it answers until it is shown. */
+  const pendingResult = useRef<{ label: string; won: boolean; code?: string; terms?: string } | null>(null);
+  /**
+   * When this page view began, for the dwell trigger.
+   *
+   * Initialised to 0 and set on first effect run rather than from `useRef(Date.now())`
+   * — reading the clock during render is impure, and React may render more than
+   * once before anything is shown.
+   */
+  const arrivedAt = useRef(0);
 
   // Derived, not stored. A forbidden path and an existing cookie are both known
   // without asking the server, so they gate the fetch rather than being written
@@ -81,7 +91,11 @@ export default function SpinWheel() {
   useEffect(() => {
     if (!offer?.available || open || phase !== 'idle') return;
 
-    const mountedAt = Date.now();
+    // From the ref, not from this effect. The effect re-runs when the offer
+    // fetch resolves, and restarting the clock there meant "30 seconds on the
+    // page" silently became "30 seconds after the campaign query came back".
+    if (arrivedAt.current === 0) arrivedAt.current = Date.now();
+    const mountedAt = arrivedAt.current;
     const isMobile = window.matchMedia('(max-width: 767px)').matches;
     let exitIntent = false;
 
@@ -119,7 +133,24 @@ export default function SpinWheel() {
     };
   }, [offer, open, phase, pathname, cookie]);
 
+  /** Show what the server already awarded, whether or not the wheel finished. */
+  const reveal = useCallback(() => {
+    const pending = pendingResult.current;
+    if (!pending) return;
+    pendingResult.current = null;
+    setResult(pending);
+    setPhase('result');
+  }, []);
+
   const close = useCallback((remember: SpinCookieState | null) => {
+    // Closing mid-spin shows the prize instead of discarding it.
+    //
+    // The coupon has already been issued and they cannot spin again, so
+    // dismissing here would destroy the only copy of a code they have won. The
+    // result screen it lands on is itself fully dismissible, so nothing is
+    // trapped — the first press stops the animation, not the offer.
+    if (pendingResult.current) { reveal(); return; }
+
     // Back where they were, before the dialog unmounts. Leaving focus on a
     // removed node drops a keyboard user at the top of the document with no
     // idea what happened.
@@ -129,12 +160,14 @@ export default function SpinWheel() {
     setOpenOffer(null);
     if (remember === 'dismissed') void dismissWheel().then(notifyCookieChange);
     else if (remember === 'done') notifyCookieChange();
-  }, []);
+  }, [reveal]);
 
   // ── Focus trap, Escape, and scroll lock while open ────────────────────────
   useEffect(() => {
     if (!open) return;
-    openerFocus.current = document.activeElement;
+    // Only captured once, on the way in — re-reading it after the phase changes
+    // would record the dialog's own button as the thing to return to.
+    openerFocus.current ??= document.activeElement;
     const node = dialogRef.current;
     node?.querySelector<HTMLElement>('[data-autofocus]')?.focus();
 
@@ -174,6 +207,19 @@ export default function SpinWheel() {
         setPhase('idle');
         return;
       }
+      // Held before the animation starts, not after it ends.
+      //
+      // The coupon already exists at this point and the customer cannot spin
+      // again. If they close the wheel or press Escape mid-spin, the code must
+      // not go with it — so the result waits here and is revealed either when
+      // the wheel stops or the moment they try to leave.
+      pendingResult.current = {
+        label: res.label,
+        won: res.won,
+        code: res.won ? res.code : undefined,
+        terms: res.won ? res.terms : undefined,
+      };
+
       // The server has already decided and already issued the coupon. All the
       // animation does is come to rest on the segment it was told about.
       const index = Math.max(0, segments.findIndex((s) => s.label === res.label));
@@ -183,15 +229,7 @@ export default function SpinWheel() {
       // motion — for whom the wheel simply arrives at the answer.
       const turns = reduced ? 0 : 4;
       setRotation(turns * 360 + (360 - (index * slice + slice / 2)));
-      window.setTimeout(() => {
-        setResult({
-          label: res.label,
-          won: res.won,
-          code: res.won ? res.code : undefined,
-          terms: res.won ? res.terms : undefined,
-        });
-        setPhase('result');
-      }, reduced ? 0 : 3200);
+      window.setTimeout(reveal, reduced ? 0 : 3200);
     });
   }
 
@@ -278,7 +316,16 @@ export default function SpinWheel() {
               {result?.won ? (
                 <>
                   <p className="text-sm text-ink-soft">{result.label}</p>
-                  <p className="mt-3 border border-brass bg-brass/10 px-4 py-3 font-heading text-2xl tracking-[0.12em]">
+                  {/* Focused on arrival: the input that had focus is gone, and
+                      without this a keyboard user lands back at the top of the
+                      document with no idea a code was awarded. `tabIndex={-1}`
+                      makes it focusable without adding it to the tab order. */}
+                  <p
+                    data-autofocus
+                    tabIndex={-1}
+                    role="status"
+                    className="mt-3 border border-brass bg-brass/10 px-4 py-3 font-heading text-2xl tracking-[0.12em] outline-none"
+                  >
                     {result.code}
                   </p>
                   <p className="mt-2 text-xs text-ink-soft">{result.terms}</p>
