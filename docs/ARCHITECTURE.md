@@ -64,6 +64,9 @@ docs/
 ## Design system
 
 Tokens live once as CSS variables in `app/globals.css` and are mapped into
-Tailwind (`tailwind.config.ts`). Fonts (`Bodoni Moda`, `Jost`) load via
-`next/font`. Border-radius is capped at 2px per the brand. See
+Tailwind (`tailwind.config.ts`). Fonts load via `next/font`, which self-hosts
+them at build time — `Playfair Display` for headings, `Montserrat` for body.
+Components only ever name the *role* (`font-heading`, `font-body`, or the
+`--font-heading` / `--font-body` variables), so changing a shop's typography is
+`app/layout.tsx` and nothing else. Border-radius is capped at 2px per the brand. See
 `docs/maya-jewellers-prototype.html` for the living visual reference.

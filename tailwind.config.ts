@@ -25,8 +25,8 @@ const config: Config = {
         brass: 'var(--brass)',
       },
       fontFamily: {
-        heading: ['var(--font-bodoni)', 'Bodoni Moda', 'Georgia', 'serif'],
-        body: ['var(--font-jost)', 'Jost', 'system-ui', 'sans-serif'],
+        heading: ['var(--font-heading)', 'Playfair Display', 'Georgia', 'serif'],
+        body: ['var(--font-body)', 'Montserrat', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
         // Prototype rule: border radius maximum 2px.

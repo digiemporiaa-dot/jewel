@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Bodoni_Moda, Jost } from 'next/font/google';
+import { Playfair_Display, Montserrat } from 'next/font/google';
 import './globals.css';
 import { getStoreSettings } from '@/lib/store';
 import { getTagConfig } from '@/lib/marketing/config';
@@ -8,18 +8,32 @@ import { siteGraphLd, serialiseJsonLd } from '@/lib/seo/jsonld';
 import TagScripts from '@/components/marketing/TagScripts';
 import ConsentBanner from '@/components/marketing/ConsentBanner';
 
-const bodoni = Bodoni_Moda({
+/**
+ * The two typefaces, named by role rather than by family.
+ *
+ * `--font-heading` and `--font-body` are what globals.css and Tailwind read, so
+ * changing the shop's typography is this file and nothing else — which matters
+ * for a build that gets redeployed for other jewellers. Swapping the family
+ * names below is the whole job; no component names a typeface.
+ *
+ * `next/font` downloads and self-hosts these at build time, so there is no
+ * request to fonts.googleapis.com at runtime and nothing for the CSP to allow.
+ */
+const heading = Playfair_Display({
   subsets: ['latin'],
   weight: ['400', '500', '600', '700'],
-  style: ['normal', 'italic'],
-  variable: '--font-bodoni',
+  // Upright only. The hero's one italic word went away when the homepage became
+  // CMS content — a typed text field carries no markup — and nothing else on the
+  // site sets a heading in italic, so the italic axis would be bytes on every
+  // page load for nothing.
+  variable: '--font-heading',
   display: 'swap',
 });
 
-const jost = Jost({
+const body = Montserrat({
   subsets: ['latin'],
   weight: ['300', '400', '500', '600'],
-  variable: '--font-jost',
+  variable: '--font-body',
   display: 'swap',
 });
 
@@ -76,7 +90,7 @@ export default async function RootLayout({
   const tags = await getTagConfig();
 
   return (
-    <html lang="en-IN" className={`${bodoni.variable} ${jost.variable}`}>
+    <html lang="en-IN" className={`${heading.variable} ${body.variable}`}>
       <body>
         {/* Skip link — first focusable element, for keyboard and screen readers. */}
         <a

@@ -226,13 +226,20 @@ export default function BuyBox({
 
       {/* Mobile sticky CTA (brief §12/§63) */}
       <div className="lg:hidden fixed inset-x-0 bottom-0 z-30 bg-paper border-t border-line-strong px-4 py-2.5 flex items-center gap-3">
-        <div className="min-w-0">
+        {/* `shrink-0`, not `min-w-0`: this column is two short strings that must
+            stay whole. Letting it shrink squeezed it to 40px on a 320px screen
+            and "In stock" spilled across the Add button. The buttons absorb the
+            difference instead — they have room to. */}
+        <div className="shrink-0">
           <p className="text-[0.65rem] text-ink-soft leading-none">{madeToOrder ? 'Made to order' : variant?.inStock ? 'In stock' : 'Sold out'}</p>
           <p className="font-heading text-lg leading-tight">{variant?.breakup ? formatCurrency(variant.breakup.unitTotal) : '—'}</p>
         </div>
-        <div className="flex-1 grid grid-cols-2 gap-2">
-          <button onClick={() => add(false)} disabled={!canBuy || pending} className="btn-outline text-xs py-2.5">Add</button>
-          <button onClick={() => add(true)} disabled={!canBuy || pending} className="btn-primary text-xs py-2.5">Buy Now</button>
+        <div className="flex-1 min-w-0 grid grid-cols-2 gap-2">
+          {/* Uppercase and letter-spaced, so these labels are far wider than
+              they read. Without `nowrap` "Buy Now" breaks over two lines and
+              the bar grows a row on the narrowest phones. */}
+          <button onClick={() => add(false)} disabled={!canBuy || pending} className="btn-outline text-xs py-2.5 whitespace-nowrap">Add</button>
+          <button onClick={() => add(true)} disabled={!canBuy || pending} className="btn-primary text-xs py-2.5 whitespace-nowrap">Buy Now</button>
         </div>
       </div>
       <div className="lg:hidden h-16" aria-hidden />

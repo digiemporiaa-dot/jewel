@@ -97,7 +97,14 @@ export default async function Header() {
       {/* Desktop nav */}
       <nav className="hidden lg:block hairline">
         <div className="shell">
-          <ul className="flex items-center justify-center gap-7 h-12">
+          {/* Wraps rather than clipping.
+              `justify-center` on a non-wrapping row centres content that is too
+              wide, so the overflow is cut off at *both* ends — "New Arrivals"
+              rendered as "vals" and "Collections" as "Collecti", with no way to
+              scroll to either. It was already 16px over at 1280px with thirteen
+              categories, and Montserrat's wider letterforms doubled that. A shop
+              that adds a category should get a second row, not a truncated nav. */}
+          <ul className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1 min-h-12 py-2">
             {nav.map((item) => (
               <li key={item.href} className="relative group">
                 <Link

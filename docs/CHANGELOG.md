@@ -1,5 +1,38 @@
 # Changelog
 
+## Playfair Display and Montserrat · 2026-08-23
+
+Headings move from Bodoni Moda to **Playfair Display**, body text from Jost to
+**Montserrat**, across the website. Invoices and emails are untouched and should
+stay that way: a PDF would have to embed the font file, and email clients cannot
+be relied on to load a webfont, so both keep their own stacks.
+
+The variables are now named by role — `--font-heading` and `--font-body` — rather
+than by family. Nothing outside `app/layout.tsx` names a typeface, so the next
+jeweller this template is deployed for is a two-line change.
+
+`next/font` downloads and self-hosts both families at build time, so there is
+still no request to fonts.googleapis.com and nothing for the CSP to allow. The
+italic axis is not loaded: the hero's one italic word disappeared when the
+homepage became CMS content, and nothing else on the site sets a heading in
+italic. Nine font files, 268 KB.
+
+### Three layout bugs the wider face exposed
+
+Montserrat is a good deal wider than Jost at the same size, which pushed three
+existing weak spots over the edge. Each was measured with the webfonts
+neutralised, so the numbers separate "already broken" from "broken by this":
+
+| Where | Before | With Montserrat | Cause |
+|---|---|---|---|
+| Desktop category nav | 16px over at 1280px | 33px over | `justify-center` on a non-wrapping row clipped **both** ends — "New Arrivals" rendered as "vals" |
+| Footer newsletter | 22px over at 320px | 49px over | `flex-1` without `min-w-0`; the input would not shrink below its content width |
+| Product sticky bar | fitted | "Buy Now" broke over two lines | uppercase + `0.12em` tracking, no `nowrap` |
+
+The nav now wraps to a second row instead of truncating, which is also the right
+answer as a shop adds categories. Every storefront page was then swept at 320,
+390 and 1280px: page-level horizontal overflow is zero everywhere.
+
 ## Four campaign switches that were connected to nothing · 2026-08-23
 
 Reported from the shop: the campaigns screen "doesn't work, won't edit, won't

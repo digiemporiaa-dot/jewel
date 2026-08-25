@@ -62,14 +62,19 @@ export default async function Footer() {
             <p className="text-sm text-paper/60">New collections, private previews and metal-rate alerts.</p>
           </div>
           <form className="flex w-full max-w-sm gap-2">
+            {/* `min-w-0` is what stops this row overflowing a 320px screen: a
+                flex item defaults to `min-width: auto`, so the input refused to
+                shrink below its own content width and pushed the button off the
+                page. It was 22px over before, and Montserrat's wider uppercase
+                took it to 49px. */}
             <input
               type="email"
               required
               placeholder="Your email"
               aria-label="Email"
-              className="flex-1 bg-transparent border-b border-paper/30 focus:border-brass py-2 text-sm outline-none placeholder:text-paper/50"
+              className="flex-1 min-w-0 bg-transparent border-b border-paper/30 focus:border-brass py-2 text-sm outline-none placeholder:text-paper/50"
             />
-            <button type="submit" className="btn-primary bg-brass hover:bg-brass/90">
+            <button type="submit" className="btn-primary bg-brass hover:bg-brass/90 shrink-0 whitespace-nowrap">
               Subscribe
             </button>
           </form>

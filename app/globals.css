@@ -18,7 +18,9 @@
   --line-strong: #cfc6b8;
   --brass: #a8813c;
 
-  /* Fonts are injected by next/font as --font-bodoni / --font-jost on <html>. */
+  /* Fonts are injected by next/font as --font-heading / --font-body on <html>.
+     The families themselves are chosen in app/layout.tsx — nothing here or in a
+     component names one, so a rebrand is a one-file change. */
 }
 
 @layer base {
@@ -30,7 +32,7 @@
   body {
     background-color: var(--paper);
     color: var(--ink);
-    font-family: var(--font-jost), 'Jost', system-ui, sans-serif;
+    font-family: var(--font-body), 'Montserrat', system-ui, sans-serif;
     font-feature-settings: 'kern';
     line-height: 1.6;
     /* Never allow horizontal overflow (brief §7). */
@@ -38,7 +40,7 @@
   }
 
   h1, h2, h3, h4, h5 {
-    font-family: var(--font-bodoni), 'Bodoni Moda', Georgia, serif;
+    font-family: var(--font-heading), 'Playfair Display', Georgia, serif;
     color: var(--ink);
     line-height: 1.12;
     font-weight: 500;
