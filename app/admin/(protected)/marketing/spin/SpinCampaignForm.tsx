@@ -1,11 +1,14 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { cn } from '@/lib/utils/cn';
 import { useRouter } from 'next/navigation';
 import { saveCampaignAction } from './actions';
+import ImageUploadField from '@/components/admin/ImageUploadField';
 import {
-  ALLOWED_SCOPES, SCOPE_LABELS, totalWeight, describePrize,
-  type SpinSegment,
+  ALLOWED_SCOPES, SCOPE_LABELS, SEGMENT_COLOURS, COLOUR_LABELS, COLOUR_HEX,
+  totalWeight, describePrize, PRESENTATION_DEFAULTS,
+  type SpinSegment, type SpinPresentation, type SegmentColour,
 } from '@/lib/spin/segments';
 
 type Defaults = {
@@ -17,6 +20,9 @@ type Defaults = {
   startsAt: string;
   endsAt: string;
   segments: SpinSegment[];
+  presentation: SpinPresentation;
+  /** Coupons already created in the Coupons screen, offered as prize templates. */
+  coupons: { id: string; code: string; summary: string }[];
 };
 
 /**
@@ -47,6 +53,10 @@ export default function SpinCampaignForm({ defaults }: { defaults: Defaults }) {
     }));
   }
 
+  function setLook<K extends keyof SpinPresentation>(key: K, value: SpinPresentation[K]) {
+    setForm((f) => ({ ...f, presentation: { ...f.presentation, [key]: value } }));
+  }
+
   function setPrize(index: number, patch: Record<string, unknown>) {
     setForm((f) => ({
       ...f,
@@ -60,7 +70,7 @@ export default function SpinCampaignForm({ defaults }: { defaults: Defaults }) {
     e.preventDefault();
     setError(null); setMsg(null);
     start(async () => {
-      const res = await saveCampaignAction({ ...form, segments: form.segments });
+      const res = await saveCampaignAction({ ...form, segments: form.segments, presentation: form.presentation });
       if (res.ok) { setMsg('Saved'); router.refresh(); }
       else setError(res.error ?? 'Could not save');
     });
@@ -100,6 +110,70 @@ export default function SpinCampaignForm({ defaults }: { defaults: Defaults }) {
             <input type="datetime-local" value={form.endsAt} onChange={(e) => set('endsAt', e.target.value)} className="sp-inp" />
           </L>
         </div>
+      </div>
+
+      <div className="border border-line bg-white p-5 space-y-3">
+        <div>
+          <h2 className="font-heading text-lg">What the wheel says</h2>
+          <p className="mt-0.5 text-xs text-ink-soft">
+            Leave a field blank to use the built-in wording. These are plain text
+            fields — there is no HTML or styling box, so nothing typed here can
+            break the page or inject anything.
+          </p>
+        </div>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          <L label="Eyebrow (small line above the heading)">
+            <input value={form.presentation.eyebrow ?? ''} onChange={(e) => setLook('eyebrow', e.target.value)} placeholder={form.name} className="sp-inp" />
+          </L>
+          <L label="Heading">
+            <input value={form.presentation.heading ?? ''} onChange={(e) => setLook('heading', e.target.value)} placeholder={PRESENTATION_DEFAULTS.heading} className="sp-inp" />
+          </L>
+          <L label="Subheading">
+            <input value={form.presentation.subheading ?? ''} onChange={(e) => setLook('subheading', e.target.value)} className="sp-inp" />
+          </L>
+          <L label="Button label">
+            <input value={form.presentation.buttonLabel ?? ''} onChange={(e) => setLook('buttonLabel', e.target.value)} placeholder={PRESENTATION_DEFAULTS.buttonLabel} className="sp-inp" />
+          </L>
+          <L label="Label above the phone box">
+            <input value={form.presentation.phoneLabel ?? ''} onChange={(e) => setLook('phoneLabel', e.target.value)} placeholder={PRESENTATION_DEFAULTS.phoneLabel} className="sp-inp" />
+          </L>
+          <L label="Note under the phone box">
+            <input value={form.presentation.phoneHint ?? ''} onChange={(e) => setLook('phoneHint', e.target.value)} placeholder={PRESENTATION_DEFAULTS.phoneHint} className="sp-inp" />
+          </L>
+          <L label="Heading when they win">
+            <input value={form.presentation.winHeading ?? ''} onChange={(e) => setLook('winHeading', e.target.value)} placeholder={PRESENTATION_DEFAULTS.winHeading} className="sp-inp" />
+          </L>
+          <L label="Message when they win nothing">
+            <input value={form.presentation.loseMessage ?? ''} onChange={(e) => setLook('loseMessage', e.target.value)} placeholder={PRESENTATION_DEFAULTS.loseMessage} className="sp-inp" />
+          </L>
+          <L label="Extra line in the terms">
+            <input value={form.presentation.footnote ?? ''} onChange={(e) => setLook('footnote', e.target.value)} className="sp-inp" />
+          </L>
+          <L label="Popup background">
+            <select
+              value={form.presentation.background ?? 'paper'}
+              onChange={(e) => setLook('background', e.target.value === 'velvet' ? 'velvet' : 'paper')}
+              className="sp-inp"
+            >
+              <option value="paper">Ivory</option>
+              <option value="velvet">Deep green</option>
+            </select>
+          </L>
+        </div>
+
+        <ImageUploadField
+          label="Picture above the wheel (optional)"
+          prefix="cms"
+          hint="Shown at the top of the popup. A logo or a product shot works well."
+          value={form.presentation.imageUrl ?? ''}
+          onChange={(v) => setLook('imageUrl', v)}
+          altName="spinImageAlt"
+          altLabel="Alt text"
+          altValue={form.presentation.imageAlt ?? ''}
+          onAltChange={(v) => setLook('imageAlt', v)}
+          requireAlt
+        />
       </div>
 
       <div className="border border-line bg-white p-5">
@@ -148,23 +222,81 @@ export default function SpinCampaignForm({ defaults }: { defaults: Defaults }) {
                   </button>
                 </div>
 
-                <L label="Prize">
-                  <select
-                    value={prize.kind}
-                    onChange={(e) =>
-                      setSegment(i, {
-                        prize:
-                          e.target.value === 'NONE'
-                            ? { kind: 'NONE' }
-                            : { kind: 'COUPON', type: 'PERCENTAGE', appliesTo: 'MAKING_CHARGES', value: 5, maxDiscount: 1000, minOrder: null },
-                      })
-                    }
-                    className="sp-inp"
-                  >
-                    <option value="NONE">Wins nothing</option>
-                    <option value="COUPON">A discount code</option>
-                  </select>
-                </L>
+                <div className="grid sm:grid-cols-2 gap-2">
+                  <L label="Prize">
+                    <select
+                      value={prize.kind}
+                      onChange={(e) => {
+                        const kind = e.target.value;
+                        setSegment(i, {
+                          prize:
+                            kind === 'NONE'
+                              ? { kind: 'NONE' }
+                              : kind === 'TEMPLATE'
+                                ? { kind: 'TEMPLATE', couponId: defaults.coupons[0]?.id ?? '', couponCode: defaults.coupons[0]?.code ?? '' }
+                                : { kind: 'COUPON', type: 'PERCENTAGE', appliesTo: 'MAKING_CHARGES', value: 5, maxDiscount: 1000, minOrder: null },
+                        });
+                      }}
+                      className="sp-inp"
+                    >
+                      <option value="NONE">Wins nothing</option>
+                      <option value="COUPON">A discount set here</option>
+                      <option value="TEMPLATE" disabled={defaults.coupons.length === 0}>
+                        {defaults.coupons.length === 0 ? 'One of my coupons (none eligible)' : 'One of my coupons'}
+                      </option>
+                    </select>
+                  </L>
+
+                  <L label="Colour on the wheel">
+                    <div className="flex flex-wrap gap-1.5 py-1">
+                      {SEGMENT_COLOURS.map((c) => {
+                        const active = (segment.colour ?? (i % 2 === 0 ? 'paper' : 'brass')) === c;
+                        return (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => setSegment(i, { colour: c })}
+                            aria-label={COLOUR_LABELS[c]}
+                            aria-pressed={active}
+                            title={COLOUR_LABELS[c]}
+                            className={cn(
+                              'h-7 w-7 border-2 transition-colors',
+                              active ? 'border-ink' : 'border-line hover:border-line-strong'
+                            )}
+                            style={{ background: COLOUR_HEX[c as SegmentColour].fill }}
+                          />
+                        );
+                      })}
+                    </div>
+                  </L>
+                </div>
+
+                {prize.kind === 'TEMPLATE' && (
+                  <>
+                    <L label="Which coupon">
+                      <select
+                        value={prize.couponId}
+                        onChange={(e) => {
+                          const chosen = defaults.coupons.find((c) => c.id === e.target.value);
+                          setPrize(i, { couponId: e.target.value, couponCode: chosen?.code ?? '' });
+                        }}
+                        className="sp-inp"
+                      >
+                        {defaults.coupons.map((c) => (
+                          <option key={c.id} value={c.id}>{c.code} — {c.summary}</option>
+                        ))}
+                      </select>
+                    </L>
+                    {/* Said plainly, because it is the thing an operator will
+                        otherwise assume works the other way. */}
+                    <p className="text-xs text-ink-soft">
+                      Its terms are copied when somebody wins, and each winner gets their own
+                      single-use code locked to their number — the shared code is never handed out.
+                      Only coupons scoped to making charges or stone value, with a cap where they are
+                      a percentage, can be used here.
+                    </p>
+                  </>
+                )}
 
                 {prize.kind === 'COUPON' && (
                   <>

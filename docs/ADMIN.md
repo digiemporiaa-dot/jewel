@@ -83,6 +83,20 @@ queries are defensive (fall back to zero) so the panel always renders.
   mobile number that won them. Un-tick **Live** to take the whole thing off the
   site — no deploy. Changes are audited with the prize table attached, so "what
   odds were we running last Tuesday" has an answer.
+
+  **What the wheel says** is yours: eyebrow, heading, subheading, button label,
+  the wording when somebody wins and when they do not, an extra line of terms,
+  a picture above the wheel, the popup background, and a colour per segment.
+  Every field is plain text or a fixed colour token — there is no HTML box and no
+  CSS box, so nothing typed here can break the page. Clear a field to get the
+  built-in wording back.
+
+  **Using coupons you already made:** set a segment's prize to *One of my
+  coupons* and pick one. Its terms are copied at the moment somebody wins, and
+  that winner gets their own single-use code locked to their number — the shared
+  code is never handed out, because one code every winner holds would be bound to
+  nobody and forwardable to anyone. Only coupons scoped to making charges or
+  stone value, capped if they are a percentage, are offered.
 - **Campaigns** (`/admin/campaigns`) — the seven emails the shop sends on its own.
   Each card says when it fires, what drives it, and links straight to the wording
   it sends. Switching one off stops it. Configurable abandoned-cart delays

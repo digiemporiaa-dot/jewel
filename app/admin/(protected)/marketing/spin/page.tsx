@@ -4,7 +4,7 @@ import PageHeader from '@/components/admin/PageHeader';
 import StatCard from '@/components/admin/StatCard';
 import { formatDate } from '@/lib/utils/format';
 import { cn } from '@/lib/utils/cn';
-import { parseSegments, DEFAULT_SEGMENTS } from '@/lib/spin/segments';
+import { parseSegments, presentationSchema, ALLOWED_SCOPES, DEFAULT_SEGMENTS } from '@/lib/spin/segments';
 import SpinCampaignForm from './SpinCampaignForm';
 
 export const dynamic = 'force-dynamic';
@@ -20,6 +20,26 @@ export default async function SpinAdminPage() {
 
   const campaign = await prisma.spinCampaign.findFirst({ orderBy: { createdAt: 'desc' } });
   const stored = campaign ? parseSegments(campaign.segments) : null;
+  const look = presentationSchema.safeParse(campaign?.presentation ?? {});
+
+  // Only coupons a spin prize is actually allowed to copy.
+  //
+  // Filtered here rather than shown-then-rejected: offering the shop a coupon
+  // the wheel will refuse at win time is how a segment quietly turns into a
+  // losing one months later. The same conditions `resolveTemplate` applies.
+  const eligibleCoupons = await prisma.coupon.findMany({
+    where: {
+      isActive: true,
+      appliesTo: { in: [...ALLOWED_SCOPES] },
+      type: { in: ['PERCENTAGE', 'FLAT'] },
+      // A percentage with no ceiling is unbounded on a jewellery cart, whichever
+      // screen it was created on.
+      OR: [{ type: 'FLAT' }, { maxDiscount: { not: null } }],
+    },
+    select: { id: true, code: true, type: true, value: true, maxDiscount: true, appliesTo: true },
+    orderBy: { code: 'asc' },
+    take: 100,
+  });
 
   const results = campaign
     ? await prisma.spinResult.findMany({
@@ -79,6 +99,15 @@ export default async function SpinAdminPage() {
           startsAt: toLocalInput(campaign?.startsAt ?? null),
           endsAt: toLocalInput(campaign?.endsAt ?? null),
           segments: stored?.ok ? stored.segments : DEFAULT_SEGMENTS,
+          presentation: look.success ? look.data : {},
+          coupons: eligibleCoupons.map((c) => ({
+            id: c.id,
+            code: c.code,
+            summary:
+              `${c.type === 'PERCENTAGE' ? `${c.value}%` : `₹${c.value}`} off ` +
+              `${c.appliesTo === 'STONE_VALUE' ? 'stone value' : 'making charges'}` +
+              `${c.maxDiscount ? `, cap ₹${c.maxDiscount}` : ''}`,
+          })),
         }}
       />
 

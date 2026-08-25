@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseSegments, pickSegment, totalWeight, oddsPercent, describePrize,
-  segmentsSchema, DEFAULT_SEGMENTS, ALLOWED_SCOPES, type SpinSegment,
+  segmentsSchema, DEFAULT_SEGMENTS, ALLOWED_SCOPES,
+  resolvePresentation, presentationSchema, PRESENTATION_DEFAULTS,
+  SEGMENT_COLOURS, COLOUR_HEX, colourFor,
+  type SpinSegment,
 } from '@/lib/spin/segments';
 import {
   decideDisplay, isSuppressedPath, cookieMaxAgeSeconds, SUPPRESSED_PREFIXES,
@@ -252,5 +255,114 @@ describe('segment parsing is defensive about stored JSON', () => {
     for (const bad of [null, {}, 'segments', 42, [{ label: 'x' }]]) {
       expect(segmentsSchema.safeParse(bad).success).toBe(false);
     }
+  });
+});
+
+describe('the shop controls what the wheel says', () => {
+  it('falls back to the built-in wording when nothing is set', () => {
+    const look = resolvePresentation(null);
+    expect(look.heading).toBe(PRESENTATION_DEFAULTS.heading);
+    expect(look.buttonLabel).toBe(PRESENTATION_DEFAULTS.buttonLabel);
+    expect(look.background).toBe('paper');
+  });
+
+  it('treats a blank field as "not set" rather than as empty copy', () => {
+    // An operator who clears a box wants the default back, not a wheel with no
+    // heading on it.
+    const look = resolvePresentation({ heading: '   ', buttonLabel: '' });
+    expect(look.heading).toBe(PRESENTATION_DEFAULTS.heading);
+    expect(look.buttonLabel).toBe(PRESENTATION_DEFAULTS.buttonLabel);
+  });
+
+  it('uses the shop\'s wording when it is given', () => {
+    const look = resolvePresentation({ heading: 'Diwali dhamaka', buttonLabel: 'Try your luck', background: 'velvet' });
+    expect(look.heading).toBe('Diwali dhamaka');
+    expect(look.buttonLabel).toBe('Try your luck');
+    expect(look.background).toBe('velvet');
+  });
+
+  it('ignores a background it does not recognise instead of rendering it', () => {
+    // `catch` on the enum: a value edited straight into the database must not
+    // reach a class name or a style attribute.
+    expect(resolvePresentation({ background: 'neon-pink' }).background).toBe('paper');
+  });
+
+  it('survives junk in the column', () => {
+    for (const bad of [null, 'text', 42, []]) {
+      expect(resolvePresentation(bad).heading).toBe(PRESENTATION_DEFAULTS.heading);
+    }
+  });
+
+  it('offers no field that could carry markup or styling', () => {
+    // The whole point: text and fixed tokens only. A `html`, `css` or `style`
+    // field here would be the raw-paste vector this build has refused elsewhere.
+    const keys = Object.keys(presentationSchema.shape);
+    for (const forbidden of ['html', 'css', 'style', 'script', 'customCss']) {
+      expect(keys).not.toContain(forbidden);
+    }
+  });
+});
+
+describe('segment colours', () => {
+  it('resolves every token to a literal fill and a readable text colour', () => {
+    for (const colour of SEGMENT_COLOURS) {
+      const pair = COLOUR_HEX[colour];
+      expect(pair.fill).toMatch(/^#[0-9A-F]{6}$/i);
+      expect(pair.text).toMatch(/^#[0-9A-F]{6}$/i);
+    }
+  });
+
+  it('gives a wheel saved before colours existed the alternating look it had', () => {
+    const plain: SpinSegment = { label: 'A', weight: 1, prize: { kind: 'NONE' } };
+    expect(colourFor(plain, 0)).toBe('paper');
+    expect(colourFor(plain, 1)).toBe('brass');
+  });
+
+  it('prefers the chosen colour over the fallback', () => {
+    const chosen: SpinSegment = { label: 'A', weight: 1, colour: 'velvet', prize: { kind: 'NONE' } };
+    expect(colourFor(chosen, 0)).toBe('velvet');
+  });
+
+  it('drops a colour that is not in the list rather than passing it through', () => {
+    const parsed = parseSegments([
+      { label: 'A', weight: 1, colour: 'rgb(255,0,0)', prize: { kind: 'NONE' } },
+      { label: 'B', weight: 1, prize: { kind: 'COUPON', type: 'FLAT', appliesTo: 'MAKING_CHARGES', value: 100, maxDiscount: null, minOrder: null } },
+    ]);
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) expect(parsed.segments[0]?.colour).toBeUndefined();
+  });
+});
+
+describe('putting an existing coupon on the wheel', () => {
+  const wheel = [
+    { label: 'My coupon', weight: 1, prize: { kind: 'TEMPLATE', couponId: 'c1', couponCode: 'DIWALI10' } },
+    { label: 'Nothing', weight: 1, prize: { kind: 'NONE' } },
+  ];
+
+  it('is accepted as a prize', () => {
+    const parsed = parseSegments(wheel);
+    expect(parsed.ok, parsed.ok ? '' : parsed.error).toBe(true);
+  });
+
+  it('counts as a win, so a wheel of only templates still needs a loser', () => {
+    const allTemplates = [
+      { label: 'A', weight: 1, prize: { kind: 'TEMPLATE', couponId: 'c1', couponCode: 'A' } },
+      { label: 'B', weight: 1, prize: { kind: 'TEMPLATE', couponId: 'c2', couponCode: 'B' } },
+    ];
+    expect(parseSegments(allTemplates).ok).toBe(false);
+  });
+
+  it('needs a coupon chosen', () => {
+    const parsed = parseSegments([
+      { label: 'A', weight: 1, prize: { kind: 'TEMPLATE', couponId: '', couponCode: '' } },
+      { label: 'Nothing', weight: 1, prize: { kind: 'NONE' } },
+    ]);
+    expect(parsed.ok).toBe(false);
+  });
+
+  it('says where its terms come from', () => {
+    const parsed = parseSegments(wheel);
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) expect(describePrize(parsed.segments[0]!.prize, 30)).toContain('DIWALI10');
   });
 });

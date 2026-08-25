@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { resolvePresentation } from '@/lib/spin/segments';
 
 /**
  * The server side of a spin, with the database stubbed.
@@ -35,6 +36,7 @@ const CAMPAIGN = {
   name: 'First-order spin',
   perPhoneLimit: 1,
   couponValidityDays: 30,
+  presentation: resolvePresentation(null),
   segments: [
     { label: '10% off making', weight: 1, prize: { kind: 'COUPON' as const, type: 'PERCENTAGE' as const, appliesTo: 'MAKING_CHARGES' as const, value: 10, maxDiscount: 2000, minOrder: null } },
   ],
@@ -205,5 +207,74 @@ describe('a number the shop has never seen', () => {
     await spin({ campaign: CAMPAIGN, customerId: null, phone: '9810012345', ip: '1.2.3.4' });
     // Only the per-IP count runs; there is no customer to count spins for.
     expect(db.spinResult.count).toHaveBeenCalledOnce();
+  });
+});
+
+describe('a segment that borrows an existing coupon', () => {
+  const TEMPLATE_CAMPAIGN = {
+    ...CAMPAIGN,
+    segments: [{ label: 'Diwali offer', weight: 1, prize: { kind: 'TEMPLATE' as const, couponId: 'src1', couponCode: 'DIWALI10' } }],
+  };
+
+  it('copies the terms and mints a fresh code bound to the winner', async () => {
+    // The shared code is never handed out: one coupon every winner holds would
+    // be bound to nobody and forwardable to anyone.
+    db.coupon.findUnique.mockResolvedValue({
+      isActive: true, type: 'PERCENTAGE', value: 10, maxDiscount: 2000, minOrder: null, appliesTo: 'MAKING_CHARGES',
+    } as never);
+
+    const { spin } = await import('@/lib/spin');
+    const out = await spin({ campaign: TEMPLATE_CAMPAIGN, customerId: 'cust1', phone: '9810012345', ip: '1.2.3.4' });
+
+    expect(out.ok && out.won).toBe(true);
+    const data = createdCoupon();
+    expect(data.code).not.toBe('DIWALI10');
+    expect(data.boundPhone).toBe('9810012345');
+    expect(String(data.value)).toBe('10');
+    expect(String(data.maxDiscount)).toBe('2000');
+    expect(data.appliesTo).toBe('MAKING_CHARGES');
+  });
+
+  it('refuses a referenced coupon scoped to the order total', async () => {
+    // Re-checked at win time, not only when the campaign was saved: editing the
+    // coupon afterwards must not smuggle an order-total discount onto the wheel.
+    db.coupon.findUnique.mockResolvedValue({
+      isActive: true, type: 'PERCENTAGE', value: 10, maxDiscount: 2000, minOrder: null, appliesTo: 'ORDER_TOTAL',
+    } as never);
+
+    const { spin } = await import('@/lib/spin');
+    const out = await spin({ campaign: TEMPLATE_CAMPAIGN, customerId: 'cust1', phone: '9810012345', ip: '1.2.3.4' });
+
+    expect(out).toMatchObject({ ok: true, won: false });
+    expect(db.coupon.create).not.toHaveBeenCalled();
+    // The spin is still recorded — the customer has had their turn.
+    expect(db.spinResult.create).toHaveBeenCalledOnce();
+  });
+
+  it('refuses a referenced percentage with no cap', async () => {
+    db.coupon.findUnique.mockResolvedValue({
+      isActive: true, type: 'PERCENTAGE', value: 10, maxDiscount: null, minOrder: null, appliesTo: 'MAKING_CHARGES',
+    } as never);
+
+    const { spin } = await import('@/lib/spin');
+    expect(await spin({ campaign: TEMPLATE_CAMPAIGN, customerId: 'cust1', phone: '9810012345', ip: '1.2.3.4' }))
+      .toMatchObject({ ok: true, won: false });
+    expect(db.coupon.create).not.toHaveBeenCalled();
+  });
+
+  it('records a loss rather than crashing when the coupon was deleted', async () => {
+    db.coupon.findUnique.mockResolvedValue(null);
+    const { spin } = await import('@/lib/spin');
+    expect(await spin({ campaign: TEMPLATE_CAMPAIGN, customerId: 'cust1', phone: '9810012345', ip: '1.2.3.4' }))
+      .toMatchObject({ ok: true, won: false });
+  });
+
+  it('refuses a switched-off coupon', async () => {
+    db.coupon.findUnique.mockResolvedValue({
+      isActive: false, type: 'FLAT', value: 500, maxDiscount: null, minOrder: null, appliesTo: 'MAKING_CHARGES',
+    } as never);
+    const { spin } = await import('@/lib/spin');
+    expect(await spin({ campaign: TEMPLATE_CAMPAIGN, customerId: 'cust1', phone: '9810012345', ip: '1.2.3.4' }))
+      .toMatchObject({ ok: true, won: false });
   });
 });

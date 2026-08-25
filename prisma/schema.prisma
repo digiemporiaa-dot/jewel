@@ -1121,6 +1121,10 @@ model SpinCampaign {
   /// terms each prize issues.
   segments Json
 
+  /// SpinPresentation — the wheel's copy, image and colours. Typed fields only,
+  /// never markup; validated by lib/spin/segments.ts on every read and write.
+  presentation Json?
+
   /// How many times one mobile number may spin this campaign, ever.
   perPhoneLimit Int @default(1)
 

@@ -7,6 +7,7 @@ import { checkLimit, LIMITS } from '@/lib/rate-limit';
 import { getClientIp } from '@/lib/request-id';
 import { getCustomerId } from '@/lib/customer-session';
 import { activeCampaign, publicSegments, spin, type SpinOutcome, type PublicSegment } from '@/lib/spin';
+import type { ResolvedPresentation } from '@/lib/spin/segments';
 import { SPIN_COOKIE, cookieMaxAgeSeconds, isSuppressedPath, type SpinCookieState } from '@/lib/spin/display';
 
 /**
@@ -23,7 +24,14 @@ const phoneSchema = z.string().trim().regex(/^[6-9]\d{9}$/, 'Enter a 10-digit In
 
 export type WheelOffer =
   | { available: false }
-  | { available: true; name: string; segments: PublicSegment[]; validityDays: number };
+  | {
+      available: true;
+      name: string;
+      segments: PublicSegment[];
+      validityDays: number;
+      /** The shop's own wording, image and colours. */
+      look: ResolvedPresentation;
+    };
 
 /**
  * What to show before anyone spins.
@@ -43,6 +51,7 @@ export async function getWheelOffer(pathname: string): Promise<WheelOffer> {
     name: campaign.name,
     segments: publicSegments(campaign),
     validityDays: campaign.couponValidityDays,
+    look: campaign.presentation,
   };
 }
 

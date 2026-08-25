@@ -51,8 +51,58 @@ const couponPrizeSchema = z.object({
   minOrder: z.number().nonnegative().max(10000000).nullable(),
 });
 
+/**
+ * A prize that copies its terms from a coupon the shop already created.
+ *
+ * This is what "put my existing coupons on the wheel" means without breaking the
+ * thing that makes a spin prize safe. The referenced coupon is a *template*: its
+ * type, value, scope and cap are read at the moment somebody wins, and a fresh
+ * single-use code is minted and locked to the winner's number. Handing out the
+ * shared code itself would produce one coupon that every winner holds, bound to
+ * nobody and forwardable to anyone.
+ *
+ * The scope is re-checked against `ALLOWED_SCOPES` at win time, so a coupon
+ * created for the order total in the Coupons screen cannot reach the wheel by
+ * being referenced from here.
+ */
+const templatePrizeSchema = z.object({
+  kind: z.literal('TEMPLATE'),
+  couponId: z.string().min(1, 'Choose a coupon'),
+  /** Shown on the wheel and in the results list if the coupon is later deleted. */
+  couponCode: z.string().trim().min(1).max(40),
+});
+
 /** A segment that wins nothing. Its presence is checked below. */
 const nothingPrizeSchema = z.object({ kind: z.literal('NONE') });
+
+/**
+ * Segment colours.
+ *
+ * Fixed tokens, not a colour picker. Two reasons, and both are the same reasons
+ * the CMS block styles work this way: Tailwind cannot see a class built by string
+ * interpolation, so `bg-${x}` would simply be missing from the production
+ * stylesheet — and staff without design training cannot produce an off-brand
+ * wheel from a closed list.
+ */
+export const SEGMENT_COLOURS = ['paper', 'brass', 'velvet', 'blush', 'sage'] as const;
+export type SegmentColour = (typeof SEGMENT_COLOURS)[number];
+
+export const COLOUR_LABELS: Record<SegmentColour, string> = {
+  paper: 'Ivory',
+  brass: 'Brass',
+  velvet: 'Deep green',
+  blush: 'Blush',
+  sage: 'Sage',
+};
+
+/** Complete literals — see the note above. Paired with a readable text colour. */
+export const COLOUR_HEX: Record<SegmentColour, { fill: string; text: string }> = {
+  paper: { fill: '#F2EDE4', text: '#161513' },
+  brass: { fill: '#A8813C', text: '#FFFFFF' },
+  velvet: { fill: '#17362C', text: '#FFFFFF' },
+  blush: { fill: '#E8D5D0', text: '#161513' },
+  sage: { fill: '#C8D0C0', text: '#161513' },
+};
 
 export const segmentSchema = z
   .object({
@@ -62,7 +112,9 @@ export const segmentSchema = z
      * wheel, shown to the customer, and can never come up.
      */
     weight: z.number().int().min(1, 'Every segment must be winnable — use a weight of at least 1').max(10000),
-    prize: z.discriminatedUnion('kind', [couponPrizeSchema, nothingPrizeSchema]),
+    /** Absent on wheels saved before colours existed; falls back when rendering. */
+    colour: z.enum(SEGMENT_COLOURS).optional().catch(undefined),
+    prize: z.discriminatedUnion('kind', [couponPrizeSchema, templatePrizeSchema, nothingPrizeSchema]),
   })
   // Refined here rather than on the prize itself: a `discriminatedUnion` member
   // has to stay a plain object, and wrapping one in `superRefine` makes it a
@@ -84,6 +136,12 @@ export const segmentSchema = z
 
 export type SpinSegment = z.infer<typeof segmentSchema>;
 export type CouponPrize = Extract<SpinSegment['prize'], { kind: 'COUPON' }>;
+export type TemplatePrize = Extract<SpinSegment['prize'], { kind: 'TEMPLATE' }>;
+
+/** The colour a segment renders as, for one saved before colours existed. */
+export function colourFor(segment: SpinSegment, index: number): SegmentColour {
+  return segment.colour ?? (index % 2 === 0 ? 'paper' : 'brass');
+}
 
 export const segmentsSchema = z
   .array(segmentSchema)
@@ -160,6 +218,9 @@ export function oddsPercent(segments: readonly SpinSegment[], segment: SpinSegme
 /** One line of plain terms per winnable prize, for the T&C the wheel links to. */
 export function describePrize(prize: SpinSegment['prize'], validityDays: number): string {
   if (prize.kind === 'NONE') return 'No prize on this segment.';
+  // A template's real terms live on the coupon row and are read at win time;
+  // `resolveTemplate` in lib/spin/index.ts turns it into the branch below.
+  if (prize.kind === 'TEMPLATE') return `Terms taken from coupon ${prize.couponCode}.`;
   const amount = prize.type === 'PERCENTAGE' ? `${prize.value}% off` : `₹${prize.value} off`;
   const scope = SCOPE_LABELS[prize.appliesTo as SpinScope].toLowerCase();
   const cap = prize.maxDiscount !== null ? `, up to ₹${prize.maxDiscount}` : '';
@@ -178,3 +239,84 @@ export const DEFAULT_SEGMENTS: SpinSegment[] = [
   { label: 'Better luck next time', weight: 30, prize: { kind: 'NONE' } },
   { label: '₹250 off making', weight: 20, prize: { kind: 'COUPON', type: 'FLAT', appliesTo: 'MAKING_CHARGES', value: 250, maxDiscount: null, minOrder: 5000 } },
 ];
+
+// ─── What the wheel says and how it looks ────────────────────────────────────
+
+/**
+ * The wheel's copy and styling, stored alongside its segments.
+ *
+ * Every field is text or a fixed token — there is no HTML field, no CSS field
+ * and no colour picker. The same rule as the CMS blocks and for the same reason:
+ * an operator-supplied style string is both an injection surface and a way to
+ * produce something that does not look like the shop.
+ *
+ * Every field is optional and falls back, so a campaign saved before any of this
+ * existed keeps rendering exactly as it did.
+ */
+export const presentationSchema = z.object({
+  eyebrow: z.string().trim().max(40).optional().or(z.literal('')),
+  heading: z.string().trim().max(80).optional().or(z.literal('')),
+  subheading: z.string().trim().max(200).optional().or(z.literal('')),
+  phoneLabel: z.string().trim().max(60).optional().or(z.literal('')),
+  phoneHint: z.string().trim().max(200).optional().or(z.literal('')),
+  buttonLabel: z.string().trim().max(30).optional().or(z.literal('')),
+  winHeading: z.string().trim().max(80).optional().or(z.literal('')),
+  loseMessage: z.string().trim().max(200).optional().or(z.literal('')),
+  footnote: z.string().trim().max(300).optional().or(z.literal('')),
+  /**
+   * A picture above the wheel. Stored as a URL from the shared uploader, never
+   * as markup — see components/admin/ImageUploadField.
+   */
+  imageUrl: z.string().trim().max(500).optional().or(z.literal('')),
+  imageAlt: z.string().trim().max(160).optional().or(z.literal('')),
+  /** The dialog's own background, from the same closed list as the segments. */
+  background: z.enum(['paper', 'velvet']).optional().catch(undefined),
+});
+
+export type SpinPresentation = z.infer<typeof presentationSchema>;
+
+/** What the wheel says when the shop has not said otherwise. */
+export const PRESENTATION_DEFAULTS = {
+  eyebrow: '',
+  heading: 'Spin for a first-order treat',
+  subheading: '',
+  phoneLabel: 'Mobile number',
+  phoneHint: 'One spin per number. Your prize is saved against it and applied when you check out.',
+  buttonLabel: 'Spin the wheel',
+  winHeading: 'You won',
+  loseMessage: 'No prize this time — the wheel is a real draw, so sometimes it goes this way.',
+  footnote: '',
+  imageUrl: '',
+  imageAlt: '',
+};
+
+export const DEFAULT_BACKGROUND: DialogBackground = 'paper';
+
+/** The dialog's own background. Two tokens, both defined in globals.css. */
+export type DialogBackground = 'paper' | 'velvet';
+
+export type ResolvedPresentation = typeof PRESENTATION_DEFAULTS & { background: DialogBackground };
+
+/** Stored value wins, then the default. A blank string counts as "not set". */
+export function resolvePresentation(raw: unknown): ResolvedPresentation {
+  const parsed = presentationSchema.safeParse(raw ?? {});
+  const stored = parsed.success ? parsed.data : {};
+  const pick = <K extends keyof typeof PRESENTATION_DEFAULTS>(key: K): string => {
+    const value = stored[key as keyof typeof stored];
+    return typeof value === 'string' && value.trim() !== '' ? value : (PRESENTATION_DEFAULTS[key] as string);
+  };
+  return {
+    eyebrow: pick('eyebrow'),
+    heading: pick('heading'),
+    subheading: pick('subheading'),
+    phoneLabel: pick('phoneLabel'),
+    phoneHint: pick('phoneHint'),
+    buttonLabel: pick('buttonLabel'),
+    winHeading: pick('winHeading'),
+    loseMessage: pick('loseMessage'),
+    footnote: pick('footnote'),
+    imageUrl: pick('imageUrl'),
+    imageAlt: pick('imageAlt'),
+    background: stored.background ?? DEFAULT_BACKGROUND,
+  };
+}

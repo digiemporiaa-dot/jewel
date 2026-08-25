@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils/cn';
 import { getWheelOffer, spinAction, dismissWheel, type WheelOffer } from '@/lib/spin/actions';
 import type { PublicSegment } from '@/lib/spin';
+import type { ResolvedPresentation } from '@/lib/spin/segments';
 import { decideDisplay, isSuppressedPath, SPIN_COOKIE_EVENT, type SpinCookieState } from '@/lib/spin/display';
 import { useSpinCookie } from '@/lib/spin/use-spin-cookie';
 
@@ -36,7 +37,9 @@ export default function SpinWheel() {
    * customer's prize disappeared at the instant it was awarded. Once open, the
    * dialog owns its data and nothing outside can pull it out from under them.
    */
-  const [openOffer, setOpenOffer] = useState<{ name: string; segments: PublicSegment[]; validityDays: number } | null>(null);
+  const [openOffer, setOpenOffer] = useState<{
+    name: string; segments: PublicSegment[]; validityDays: number; look: ResolvedPresentation;
+  } | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
   const [phone, setPhone] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +81,7 @@ export default function SpinWheel() {
   // Memoised because the trigger effect depends on it: a fresh object literal
   // every render would re-arm the scroll and interval listeners on each pass.
   const offer: WheelOffer | null = useMemo(
-    () => (blocked ? { available: false } : fetched),
+    () => (blocked ? ({ available: false } as WheelOffer) : fetched),
     [blocked, fetched]
   );
 
@@ -112,7 +115,7 @@ export default function SpinWheel() {
         isMobile,
       });
       if (decision.show && offer?.available) {
-        setOpenOffer({ name: offer.name, segments: offer.segments, validityDays: offer.validityDays });
+        setOpenOffer({ name: offer.name, segments: offer.segments, validityDays: offer.validityDays, look: offer.look });
       }
     };
 
@@ -197,6 +200,8 @@ export default function SpinWheel() {
 
   if (!openOffer) return null;
   const segments = openOffer.segments;
+  const look = openOffer.look;
+  const dark = look.background === 'velvet';
 
   function doSpin() {
     setError(null);
@@ -251,31 +256,52 @@ export default function SpinWheel() {
         aria-modal="true"
         aria-labelledby="spin-title"
         className={cn(
-          'relative w-full bg-paper border-t border-line md:border shadow-xl',
+          'relative w-full border-t md:border shadow-xl',
           'max-h-[92vh] overflow-y-auto',
-          'md:max-w-md md:rounded-none'
+          'md:max-w-md md:rounded-none',
+          // Two complete class sets, never an interpolated one — Tailwind cannot
+          // see a class built from a variable and would omit it from the build.
+          dark ? 'bg-velvet text-paper border-velvet-2' : 'bg-paper text-ink border-line'
         )}
       >
         <button
           onClick={() => close(phase === 'result' ? 'done' : 'dismissed')}
           aria-label="Close"
-          className="absolute right-3 top-3 z-10 h-9 w-9 border border-line bg-paper text-lg leading-none text-ink-soft hover:border-brass hover:text-brass"
+          className={cn(
+            'absolute right-3 top-3 z-10 h-9 w-9 border text-lg leading-none hover:border-brass hover:text-brass',
+            dark ? 'border-paper/30 bg-velvet text-paper/70' : 'border-line bg-paper text-ink-soft'
+          )}
         >
           ×
         </button>
 
         <div className="p-6 pt-8 text-center">
-          <p className="eyebrow">{openOffer.name}</p>
-          <h2 id="spin-title" className="mt-2 text-2xl">
-            {phase === 'result' ? (result?.won ? 'You won' : result?.label) : 'Spin for a first-order treat'}
+          {/* Every string below is the shop's, falling back to ours. */}
+          <p className={cn('eyebrow', dark && 'text-paper/70')}>{look.eyebrow || openOffer.name}</p>
+          <h2 id="spin-title" className={cn('mt-2 text-2xl', dark && 'text-paper')}>
+            {phase === 'result' ? (result?.won ? look.winHeading : result?.label) : look.heading}
           </h2>
+          {phase !== 'result' && look.subheading && (
+            <p className={cn('mt-2 text-sm', dark ? 'text-paper/70' : 'text-ink-soft')}>{look.subheading}</p>
+          )}
 
-          <Wheel segments={segments.map((s) => s.label)} rotation={rotation} spinning={phase === 'spinning'} />
+          {look.imageUrl && (
+            // A plain <img>: the URL comes from the shop's own uploader and the
+            // dialog is never server-rendered, so next/image buys nothing here.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={look.imageUrl}
+              alt={look.imageAlt || ''}
+              className="mx-auto mt-4 max-h-32 w-auto object-contain"
+            />
+          )}
+
+          <Wheel segments={segments} rotation={rotation} spinning={phase === 'spinning'} dark={dark} />
 
           {phase !== 'result' && (
             <>
               <label className="mt-5 block text-left text-sm">
-                <span className="mb-1 block text-xs text-ink-soft">Mobile number</span>
+                <span className={cn('mb-1 block text-xs', dark ? 'text-paper/70' : 'text-ink-soft')}>{look.phoneLabel}</span>
                 <input
                   data-autofocus
                   inputMode="numeric"
@@ -284,9 +310,7 @@ export default function SpinWheel() {
                   onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                   className="w-full border border-line px-3 py-2.5 text-sm outline-none focus:border-brass"
                 />
-                <span className="mt-1 block text-xs text-ink-soft">
-                  One spin per number. Your prize is saved against it and applied when you check out.
-                </span>
+                <span className={cn('mt-1 block text-xs', dark ? 'text-paper/70' : 'text-ink-soft')}>{look.phoneHint}</span>
               </label>
 
               <button
@@ -294,7 +318,7 @@ export default function SpinWheel() {
                 disabled={phase === 'spinning' || phone.length !== 10}
                 className="btn-primary mt-4 w-full"
               >
-                {phase === 'spinning' ? 'Spinning…' : 'Spin the wheel'}
+                {phase === 'spinning' ? 'Spinning…' : look.buttonLabel}
               </button>
 
               {/* Always visible, not folded into the details below. The material
@@ -338,9 +362,7 @@ export default function SpinWheel() {
                   {/* A loss is stated plainly. Softening it into a consolation
                       prize would make the wheel a formality, which is exactly
                       what the losing segment is there to avoid. */}
-                  <p className="text-sm text-ink-soft">
-                    No prize this time — the wheel is a real draw, so sometimes it goes this way.
-                  </p>
+                  <p className={cn('text-sm', dark ? 'text-paper/70' : 'text-ink-soft')}>{look.loseMessage}</p>
                   <button onClick={() => close('done')} className="btn-outline mt-5 w-full">Close</button>
                 </>
               )}
@@ -360,7 +382,8 @@ export default function SpinWheel() {
                 </li>
               ))}
             </ul>
-            <p className="mt-2 text-xs text-ink-soft">
+            <p className={cn('mt-2 text-xs', dark ? 'text-paper/70' : 'text-ink-soft')}>
+              {look.footnote && <span className="mb-1 block">{look.footnote}</span>}
               One spin per mobile number. Prizes apply to making charges only, not to metal value,
               and each code is single-use, non-transferable and tied to the number that won it.{' '}
               <Link href="/pages/terms" className="underline decoration-line-strong underline-offset-4 hover:text-brass">
@@ -383,40 +406,70 @@ export default function SpinWheel() {
  * handles so the preference is respected even if the media query is re-evaluated
  * mid-spin.
  */
-function Wheel({ segments, rotation, spinning }: { segments: string[]; rotation: number; spinning: boolean }) {
+function Wheel({
+  segments, rotation, spinning, dark,
+}: {
+  segments: PublicSegment[]; rotation: number; spinning: boolean; dark: boolean;
+}) {
   const slice = 360 / segments.length;
   return (
     <div className="relative mx-auto mt-5 h-56 w-56">
+      {/* The pointer and the rim have to contrast with the *dialog*, not with
+          the wheel. Both were fixed velvet, which disappeared entirely once the
+          shop could choose a velvet popup. */}
       <div
         aria-hidden
-        className="absolute left-1/2 top-0 z-10 h-0 w-0 -translate-x-1/2 border-x-8 border-t-[14px] border-x-transparent border-t-velvet"
+        className={cn(
+          'absolute left-1/2 top-0 z-10 h-0 w-0 -translate-x-1/2 border-x-8 border-t-[14px] border-x-transparent',
+          dark ? 'border-t-brass' : 'border-t-velvet'
+        )}
       />
       <div
-        className="spin-wheel h-full w-full rounded-full border-2 border-velvet"
+        className={cn('spin-wheel h-full w-full rounded-full border-2', dark ? 'border-paper/40' : 'border-velvet')}
         style={{
           transform: `rotate(${rotation}deg)`,
+          // Literal hex resolved on the server from a closed token list, so the
+          // client never builds a class name Tailwind cannot see.
           background: `conic-gradient(${segments
-            .map((_, i) => {
-              const colour = i % 2 === 0 ? 'var(--paper-2)' : 'var(--brass)';
-              return `${colour} ${i * slice}deg ${(i + 1) * slice}deg`;
-            })
+            .map((s, i) => `${s.fill} ${i * slice}deg ${(i + 1) * slice}deg`)
             .join(', ')})`,
         }}
       >
-        {segments.map((label, i) => (
-          <span
-            key={label}
-            className="absolute left-1/2 top-1/2 origin-left text-[0.6rem] font-medium tracking-wide text-ink"
-            style={{ transform: `rotate(${i * slice + slice / 2}deg) translateX(1.6rem)` }}
-          >
-            {label.length > 16 ? `${label.slice(0, 15)}…` : label}
-          </span>
-        ))}
+        {segments.map((s, i) => {
+          const mid = i * slice + slice / 2;
+          // Anything on the left half would otherwise render upside-down, which
+          // is exactly where half the prizes on a five-segment wheel sit.
+          const flipped = mid > 90 && mid < 270;
+          return (
+            <span
+              key={s.label}
+              aria-hidden
+              className="absolute inset-0 flex items-center justify-end pr-2"
+              style={{ transform: `rotate(${mid}deg)` }}
+            >
+              <span
+                className="block max-w-[5.6rem] truncate text-[0.6rem] font-medium tracking-wide"
+                style={{
+                  transform: flipped ? 'rotate(180deg)' : undefined,
+                  // Paired with the fill on the server so a dark wedge always
+                  // gets light text — contrast is not left to whoever picks a
+                  // colour.
+                  color: s.text,
+                }}
+              >
+                {s.label}
+              </span>
+            </span>
+          );
+        })}
       </div>
       {/* Announced rather than only drawn: the wheel is a picture, and a screen
           reader user needs the state in words. */}
+      {/* The wedges are `aria-hidden` — rotated, truncated text is noise to a
+          screen reader, and the same prizes are listed in full, with their odds,
+          in the terms panel below. */}
       <span className="sr-only" role="status">
-        {spinning ? 'Spinning the wheel' : 'Wheel ready'}
+        {spinning ? 'Spinning the wheel' : `Wheel ready, with ${segments.length} segments`}
       </span>
       <style>{`
         .spin-wheel { transition: transform 3s cubic-bezier(.17,.67,.2,1); position: relative; }

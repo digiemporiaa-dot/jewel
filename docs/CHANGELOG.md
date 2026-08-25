@@ -1,5 +1,79 @@
 # Changelog
 
+## The wheel is the shop's now, and four holes are closed · 2026-08-24
+
+### Security
+
+**Unauthenticated order tampering.** `abandonPayment` took an order id and no
+proof of anything, and `confirmCheckoutPayment` guarded ownership with
+`if (customerId && order.customerId && …)` — which passes whenever either side is
+null. Both reach `markPaymentFailed`, which releases the order's reserved stock
+and flips it to FAILED, so anyone holding an order id could kill a stranger's
+in-flight checkout. `abandonPayment` had no callers at all, which is worth saying
+plainly: **an exported server action is a live endpoint whether or not anything
+in the app calls it.** Every order created through checkout has a `customerId`,
+so both now demand a match and fail closed.
+
+**A spin could steal an established customer's turn.** Typing a real customer's
+number into the popup consumed the one spin they were entitled to and minted a
+coupon in their name. A number that has been through OTP now has to sign in;
+numbers the shop has never seen keep the frictionless path the design is for.
+
+**Junk customer rows from probing.** The record was created before the per-phone
+and per-IP limits ran, so a thousand probes left a thousand rows. It is created
+inside `spin`, once every limit has passed. Soft-deleted rows are no longer
+reused either — an erased customer must not be reattached by a stranger typing
+their old number.
+
+**An email-enumeration oracle.** `completeSignup` had no rate limit and answers
+"already registered" truthfully, so one verified session could test any address
+against the customer list. Limited per customer and per IP.
+
+Also: `setSpinCookie` is no longer exported, for the same reason as
+`abandonPayment`.
+
+One thing I looked for and did not find: the security headers were already
+complete in `next.config.mjs` under `source: '/(.*)'`. An earlier version of this
+change added them again in middleware, which only produced a duplicate HSTS
+header with a weaker max-age. Reverted.
+
+### A prize could be lost
+
+Closing the wheel mid-spin destroyed the only copy of a code that had already
+been issued and could never be won again. Closing now reveals the prize instead —
+the result screen it lands on is itself dismissible, so nothing is trapped — and
+won offers are listed on `/my-account`, so a modal is no longer the only place a
+code exists.
+
+### The wheel is the shop's
+
+Eyebrow, heading, subheading, button label, win and lose wording, an extra terms
+line, an image, the popup background and a colour per segment, all from the
+admin. Every field is plain text or a fixed token: no HTML box, no CSS box, no
+colour picker. Tailwind cannot see a class built by interpolation, so a free
+colour field would be missing from the stylesheet as well as being an injection
+surface — the tokens resolve to literal hex on the server, paired with a readable
+text colour so contrast is not left to whoever picks a shade.
+
+**Existing coupons can go on the wheel.** A segment can borrow its terms from a
+coupon created in the Coupons screen. It is a *template*: the terms are read when
+somebody wins and a fresh single-use code is minted, locked to the winner's
+number. Handing out the shared code would produce one coupon every winner holds,
+bound to nobody. The scope and cap are re-checked at win time, not only when the
+campaign was saved, so editing that coupon afterwards cannot smuggle an
+order-total discount onto the wheel; a coupon that has become unusable records a
+loss rather than crashing.
+
+### Three things the screenshot showed that the tests did not
+
+The pointer and the wheel rim were fixed velvet, and vanished entirely the moment
+a shop could choose a velvet popup. Labels past 180° rendered upside-down — which
+is where half the prizes on a five-segment wheel sit. And the dwell trigger
+counted from whenever the campaign query returned rather than from page load.
+
+`activeCampaign` is now cached under a tag busted on save; it was a database
+query on every page view for every visitor who had not dismissed the wheel.
+
 ## Spin to win, without the dark patterns · 2026-08-24
 
 A wheel offering up to 10% off a first order. Two rules decide the whole design.

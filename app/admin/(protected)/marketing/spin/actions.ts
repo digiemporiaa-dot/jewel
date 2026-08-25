@@ -8,7 +8,7 @@ import { prisma } from '@/lib/prisma';
 import type { Prisma } from '@prisma/client';
 // Only `parseSegments` is needed here. A `'use server'` file may export nothing
 // but async functions, so the default wheel is imported by the page instead.
-import { parseSegments } from '@/lib/spin/segments';
+import { parseSegments, presentationSchema } from '@/lib/spin/segments';
 import { SPIN_CAMPAIGN_TAG } from '@/lib/spin';
 
 export type Result = { ok: boolean; error?: string };
@@ -20,6 +20,7 @@ const campaignSchema = z.object({
   isActive: z.boolean(),
   perPhoneLimit: z.number().int().min(1).max(10),
   couponValidityDays: z.number().int().min(1, 'A prize must be valid for at least a day').max(365),
+  presentation: presentationSchema,
   startsAt: z.string().trim().optional().or(z.literal('')),
   endsAt: z.string().trim().optional().or(z.literal('')),
 });
@@ -47,6 +48,7 @@ export async function saveCampaignAction(input: {
   startsAt?: string;
   endsAt?: string;
   segments: unknown;
+  presentation: unknown;
 }): Promise<Result> {
   const staff = await assertPermission(PERMISSION);
 
@@ -71,6 +73,7 @@ export async function saveCampaignAction(input: {
     startsAt: starts,
     endsAt: ends,
     segments: segments.segments as unknown as Prisma.InputJsonValue,
+    presentation: d.presentation as unknown as Prisma.InputJsonValue,
   };
 
   if (input.id) {

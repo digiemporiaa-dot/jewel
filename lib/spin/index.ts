@@ -4,8 +4,9 @@ import { unstable_cache } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { CouponType, CouponScope, Prisma } from '@prisma/client';
 import {
-  parseSegments, pickSegment, totalWeight, describePrize,
-  type SpinSegment, type CouponPrize,
+  parseSegments, pickSegment, totalWeight, describePrize, ALLOWED_SCOPES,
+  resolvePresentation, colourFor, COLOUR_HEX,
+  type SpinSegment, type CouponPrize, type ResolvedPresentation, type SegmentColour,
 } from '@/lib/spin/segments';
 
 /**
@@ -44,6 +45,7 @@ export type ActiveCampaign = {
   segments: SpinSegment[];
   perPhoneLimit: number;
   couponValidityDays: number;
+  presentation: ResolvedPresentation;
 };
 
 /**
@@ -91,6 +93,7 @@ const loadCampaign = unstable_cache(
       segments: parsed.segments,
       perPhoneLimit: row.perPhoneLimit,
       couponValidityDays: row.couponValidityDays,
+      presentation: resolvePresentation(row.presentation),
       // ISO strings, because `unstable_cache` round-trips its result through
       // JSON and a `Date` would come back as a string that fails at `getTime`.
       startsAt: row.startsAt?.toISOString() ?? null,
@@ -112,17 +115,31 @@ export async function activeCampaign(now = new Date()): Promise<ActiveCampaign |
 }
 
 /** What the customer is shown before spinning: the prizes and their real odds. */
-export type PublicSegment = { label: string; odds: number; terms: string };
+export type PublicSegment = {
+  label: string;
+  odds: number;
+  terms: string;
+  /** Resolved to literal hex here so the client never builds a class name. */
+  fill: string;
+  text: string;
+  colour: SegmentColour;
+};
 
 export function publicSegments(campaign: ActiveCampaign): PublicSegment[] {
   const total = totalWeight(campaign.segments);
-  return campaign.segments.map((s) => ({
-    label: s.label,
-    // The advertised odds are computed from the same weights the draw uses, so
-    // the disclosure cannot drift away from what actually happens.
-    odds: Math.round((s.weight / total) * 1000) / 10,
-    terms: describePrize(s.prize, campaign.couponValidityDays),
-  }));
+  return campaign.segments.map((s, i) => {
+    const colour = colourFor(s, i);
+    return {
+      label: s.label,
+      // The advertised odds are computed from the same weights the draw uses, so
+      // the disclosure cannot drift away from what actually happens.
+      odds: Math.round((s.weight / total) * 1000) / 10,
+      terms: describePrize(s.prize, campaign.couponValidityDays),
+      fill: COLOUR_HEX[colour].fill,
+      text: COLOUR_HEX[colour].text,
+      colour,
+    };
+  });
 }
 
 export type SpinOutcome =
@@ -148,6 +165,39 @@ async function uniqueCode(): Promise<string> {
     if (!clash) return code;
   }
   return `SPIN${generateCodeSuffix(10)}`;
+}
+
+/**
+ * Read a referenced coupon's terms.
+ *
+ * Returns null rather than throwing when the coupon cannot be used as a prize.
+ * The scope is re-checked here, not only when the campaign was saved: a coupon
+ * edited in the Coupons screen afterwards must not be able to smuggle an
+ * order-total discount onto the wheel.
+ */
+async function resolveTemplate(couponId: string): Promise<CouponPrize | null> {
+  const coupon = await prisma.coupon.findUnique({
+    where: { id: couponId },
+    select: { isActive: true, type: true, value: true, maxDiscount: true, minOrder: true, appliesTo: true },
+  });
+  if (!coupon || !coupon.isActive) return null;
+  // FREE_SHIPPING has no meaning scoped to making charges.
+  if (coupon.type !== 'PERCENTAGE' && coupon.type !== 'FLAT') return null;
+  if (!ALLOWED_SCOPES.some((scope) => scope === coupon.appliesTo)) return null;
+
+  const maxDiscount = coupon.maxDiscount !== null ? Number(coupon.maxDiscount) : null;
+  // The same rule the inline form enforces: a percentage without a ceiling is
+  // unbounded on a jewellery cart, whichever screen it was created on.
+  if (coupon.type === 'PERCENTAGE' && maxDiscount === null) return null;
+
+  return {
+    kind: 'COUPON',
+    type: coupon.type,
+    appliesTo: coupon.appliesTo === 'STONE_VALUE' ? 'STONE_VALUE' : 'MAKING_CHARGES',
+    value: Number(coupon.value),
+    maxDiscount,
+    minOrder: coupon.minOrder !== null ? Number(coupon.minOrder) : null,
+  };
 }
 
 const SCOPE_MAP: Record<CouponPrize['appliesTo'], CouponScope> = {
@@ -229,7 +279,25 @@ export async function spin(params: {
     return { ok: true, label: segment.label, won: false };
   }
 
-  const prize = segment.prize;
+  // A template segment borrows its terms from a coupon the shop already made.
+  // Resolved here, at win time, so editing that coupon changes what the wheel
+  // gives out without anyone re-saving the campaign.
+  const prize = segment.prize.kind === 'TEMPLATE'
+    ? await resolveTemplate(segment.prize.couponId)
+    : segment.prize;
+
+  if (!prize) {
+    // The referenced coupon was deleted, switched off, or is scoped somewhere a
+    // spin prize may not reach. Recorded as a loss rather than crashing or
+    // silently handing out something else: the customer has had their spin and
+    // the results screen shows a shop exactly what happened.
+    console.error('[spin] template coupon unusable, recording as no prize', segment.label);
+    await prisma.spinResult.create({
+      data: { campaignId: params.campaign.id, customerId, segmentLabel: segment.label, ipHash },
+    });
+    return { ok: true, label: segment.label, won: false };
+  }
+
   const expiresAt = new Date(now.getTime() + params.campaign.couponValidityDays * 24 * 60 * 60 * 1000);
   const code = await uniqueCode();
 
