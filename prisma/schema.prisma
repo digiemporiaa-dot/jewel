@@ -238,6 +238,14 @@ enum NotificationStatus {
   FAILED
 }
 
+/// Offered at signup. Three options, because a free-text box produces
+/// "M"/"male"/"Male"/"mail" and nothing can segment on that.
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
 enum OtpPurpose {
   LOGIN
   CHECKOUT
@@ -511,7 +519,14 @@ model Customer {
   phone          String    @unique
   email          String?   @unique
   name           String?
-  gender         String?
+  /// Stays nullable even though the form requires it.
+  ///
+  /// Every customer created by the checkout OTP path before this existed has no
+  /// gender. A NOT NULL column would either fail the migration or force a
+  /// fabricated value onto a real person's record, and neither is worth having.
+  /// The requirement lives in the form and the server action; the column
+  /// reflects what is actually known.
+  gender         Gender?
   dob            DateTime?
   anniversary    DateTime?
   marketingOptIn Boolean   @default(false)
@@ -548,6 +563,9 @@ model Customer {
 
   @@index([email])
   @@index([createdAt])
+  // Segmentation on the customer list filters by this; a shop with a few
+  // thousand customers should not table-scan for it.
+  @@index([gender])
 }
 
 model Otp {

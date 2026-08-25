@@ -48,7 +48,13 @@ queries are defensive (fall back to zero) so the panel always renders.
   **Sales executives are scoped server-side to their own leads**; a direct URL to
   someone else's lead returns not-found. Managers (`orders.manage`) see all leads.
 - **Customers** (`/admin/customers`) — lifetime value, orders, addresses,
-  appointments and linked leads.
+  appointments and linked leads, plus a **Profile** panel showing gender, date of
+  birth, anniversary, marketing opt-in and when the terms were accepted. A dash
+  means the customer has not told us: most records were created implicitly by an
+  OTP at checkout and predate the profile form, and showing a guess would be
+  worse than showing a gap. The list filters by gender, including a **Not
+  recorded** option — that segment is exactly who the profile prompt is trying to
+  reach.
 - **Appointments** (`/admin/appointments`) — status and staff assignment.
   Bookings from `/appointments` auto-raise a CRM lead.
 - **Reviews** (`/admin/reviews`) — moderation queue. Customers may only review

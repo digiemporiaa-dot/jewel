@@ -4,18 +4,23 @@ import { listCustomers } from '@/lib/admin/crm';
 import { formatDate } from '@/lib/utils/format';
 import PageHeader from '@/components/admin/PageHeader';
 import ArchiveToggle from '@/components/admin/ArchiveToggle';
+import { Gender } from '@prisma/client';
+import { GENDER_LABELS, GENDERS } from '@/lib/validations/signup';
 
 export const dynamic = 'force-dynamic';
 
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; page?: string; deleted?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; deleted?: string; gender?: string }>;
 }) {
   await requirePermission('customers.view');
   const sp = await searchParams;
   const deleted = sp.deleted === '1';
-  const result = await listCustomers({ q: sp.q, page: sp.page ? Number(sp.page) : 1, deleted });
+  // Validated against the enum rather than passed through: a query string is
+  // caller-supplied, and Prisma would throw on anything that is not a member.
+  const gender = parseGenderFilter(sp.gender);
+  const result = await listCustomers({ q: sp.q, page: sp.page ? Number(sp.page) : 1, deleted, gender });
 
   return (
     <div>
@@ -33,6 +38,15 @@ export default async function CustomersPage({
       <form className="mb-4 flex gap-2 text-sm" action="/admin/customers">
         {deleted && <input type="hidden" name="deleted" value="1" />}
         <input name="q" defaultValue={sp.q} placeholder="Search name / phone / email" className="border border-line px-3 py-2 outline-none focus:border-brass min-w-[240px]" />
+        <select name="gender" defaultValue={gender ?? ''} className="border border-line px-3 py-2 outline-none focus:border-brass">
+          <option value="">Any gender</option>
+          {GENDERS.map((g) => (
+            <option key={g} value={g}>{GENDER_LABELS[g]}</option>
+          ))}
+          {/* Its own option, because it is the segment the profile prompt is
+              trying to reach — not an absence to hide. */}
+          <option value="UNKNOWN">Not recorded</option>
+        </select>
         <button className="btn-outline text-xs">Search</button>
       </form>
 
@@ -48,6 +62,7 @@ export default async function CustomersPage({
               <tr className="text-left text-ink-soft border-b border-line">
                 <th className="px-4 py-2 font-medium">Customer</th>
                 <th className="px-4 py-2 font-medium">Contact</th>
+                <th className="px-4 py-2 font-medium">Gender</th>
                 <th className="px-4 py-2 font-medium">Orders</th>
                 <th className="px-4 py-2 font-medium">Joined</th>
               </tr>
@@ -59,6 +74,7 @@ export default async function CustomersPage({
                     <Link href={`/admin/customers/${c.id}`} className="font-medium hover:text-brass">{c.name ?? 'Guest customer'}</Link>
                   </td>
                   <td className="px-4 py-2 text-ink-soft">{c.phone}{c.email ? <div className="text-xs">{c.email}</div> : null}</td>
+                  <td className="px-4 py-2 text-ink-soft">{c.gender ? GENDER_LABELS[c.gender] : '—'}</td>
                   <td className="px-4 py-2">{c._count.orders}</td>
                   <td className="px-4 py-2 text-ink-soft">{formatDate(c.createdAt)}</td>
                 </tr>
@@ -79,4 +95,17 @@ export default async function CustomersPage({
       )}
     </div>
   );
+}
+
+/**
+ * Read the gender filter off the query string.
+ *
+ * Validated against the enum rather than passed through: a query string is
+ * whatever somebody typed into the address bar, and Prisma throws on a value
+ * that is not a member of the type.
+ */
+function parseGenderFilter(value: string | undefined): Gender | 'UNKNOWN' | undefined {
+  if (!value) return undefined;
+  if (value === 'UNKNOWN') return 'UNKNOWN';
+  return (GENDERS as readonly string[]).includes(value) ? (value as Gender) : undefined;
 }

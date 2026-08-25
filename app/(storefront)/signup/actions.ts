@@ -103,7 +103,10 @@ export async function completeSignup(raw: unknown): Promise<SignupResult> {
     return {
       ok: false,
       error: issue?.message ?? 'Please check the form',
-      field: field === 'email' || field === 'dob' || field === 'anniversary' ? field : undefined,
+      field:
+        field === 'email' || field === 'dob' || field === 'anniversary' || field === 'gender'
+          ? field
+          : undefined,
     };
   }
 

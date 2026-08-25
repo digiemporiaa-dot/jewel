@@ -1,7 +1,7 @@
 import 'server-only';
 import { rangeFilter, type ResolvedRange } from '@/lib/admin/date-range';
 import { prisma } from '@/lib/prisma';
-import { LeadStatus, FollowUpStatus, type Prisma } from '@prisma/client';
+import { LeadStatus, FollowUpStatus, Gender, type Prisma } from '@prisma/client';
 
 /**
  * CRM data layer. Sales executives only see leads assigned to them; admins see
@@ -132,11 +132,22 @@ export async function getSalesStaff() {
 
 // ── Customers ────────────────────────────────────────────────────────────────
 
-export async function listCustomers(params: { q?: string; page?: number; deleted?: boolean }) {
+export async function listCustomers(params: {
+  q?: string;
+  page?: number;
+  deleted?: boolean;
+  /** `'UNKNOWN'` selects the records that predate the profile form. */
+  gender?: Gender | 'UNKNOWN';
+}) {
   const page = Math.max(1, params.page ?? 1);
   const size = 20;
   // Deleted customers are invisible unless the archive view asks for them.
   const where: Prisma.CustomerWhereInput = params.deleted ? { deletedAt: { not: null } } : { deletedAt: null };
+  if (params.gender) {
+    // "Not recorded" is a segment worth having, not an absence to hide: it is
+    // exactly the list of customers the profile prompt is trying to reach.
+    where.gender = params.gender === 'UNKNOWN' ? null : params.gender;
+  }
   if (params.q) {
     where.OR = [
       { name: { contains: params.q, mode: 'insensitive' } },

@@ -4,7 +4,10 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { sendSignupOtp, verifySignupOtp, completeSignup } from './actions';
-import { DOB_PURPOSE, MINOR_CONSENT_NOTICE } from '@/lib/validations/signup';
+import {
+  DOB_PURPOSE, ANNIVERSARY_PURPOSE, GENDER_PURPOSE, MINOR_CONSENT_NOTICE,
+  GENDERS, GENDER_LABELS, type Gender,
+} from '@/lib/validations/signup';
 
 type Step = 'phone' | 'code' | 'details' | 'done';
 
@@ -14,7 +17,10 @@ export default function SignupForm({
   intro = 'One minute, and your orders, addresses and offers are all in one place.',
 }: {
   /** Set when the phone is already verified — the account page's prompt. */
-  initial?: { name: string; email: string; dob: string; anniversary: string; marketingOptIn: boolean } | null;
+  initial?: {
+    name: string; email: string; dob: string; anniversary: string;
+    gender: Gender | ''; marketingOptIn: boolean;
+  } | null;
   heading?: string;
   intro?: string;
 }) {
@@ -32,6 +38,9 @@ export default function SignupForm({
     name: initial?.name ?? '',
     email: initial?.email ?? '',
     dob: initial?.dob ?? '',
+    // Empty rather than a pre-selected option: defaulting to one would record an
+    // answer the customer never gave, on a field a record may legitimately lack.
+    gender: (initial?.gender ?? '') as Gender | '',
     anniversary: initial?.anniversary ?? '',
     // Never pre-ticked, even for somebody returning to complete their profile:
     // agreeing is an act, and a box that arrives already ticked has not recorded
@@ -166,7 +175,21 @@ export default function SignupForm({
             />
           </L>
 
-          <L label="Anniversary (optional)" hint="If you tell us, we will remember it too." invalid={fieldError === 'anniversary'}>
+          <L label="How would you like to be addressed?" hint={GENDER_PURPOSE} invalid={fieldError === 'gender'}>
+            <select
+              required
+              value={form.gender}
+              onChange={(e) => set('gender', e.target.value as Gender | '')}
+              className="s-inp"
+            >
+              <option value="" disabled>Choose one</option>
+              {GENDERS.map((g) => (
+                <option key={g} value={g}>{GENDER_LABELS[g]}</option>
+              ))}
+            </select>
+          </L>
+
+          <L label="Anniversary (optional)" hint={ANNIVERSARY_PURPOSE} invalid={fieldError === 'anniversary'}>
             <input
               type="date" value={form.anniversary} max={today()}
               onChange={(e) => set('anniversary', e.target.value)} className="s-inp"

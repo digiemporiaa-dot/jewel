@@ -1,5 +1,63 @@
 # Changelog
 
+## A complete customer profile · 2026-08-25
+
+Gender joins name, email and date of birth as a required field on `/signup` and
+in the My Account prompt. Anniversary stays optional.
+
+### The column stays nullable
+
+`Customer.gender` becomes a `Gender` enum — `MALE | FEMALE | OTHER` — and stays
+**nullable**, even though the form requires it. Every customer created by the
+checkout OTP path before the profile form existed has no gender, and a NOT NULL
+column would either fail the migration or force a fabricated value onto a real
+person's record. The requirement lives in the form and the server action; the
+column reflects what is actually known.
+
+Existing free-text values move across only where they map cleanly — `male`/`m`/
+`man`, `female`/`f`/`woman`, `other`/`o`/`non-binary`. Anything ambiguous becomes
+null rather than being guessed into a bucket, because a wrong value here is worse
+than a missing one: it looks like an answer the customer gave.
+
+### Checkout is untouched, and that is load-bearing
+
+Profile completion belongs on `/signup` and `/my-account`. A customer with a
+₹70,000 cart being asked for their date of birth before paying is an abandoned
+cart, and every existing customer has an incomplete profile by definition.
+
+`tests/profile-not-required-at-checkout.test.ts` is the guard rail rather than a
+comment: it asserts the checkout schema contains no profile field, that profile
+fields sent to it are stripped rather than honoured, and — by reading the source —
+that neither `lib/orders.ts` nor the checkout action ever consults gender, date
+of birth or anniversary. It fails the moment somebody adds one.
+
+Confirmed in a browser too: a customer with null gender, null date of birth, null
+email and null name completed checkout and placed order `MJ20260825-ABC039`.
+
+### The prompt is dismissible now
+
+It was not before, which was wrong for a banner aimed almost entirely at people
+who never filled in a form and never agreed to anything. It closes, stays closed
+for the visit, and says plainly that none of it is needed to place an order.
+Dismissal lives in `sessionStorage`: somebody returning next week probably meant
+"not now" rather than "never", and a `localStorage` entry would hide it for good
+on a shared machine.
+
+### DPDP
+
+Each field states its purpose beside itself — date of birth for a birthday offer,
+anniversary for an anniversary offer, gender for relevant recommendations — and
+those strings are shared with the tests so the promise and the field cannot
+drift. Marketing consent stays a separate unticked box: collecting a date of
+birth is not consent to be marketed to. An under-18 date of birth still gets an
+account and still gets no marketing consent.
+
+### Verified, not assumed
+
+The campaign cron was run against real values: `{"birthdays":1,"anniversaries":1}`
+— both fired, and the legacy record with nulls and no opt-in correctly received
+nothing.
+
 ## Admin datetimes are IST, and the terms box is real · 2026-08-25
 
 ### The scheduling bug

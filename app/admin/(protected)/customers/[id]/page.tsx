@@ -6,6 +6,7 @@ import { formatCurrency, formatDate } from '@/lib/utils/format';
 import PageHeader from '@/components/admin/PageHeader';
 import StatCard from '@/components/admin/StatCard';
 import CustomerRemoval from './CustomerRemoval';
+import { GENDER_LABELS } from '@/lib/validations/signup';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +33,28 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
+        {/* The profile the customer filled in, rather than what the shop
+            inferred. A dash means they have not told us — most records predate
+            the profile form, and showing a guess would be worse than a gap. */}
+        <Panel title="Profile">
+          <dl className="grid grid-cols-2 gap-y-2.5 text-sm">
+            <Field label="Name" value={customer.name} />
+            <Field label="Phone" value={customer.phone} />
+            <Field label="Email" value={customer.email} />
+            <Field label="Gender" value={customer.gender ? GENDER_LABELS[customer.gender] : null} />
+            <Field label="Date of birth" value={customer.dob ? formatDate(customer.dob) : null} />
+            <Field label="Anniversary" value={customer.anniversary ? formatDate(customer.anniversary) : null} />
+            <Field
+              label="Marketing"
+              value={customer.marketingOptIn ? 'Opted in' : 'Not opted in'}
+            />
+            <Field
+              label="Terms accepted"
+              value={customer.termsAcceptedAt ? formatDate(customer.termsAcceptedAt) : null}
+            />
+          </dl>
+        </Panel>
+
         <Panel title="Orders">
           {customer.orders.length === 0 ? (
             <p className="text-sm text-ink-soft">No orders yet.</p>
@@ -111,5 +134,15 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
       <h2 className="font-heading text-lg mb-3">{title}</h2>
       {children}
     </div>
+  );
+}
+
+/** One profile row. A missing value reads as a dash, never as an empty cell. */
+function Field({ label, value }: { label: string; value: string | null }) {
+  return (
+    <>
+      <dt className="text-ink-soft">{label}</dt>
+      <dd>{value?.trim() ? value : <span className="text-ink-soft">—</span>}</dd>
+    </>
   );
 }

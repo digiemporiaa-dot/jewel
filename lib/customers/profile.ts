@@ -17,7 +17,7 @@ import {
 
 export type SaveProfileResult =
   | { ok: true; customerId: string; marketingGranted: boolean; refusedBecause: 'minor' | null }
-  | { ok: false; error: string; field?: 'email' | 'dob' | 'anniversary' };
+  | { ok: false; error: string; field?: 'email' | 'dob' | 'anniversary' | 'gender' };
 
 /** Postgres unique-violation, as Prisma reports it. */
 const UNIQUE_VIOLATION = 'P2002';
@@ -87,6 +87,9 @@ export async function saveCustomerProfile(params: {
         email: input.email,
         dob,
         anniversary,
+        // The schema admits only the three enum members, so this is safe to
+        // pass straight through to a column typed the same way.
+        gender: input.gender,
         marketingOptIn: consent.granted,
         // Stamped on acceptance. `input.acceptTerms` is `true` by the time it
         // gets here — the schema admits nothing else — so this records when,

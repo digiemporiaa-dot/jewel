@@ -21,8 +21,27 @@ import { z } from 'zod';
  *    their marketing consent is refused.
  */
 
-/** Shown beside the date-of-birth field. Purpose limitation, in one sentence. */
+/**
+ * Why each field is being asked for, shown beside it.
+ *
+ * Purpose limitation is a DPDP obligation, and these strings are what the form
+ * actually renders — shared with the tests so the promise and the field cannot
+ * drift apart. They also raise completion: an unexplained date-of-birth box
+ * reads as a data grab, and an explained one reads as an offer.
+ */
 export const DOB_PURPOSE = 'So we can send you a birthday offer. Nothing else.';
+export const ANNIVERSARY_PURPOSE = 'Optional. If you tell us, we will send an anniversary offer too.';
+export const GENDER_PURPOSE = 'So we can show you pieces that are more likely to be relevant.';
+
+/** The three the form offers. A free-text box produces data nothing can segment. */
+export const GENDERS = ['MALE', 'FEMALE', 'OTHER'] as const;
+export type Gender = (typeof GENDERS)[number];
+
+export const GENDER_LABELS: Record<Gender, string> = {
+  MALE: 'Male',
+  FEMALE: 'Female',
+  OTHER: 'Other',
+};
 
 /** DPDP treats anyone under this age as a child. */
 export const ADULT_AGE = 18;
@@ -116,6 +135,14 @@ export const signupSchema = z.object({
   // birthday offer, an order confirmation or a password-free sign-in link to.
   email: z.string().trim().toLowerCase().email('Enter a valid email address').max(160),
   dob: dateOnly('Date of birth'),
+  /**
+   * Required by the form, nullable in the database — see the note on
+   * `Customer.gender`. A record predating this form has no answer, and
+   * inventing one would put a claim on somebody's record they never made.
+   */
+  gender: z.enum(GENDERS, {
+    errorMap: () => ({ message: 'Please choose an option' }),
+  }),
   anniversary: z.string().trim().optional().or(z.literal('')).refine(
     (v) => !v || parseDateOnly(v) !== null,
     'Enter the anniversary as a real date'
@@ -162,17 +189,19 @@ export const DATE_PROBLEM_MESSAGES: Record<Exclude<DateFieldProblem, null>, stri
  * has a record at all because a phone number was verified, so it cannot be
  * missing and offering to "complete" it would be nonsense.
  */
-export type ProfileGap = 'name' | 'email' | 'dob';
+export type ProfileGap = 'name' | 'email' | 'dob' | 'gender';
 
 export function profileGaps(customer: {
   name: string | null;
   email: string | null;
   dob: Date | null;
+  gender: string | null;
 }): ProfileGap[] {
   const gaps: ProfileGap[] = [];
   if (!customer.name?.trim()) gaps.push('name');
   if (!customer.email?.trim()) gaps.push('email');
   if (!customer.dob) gaps.push('dob');
+  if (!customer.gender) gaps.push('gender');
   return gaps;
 }
 
@@ -180,4 +209,5 @@ export const GAP_LABELS: Record<ProfileGap, string> = {
   name: 'your name',
   email: 'your email address',
   dob: 'your date of birth',
+  gender: 'how you would like to be addressed',
 };

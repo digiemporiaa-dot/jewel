@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseDateOnly, ageOn, isMinor, resolveMarketingConsent, checkBirthDate,
-  signupSchema, profileGaps, DOB_PURPOSE, ADULT_AGE,
+  signupSchema, profileGaps, DOB_PURPOSE, ANNIVERSARY_PURPOSE, GENDER_PURPOSE,
+  GENDERS, GENDER_LABELS, ADULT_AGE,
 } from '@/lib/validations/signup';
 
 const NOW = new Date(Date.UTC(2026, 7, 25)); // 25 Aug 2026
@@ -84,6 +85,7 @@ describe('the signup form contract', () => {
     phone: '9810012345',
     email: 'Ananya@Example.COM',
     dob: '1990-05-14',
+    gender: 'FEMALE' as const,
     anniversary: '',
     acceptTerms: true as const,
   };
@@ -101,8 +103,8 @@ describe('the signup form contract', () => {
     expect(parsed.success && parsed.data.marketingOptIn).toBe(false);
   });
 
-  it('requires name, email and date of birth', () => {
-    for (const field of ['name', 'email', 'dob'] as const) {
+  it('requires name, email, date of birth and gender', () => {
+    for (const field of ['name', 'email', 'dob', 'gender'] as const) {
       const parsed = signupSchema.safeParse({ ...valid, [field]: '' });
       expect(parsed.success, field).toBe(false);
     }
@@ -129,19 +131,19 @@ describe('the signup form contract', () => {
 
 describe('profile gaps', () => {
   it('names what is still missing', () => {
-    expect(profileGaps({ name: null, email: null, dob: null })).toEqual(['name', 'email', 'dob']);
-    expect(profileGaps({ name: 'Ananya', email: null, dob: new Date() })).toEqual(['email']);
-    expect(profileGaps({ name: 'Ananya', email: 'a@b.com', dob: new Date() })).toEqual([]);
+    expect(profileGaps({ name: null, email: null, dob: null, gender: null })).toEqual(['name', 'email', 'dob', 'gender']);
+    expect(profileGaps({ name: 'Ananya', email: null, dob: new Date(), gender: 'FEMALE' })).toEqual(['email']);
+    expect(profileGaps({ name: 'Ananya', email: 'a@b.com', dob: new Date(), gender: 'MALE' })).toEqual([]);
   });
 
   it('treats whitespace as missing', () => {
-    expect(profileGaps({ name: '   ', email: 'a@b.com', dob: new Date() })).toEqual(['name']);
+    expect(profileGaps({ name: '   ', email: 'a@b.com', dob: new Date(), gender: 'OTHER' })).toEqual(['name']);
   });
 
   it('never asks for the phone number', () => {
     // A customer record only exists because a phone was verified, so it cannot
     // be missing — offering to "complete" it would be nonsense.
-    const gaps = profileGaps({ name: null, email: null, dob: null });
+    const gaps = profileGaps({ name: null, email: null, dob: null, gender: null });
     expect(gaps).not.toContain('phone');
   });
 });
@@ -184,6 +186,7 @@ describe('accepting the terms', () => {
     phone: '9810012345',
     email: 'ananya@example.com',
     dob: '1990-05-14',
+    gender: 'FEMALE' as const,
     anniversary: '',
   };
 
@@ -224,5 +227,82 @@ describe('accepting the terms', () => {
   it('leaves marketing free to be granted separately', () => {
     const parsed = signupSchema.safeParse({ ...base, acceptTerms: true, marketingOptIn: true });
     expect(parsed.success && parsed.data.marketingOptIn).toBe(true);
+  });
+});
+
+describe('gender', () => {
+  const base = {
+    name: 'Ananya Sharma',
+    phone: '9810012345',
+    email: 'ananya@example.com',
+    dob: '1990-05-14',
+    anniversary: '',
+    acceptTerms: true as const,
+  };
+
+  it('offers exactly three options', () => {
+    expect([...GENDERS]).toEqual(['MALE', 'FEMALE', 'OTHER']);
+    for (const g of GENDERS) expect(GENDER_LABELS[g].length).toBeGreaterThan(0);
+  });
+
+  it('is required at signup', () => {
+    expect(signupSchema.safeParse(base).success).toBe(false);
+    expect(signupSchema.safeParse({ ...base, gender: '' }).success).toBe(false);
+  });
+
+  it('rejects anything outside the three', () => {
+    // A free-text box produces "M"/"male"/"Male"/"mail" and nothing can segment
+    // on that, which is the whole reason this is an enum.
+    for (const bad of ['male', 'M', 'Female', 'prefer not to say', 'OTHERS']) {
+      expect(signupSchema.safeParse({ ...base, gender: bad }).success, bad).toBe(false);
+    }
+  });
+
+  it('accepts each of the three', () => {
+    for (const g of GENDERS) {
+      expect(signupSchema.safeParse({ ...base, gender: g }).success, g).toBe(true);
+    }
+  });
+
+  it('says what to do rather than naming the enum', () => {
+    const parsed = signupSchema.safeParse({ ...base, gender: 'nope' });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.issues.some((i) => /choose an option/i.test(i.message))).toBe(true);
+    }
+  });
+});
+
+describe('anniversary stays optional', () => {
+  const base = {
+    name: 'Ananya Sharma',
+    phone: '9810012345',
+    email: 'ananya@example.com',
+    dob: '1990-05-14',
+    gender: 'FEMALE' as const,
+    acceptTerms: true as const,
+  };
+
+  it('is accepted when omitted entirely', () => {
+    expect(signupSchema.safeParse(base).success).toBe(true);
+  });
+
+  it('is accepted when blank', () => {
+    expect(signupSchema.safeParse({ ...base, anniversary: '' }).success).toBe(true);
+  });
+
+  it('is still validated when given', () => {
+    expect(signupSchema.safeParse({ ...base, anniversary: '2015-11-30' }).success).toBe(true);
+    expect(signupSchema.safeParse({ ...base, anniversary: '2015-11-31' }).success).toBe(false);
+  });
+});
+
+describe('every required field explains why it is being asked for', () => {
+  it('states a purpose for date of birth, anniversary and gender', () => {
+    // Purpose limitation is a DPDP obligation, and these are the strings the
+    // form renders — asserted here so the promise and the field cannot drift.
+    expect(DOB_PURPOSE).toMatch(/birthday/i);
+    expect(ANNIVERSARY_PURPOSE).toMatch(/anniversary/i);
+    expect(GENDER_PURPOSE).toMatch(/relevant/i);
   });
 });

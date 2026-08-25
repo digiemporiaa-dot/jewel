@@ -29,6 +29,7 @@ export default async function SignupPage() {
                 name: customer.name ?? '',
                 email: customer.email ?? '',
                 dob: toDateInput(customer.dob),
+                gender: customer.gender ?? '',
                 anniversary: toDateInput(customer.anniversary),
                 marketingOptIn: customer.marketingOptIn,
               }
