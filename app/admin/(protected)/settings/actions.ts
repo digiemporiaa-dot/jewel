@@ -28,10 +28,11 @@ const imageAddress = z
 const settingsSchema = z.object({
   brandName: z.string().trim().min(2, 'Brand name is required').max(80),
   tagline: z.string().trim().max(160),
-  // Both columns have existed since the schema was written and both are read —
-  // the logo by the header and by Organization structured data, the favicon by
-  // the root layout — but neither had a field, so no shop could set either.
+  // The logo is read by the header, the footer and Organization structured
+  // data; the favicon by the root layout. `logoUrlDark` is optional and only
+  // the footer looks at it, falling back to `logoUrl`.
   logoUrl: imageAddress,
+  logoUrlDark: imageAddress,
   faviconUrl: imageAddress,
   phone: z.string().trim().max(30).optional().or(z.literal('')),
   whatsappNumber: z.string().trim().max(30).optional().or(z.literal('')),
@@ -96,6 +97,7 @@ export async function updateSettingsAction(fd: FormData): Promise<Result> {
       brandName: d.brandName,
       tagline: d.tagline,
       logoUrl: nullIfEmpty(d.logoUrl),
+      logoUrlDark: nullIfEmpty(d.logoUrlDark),
       faviconUrl: nullIfEmpty(d.faviconUrl),
       phone: nullIfEmpty(d.phone),
       whatsappNumber: nullIfEmpty(d.whatsappNumber),

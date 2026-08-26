@@ -13,6 +13,7 @@ const FALLBACK: StoreSetting = {
   brandName: 'Maya Jewellers',
   tagline: 'Fine jewellery, crafted in Delhi',
   logoUrl: null,
+  logoUrlDark: null,
   faviconUrl: null,
   phone: null,
   whatsappNumber: null,

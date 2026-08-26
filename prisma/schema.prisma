@@ -260,6 +260,15 @@ model StoreSetting {
   brandName  String  @default("Maya Jewellers")
   tagline    String  @default("Fine jewellery, crafted in Delhi")
   logoUrl    String?
+  /**
+   * The logo to use on dark surfaces — the footer, today.
+   *
+   * Optional, and falls back to `logoUrl`. A wordmark drawn in deep green for a
+   * white header is invisible on the velvet footer, and the operator who
+   * uploaded it has no reason to expect that: they saw it appear in the header
+   * and considered the job done.
+   */
+  logoUrlDark String?
   faviconUrl String?
 
   // Contact

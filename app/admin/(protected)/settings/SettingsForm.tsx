@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import ImageUploadField from '@/components/admin/ImageUploadField';
+import LogoPreview from '@/components/admin/LogoPreview';
 import { updateSettingsAction } from './actions';
 
 export type SettingsDefaults = Record<string, string | number | boolean | undefined>;
@@ -26,6 +27,12 @@ export default function SettingsForm({ defaults }: { defaults: SettingsDefaults 
 
   const v = (k: string) => String(defaults[k] ?? '');
 
+  // Controlled, so the preview below updates as the operator uploads or pastes.
+  // The fields still post their own values — ImageUploadField renders a real
+  // input either way — so nothing about saving changes.
+  const [logoUrl, setLogoUrl] = useState(v('logoUrl'));
+  const [logoUrlDark, setLogoUrlDark] = useState(v('logoUrlDark'));
+
   return (
     <form onSubmit={submit} className="space-y-6 text-sm">
       <Section title="Brand">
@@ -38,16 +45,35 @@ export default function SettingsForm({ defaults }: { defaults: SettingsDefaults 
             name="logoUrl"
             label="Logo"
             prefix="brand"
-            defaultValue={v('logoUrl')}
-            hint="Used in the header and in the shop's structured data."
+            value={logoUrl}
+            onChange={setLogoUrl}
+            hint="Shown in the header and the footer, and used as the shop's logo in structured data. Sized by height, so any width works."
             altSourceNote="Described by the brand name."
           />
+          <ImageUploadField
+            name="logoUrlDark"
+            label="Logo for dark backgrounds"
+            prefix="brand"
+            value={logoUrlDark}
+            onChange={setLogoUrlDark}
+            hint="Optional. Used on the footer, which is deep green. Leave empty to use the main logo there too."
+            altSourceNote="Described by the brand name."
+          />
+        </Grid>
+        <Grid>
+          {/* Both previews sit on a light and a dark swatch, because the footer
+              is dark and a logo that disappears there is otherwise found in
+              production. */}
+          <LogoPreview url={logoUrl} label="Logo" />
+          <LogoPreview url={logoUrlDark} label="Dark-background logo" />
+        </Grid>
+        <Grid>
           <ImageUploadField
             name="faviconUrl"
             label="Favicon"
             prefix="brand"
             defaultValue={v('faviconUrl')}
-            hint="The small icon in a browser tab. A square PNG works everywhere."
+            hint="The small icon in a browser tab. A square PNG works everywhere. Left empty, the built-in icon is kept."
             altSourceNote="Browsers do not read alt text for a favicon."
           />
         </Grid>

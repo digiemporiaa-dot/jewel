@@ -4,6 +4,7 @@ import { getNavigation } from '@/lib/navigation';
 import { getSessionToken } from '@/lib/session';
 import { getCartCount } from '@/lib/cart';
 import { getWishlistCount } from '@/lib/wishlist';
+import BrandMark from '@/components/layout/BrandMark';
 import RateTicker from '@/components/layout/RateTicker';
 import MobileMenu from '@/components/layout/MobileMenu';
 import { SearchIcon, HeartIcon, BagIcon, UserIcon } from '@/components/icons';
@@ -40,8 +41,16 @@ export default async function Header() {
           {/* Mobile row */}
           <div className="flex lg:hidden items-center justify-between h-16">
             <MobileMenu nav={nav} brandName={store.brandName} />
-            <Link href="/" className="font-heading text-xl tracking-wide">
-              {store.brandName}
+            {/* Still a link to "/", logo or not. */}
+            <Link href="/" className="min-w-0">
+              <BrandMark
+                brandName={store.brandName}
+                logoUrl={store.logoUrl}
+                // 28px against a 64px bar: the optical size of the 1.25rem
+                // wordmark it replaces, with room left either side.
+                height={28}
+                wordmarkClassName="font-heading text-xl tracking-wide"
+              />
             </Link>
             <div className="flex items-center gap-3">
               <Link href="/search" aria-label="Search" className="p-1.5">
@@ -70,10 +79,17 @@ export default async function Header() {
               />
             </form>
 
-            <Link href="/" className="justify-self-center text-center">
-              <span className="block font-heading text-[1.7rem] leading-none tracking-wide">
-                {store.brandName}
-              </span>
+            <Link href="/" className="justify-self-center text-center min-w-0">
+              <BrandMark
+                brandName={store.brandName}
+                logoUrl={store.logoUrl}
+                // 40px against an 80px bar, matching the 1.7rem wordmark.
+                height={40}
+                className="justify-center"
+                wordmarkClassName="block font-heading text-[1.7rem] leading-none tracking-wide"
+              />
+              {/* The tagline stays under either mark. A logo replaces the
+                  wordmark, not the sentence next to it. */}
               <span className="block eyebrow mt-1">{store.tagline}</span>
             </Link>
 

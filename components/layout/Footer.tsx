@@ -3,6 +3,7 @@ import { getStoreSettings, getSocialLinks } from '@/lib/store';
 import { getFooterMenus, getMenu, MENU_KEYS, type NavLink } from '@/lib/navigation';
 import { getTagConfig } from '@/lib/marketing/config';
 import { ConsentReopenLink } from '@/components/marketing/ConsentBanner';
+import BrandMark from '@/components/layout/BrandMark';
 import { InstagramIcon, WhatsAppIcon } from '@/components/icons';
 
 export default async function Footer() {
@@ -20,7 +21,24 @@ export default async function Footer() {
         <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
           {/* Brand */}
           <div>
-            <p className="font-heading text-2xl tracking-wide">{store.brandName}</p>
+            {/*
+              The dark logo, falling back to the light one.
+              The footer is velvet. A mark drawn in a dark brand colour for a
+              white header disappears here entirely, and the operator has no
+              reason to suspect it — they watched it appear in the header and
+              considered the job finished. `logoUrlDark` exists for that case;
+              when it is unset the header logo is used, which is right for the
+              many logos that are light or already reversed.
+            */}
+            <Link href="/" className="inline-block min-w-0">
+              <BrandMark
+                brandName={store.brandName}
+                logoUrl={store.logoUrlDark ?? store.logoUrl}
+                // 44px, matching the 2rem wordmark it replaces.
+                height={44}
+                wordmarkClassName="font-heading text-2xl tracking-wide"
+              />
+            </Link>
             <p className="mt-3 text-sm text-paper/70 max-w-xs">{store.tagline}</p>
             {store.addressLine && (
               <p className="mt-4 text-sm text-paper/60 leading-relaxed">

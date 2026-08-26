@@ -7,6 +7,7 @@ import { seoDefaults, getSeoSettings, siteUrl } from '@/lib/seo/settings';
 import { siteGraphLd, serialiseJsonLd } from '@/lib/seo/jsonld';
 import TagScripts from '@/components/marketing/TagScripts';
 import ConsentBanner from '@/components/marketing/ConsentBanner';
+import { faviconMetadata } from '@/lib/seo/icons';
 
 /**
  * The two typefaces, named by role rather than by family.
@@ -53,7 +54,9 @@ export async function generateMetadata(): Promise<Metadata> {
     description: defaults.defaultDescription ?? undefined,
     // `faviconUrl` has been a settings column since the schema was written and
     // was read by nothing. Without this, uploading a favicon changed nothing.
-    ...(store.faviconUrl ? { icons: { icon: store.faviconUrl, shortcut: store.faviconUrl, apple: store.faviconUrl } } : {}),
+    // The helper is where "unset means omit the key entirely" is stated and
+    // tested — see lib/seo/icons.ts.
+    ...(faviconMetadata(store.faviconUrl) ? { icons: faviconMetadata(store.faviconUrl) } : {}),
     openGraph: {
       title: defaults.defaultTitle ?? defaults.brandName,
       description: defaults.defaultDescription ?? undefined,

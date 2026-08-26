@@ -22,6 +22,7 @@ export default async function SettingsPage() {
           brandName: store.brandName,
           tagline: store.tagline,
           logoUrl: store.logoUrl ?? '',
+          logoUrlDark: store.logoUrlDark ?? '',
           faviconUrl: store.faviconUrl ?? '',
           phone: store.phone ?? '',
           whatsappNumber: store.whatsappNumber ?? '',

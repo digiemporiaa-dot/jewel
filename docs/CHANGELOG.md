@@ -1,5 +1,89 @@
 # Changelog
 
+## The logo is on the site now, not only in the database · 2026-08-26
+
+`StoreSetting.logoUrl` had been a column since the schema was written. The
+admin had a field for it, the field uploaded to storage, the value saved — and
+the header rendered `{store.brandName}` as text and ignored it. So did the
+footer. An operator could upload a logo, watch it save, and find the site
+unchanged, with no reason to suspect the field rather than the file.
+
+That is the worse failure mode. A missing field is a gap somebody reports; a
+field that saves and does nothing is one they believe is done.
+
+### What was actually missing
+
+Two of the four items in the report were already wired, and it is worth saying
+which, because the fix is smaller than it looked:
+
+- **The favicon was already feeding page metadata** (`app/layout.tsx`), and the
+  admin was **already using the shared `ImageUploadField`** rather than a plain
+  URL box. Both were done earlier in this project.
+- **The logo was rendered nowhere visible.** It reached `Organization.logo` in
+  the structured data and stood in as the OG image fallback — so it was "used"
+  in a grep and invisible on the page.
+
+### One mark, both ends of the page
+
+`components/layout/BrandMark.tsx` takes a brand name and an optional logo and
+renders whichever exists. Three things it has to get right:
+
+**Height, never width.** A logo arrives at whatever aspect ratio the brand has.
+Fixing the width squashes a wide wordmark and balloons a tall crest. Fixing the
+height matches how the wordmark it replaces was sized and lets the width fall
+out of the artwork. Confirmed against a 600×120 file: rendered 200×40 on
+desktop and 140×28 on mobile — the same 5:1, both times.
+
+**The box is the same size either way.** The wrapper reserves the height before
+anything loads, so a logo arriving late cannot push the nav down. Measured with
+a logo and without: header 101px on mobile and 226px on desktop in both states,
+with `<main>` starting at the identical offset.
+
+**The brand name keeps its job.** It is the `alt` text, so the mark is still
+readable to a screen reader and still says something if the file 404s; it is
+still the OG site name and the structured-data name; and it is still what
+renders when there is no logo.
+
+Both header layouts are wired — there are two `<Link>` blocks, a mobile row and
+a desktop one, and doing only the one you happen to be looking at is the easy
+mistake. A test counts them.
+
+The header is `relative`, not sticky, and has no scrolled variant, so there is
+no second background for the logo to survive. Said here rather than silently
+skipped.
+
+### The footer is velvet, and that matters
+
+A mark drawn in a dark brand colour passes every inspection in a white header
+and then vanishes on the footer. `StoreSetting.logoUrlDark` exists for that,
+falling back to `logoUrl` — which is right for the many logos that are already
+light or reversed.
+
+The migration adds the column nullable and **does not backfill it from
+`logoUrl`**. Copying the value across would be a lie dressed as a default: it
+would claim somebody had checked the logo against a dark background when nobody
+had.
+
+### Caught at upload, not in production
+
+The admin now previews each logo on a light swatch and a dark one, side by side,
+because the form itself is white and that is exactly the inspection a
+disappearing logo passes. It also measures the file: under 200px on the long
+edge, it says the logo will look soft in the header. An SVG is exempt — it is
+resolution-independent, and calling it blurry would be wrong.
+
+Verified in the admin against three files: an 80×24 PNG measured and warned, a
+600×120 PNG measured and passed, an SVG measured and passed.
+
+### The favicon, checked rather than assumed
+
+`faviconMetadata` is split out of the root layout so the rule can be asserted:
+an unset favicon emits **no** `icons` key at all. `icon: ''` would resolve to
+the current URL, so the browser requests the page as its own icon and shows a
+blank tab — worse than the built-in default it replaced. Live: three icon links
+with a favicon set, zero without.
+
+
 ## The wheel now stops on the prize it announces · 2026-08-26
 
 The pointer was resting between two segments. Three separate causes, each able
