@@ -84,7 +84,20 @@ const nothingPrizeSchema = z.object({ kind: z.literal('NONE') });
  * stylesheet — and staff without design training cannot produce an off-brand
  * wheel from a closed list.
  */
-export const SEGMENT_COLOURS = ['paper', 'brass', 'velvet', 'blush', 'sage'] as const;
+export const SEGMENT_COLOURS = [
+  // The original five, in their original order. Wheels saved before the palette
+  // grew keep exactly the colours they had.
+  'paper', 'brass', 'velvet', 'blush', 'sage',
+  // Added later: deeper and lighter tints of the two brand colours, a wine, a
+  // soft gold, a charcoal and a stone.
+  //
+  // Twelve is not an arbitrary number — it is the segment maximum. One colour
+  // per possible segment means the index fallback below is `index % 12` over at
+  // most twelve wedges, so it never wraps and no wheel can repeat a colour at
+  // all, adjacent or otherwise. Eleven colours produced exactly that collision
+  // on a full wheel, and a test caught it.
+  'brass-deep', 'brass-light', 'velvet-light', 'wine', 'gold', 'charcoal', 'stone',
+] as const;
 export type SegmentColour = (typeof SEGMENT_COLOURS)[number];
 
 export const COLOUR_LABELS: Record<SegmentColour, string> = {
@@ -93,15 +106,38 @@ export const COLOUR_LABELS: Record<SegmentColour, string> = {
   velvet: 'Deep green',
   blush: 'Blush',
   sage: 'Sage',
+  'brass-deep': 'Antique brass',
+  'brass-light': 'Champagne',
+  'velvet-light': 'Emerald',
+  wine: 'Wine',
+  gold: 'Soft gold',
+  charcoal: 'Charcoal',
+  stone: 'Stone',
 };
 
-/** Complete literals — see the note above. Paired with a readable text colour. */
+/**
+ * Complete literals — see the note above — each paired with the text colour that
+ * reads on it.
+ *
+ * The pairing is not a matter of taste. A prize label nobody can read is worse
+ * than one fewer colour, so every pair here clears **WCAG AA for normal text
+ * (4.5:1)** — the wheel labels are small, so the 3:1 large-text allowance does
+ * not apply. `tests/spin.test.ts` computes the ratios rather than trusting this
+ * comment, so a colour added later cannot slip through unreadable.
+ */
 export const COLOUR_HEX: Record<SegmentColour, { fill: string; text: string }> = {
   paper: { fill: '#F2EDE4', text: '#161513' },
-  brass: { fill: '#A8813C', text: '#FFFFFF' },
+  brass: { fill: '#A8813C', text: '#161513' },
   velvet: { fill: '#17362C', text: '#FFFFFF' },
   blush: { fill: '#E8D5D0', text: '#161513' },
   sage: { fill: '#C8D0C0', text: '#161513' },
+  'brass-deep': { fill: '#7A5C24', text: '#FFFFFF' },
+  'brass-light': { fill: '#D9C08A', text: '#161513' },
+  'velvet-light': { fill: '#2E5B4A', text: '#FFFFFF' },
+  wine: { fill: '#6B2233', text: '#FFFFFF' },
+  gold: { fill: '#E4C97E', text: '#161513' },
+  charcoal: { fill: '#2B2A28', text: '#FFFFFF' },
+  stone: { fill: '#B9AA96', text: '#161513' },
 };
 
 export const segmentSchema = z
@@ -140,7 +176,13 @@ export type TemplatePrize = Extract<SpinSegment['prize'], { kind: 'TEMPLATE' }>;
 
 /** The colour a segment renders as, for one saved before colours existed. */
 export function colourFor(segment: SpinSegment, index: number): SegmentColour {
-  return segment.colour ?? (index % 2 === 0 ? 'paper' : 'brass');
+  // Cycles the whole palette rather than alternating two.
+  //
+  // The palette is as long as a wheel may be, so for any legal wheel this is
+  // `index % 12` over at most twelve wedges and every one gets its own colour.
+  // The old version alternated ivory and brass, which made a nine-segment wheel
+  // five of one and four of the other.
+  return segment.colour ?? (SEGMENT_COLOURS[index % SEGMENT_COLOURS.length] ?? 'paper');
 }
 
 export const segmentsSchema = z

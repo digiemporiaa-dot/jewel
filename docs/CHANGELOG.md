@@ -1,5 +1,76 @@
 # Changelog
 
+## Spin wheel: an exit that works, and a palette that reads · 2026-08-26
+
+### The win screen had no way out
+
+Winning a prize left the customer stuck. The losing branch closed the dialog;
+the winning branch — the one that matters — offered a "Start shopping" link that
+navigated underneath a dialog that never unmounted.
+
+To be precise about what was and wasn't broken: the `done` cookie *was* being
+written. `spinAction` sets it server-side the moment a prize is awarded, so a
+customer who reloaded the page never saw the wheel again. What failed was
+narrower and only visible in the tab you were already in — the dialog stayed
+mounted, and `notifyCookieChange()` fired only from inside `close()`, so the
+client hook kept serving the pre-spin value for the rest of that session.
+
+Both branches now share one exit:
+
+```ts
+const finish = useCallback((href?: string) => {
+  close('done');
+  if (href) router.push(href);
+}, [close, router]);
+```
+
+One function, two callers, no branch that can forget. The win screen also gained
+a "Copy code" button — a coupon you can see but not select is a coupon you
+retype wrong — and a line saying the code is saved to the account, because the
+old screen implied the code existed only for as long as it was on screen. The
+clipboard call degrades quietly: on an insecure origin `navigator.clipboard` is
+undefined and the button simply stays "Copy code" rather than claiming a copy
+that never happened.
+
+### Twelve colours, each one checked
+
+`SEGMENT_COLOURS` held five. A twelve-segment wheel — the schema maximum — wrapped
+around and put `paper` next to `paper`, which reads as one fat wedge rather than
+two prizes. The list is now twelve, exactly the maximum, so the fallback cycle
+never wraps and no wheel can repeat a colour.
+
+The five originals are unchanged in name and position. One changed in substance:
+`brass` shipped with white label text at **3.58:1**, below the 4.5:1 WCAG AA
+threshold for normal text. It now takes ink at **5.10:1**. That was a live defect
+in the existing palette, not something the new colours introduced.
+
+`tests/spin.test.ts` computes relative luminance and contrast for every pairing
+rather than trusting a comment next to the hex, and asserts the cycle is
+collision-free at every segment count the schema permits.
+
+### The marquee stopped claiming a timestamp
+
+The rate strip carried "as on <date>" next to each rate. A scrolling marquee is
+the wrong surface for a precise claim: it moves, it truncates on narrow screens,
+and the reader has no way to hold it still and check. The stamp is gone from the
+strip; the rates remain.
+
+Where the timestamp actually matters it is untouched. The product page price
+breakup panel — the surface where a price is committed to — still shows
+"Rate as of …" against the rate that priced that item. That panel is static,
+expandable, and tied to a specific number, which is what a timestamp needs to be
+useful rather than decorative.
+
+The staleness guard is independent of the display and stays: a rate too old to
+trust still suppresses the strip entirely rather than scrolling a stale number.
+
+The admin `showTimestamp` toggle is removed rather than left switched to nothing
+— a control that changes no pixel is the same lie the dead campaign switches
+told. `RateTickerSettings.showTimestamp` stays in the schema, documented as no
+longer read, so the operator's stored preference survives if the strip ever
+wants it back.
+
+
 ## A complete customer profile · 2026-08-25
 
 Gender joins name, email and date of birth as a required field on `/signup` and

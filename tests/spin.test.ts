@@ -3,7 +3,7 @@ import {
   parseSegments, pickSegment, totalWeight, oddsPercent, describePrize,
   segmentsSchema, DEFAULT_SEGMENTS, ALLOWED_SCOPES,
   resolvePresentation, presentationSchema, PRESENTATION_DEFAULTS,
-  SEGMENT_COLOURS, COLOUR_HEX, colourFor,
+  SEGMENT_COLOURS, COLOUR_HEX, COLOUR_LABELS, colourFor,
   type SpinSegment,
 } from '@/lib/spin/segments';
 import {
@@ -303,6 +303,23 @@ describe('the shop controls what the wheel says', () => {
   });
 });
 
+/**
+ * WCAG 2.1 relative luminance and contrast ratio, computed rather than asserted
+ * from a comment. A colour added later with an unreadable text pairing fails
+ * here instead of shipping.
+ */
+function relativeLuminance(hex: string): number {
+  const channels = [1, 3, 5]
+    .map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+    .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * (channels[0] ?? 0) + 0.7152 * (channels[1] ?? 0) + 0.0722 * (channels[2] ?? 0);
+}
+
+function contrastRatio(a: string, b: string): number {
+  const [lighter, darker] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x);
+  return ((lighter ?? 0) + 0.05) / ((darker ?? 0) + 0.05);
+}
+
 describe('segment colours', () => {
   it('resolves every token to a literal fill and a readable text colour', () => {
     for (const colour of SEGMENT_COLOURS) {
@@ -312,10 +329,61 @@ describe('segment colours', () => {
     }
   });
 
-  it('gives a wheel saved before colours existed the alternating look it had', () => {
+  it('has at least one colour per possible segment', () => {
+    // The invariant the index fallback relies on. `segmentsSchema` caps a wheel
+    // at twelve, so twelve colours means the fallback never wraps and no wheel
+    // can repeat a colour at all.
+    expect(SEGMENT_COLOURS.length).toBeGreaterThanOrEqual(12);
+  });
+
+  it('has no duplicate tokens or duplicate fills', () => {
+    expect(new Set(SEGMENT_COLOURS).size).toBe(SEGMENT_COLOURS.length);
+    const fills = SEGMENT_COLOURS.map((c) => COLOUR_HEX[c].fill.toUpperCase());
+    expect(new Set(fills).size).toBe(fills.length);
+  });
+
+  it('names every colour for the admin picker', () => {
+    for (const colour of SEGMENT_COLOURS) {
+      expect(COLOUR_LABELS[colour]?.length, colour).toBeGreaterThan(0);
+    }
+  });
+
+  it('pairs every fill with text that clears WCAG AA for normal text', () => {
+    // 4.5:1, not the 3:1 large-text allowance — the wheel labels are 0.6rem.
+    // A prize label nobody can read is worse than one fewer colour.
+    for (const colour of SEGMENT_COLOURS) {
+      const { fill, text } = COLOUR_HEX[colour];
+      const ratio = contrastRatio(fill, text);
+      expect(ratio, `${colour} ${fill} on ${text} = ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('picks the better of the two text colours for each fill', () => {
+    // Catches the case this test was written after: brass shipped with white
+    // text at 3.58:1 when ink would have given 5.10:1.
+    for (const colour of SEGMENT_COLOURS) {
+      const { fill, text } = COLOUR_HEX[colour];
+      const chosen = contrastRatio(fill, text);
+      const alternative = contrastRatio(fill, text.toUpperCase() === '#FFFFFF' ? '#161513' : '#FFFFFF');
+      expect(chosen, colour).toBeGreaterThanOrEqual(alternative);
+    }
+  });
+
+  it('falls back by cycling the palette, never repeating side by side', () => {
     const plain: SpinSegment = { label: 'A', weight: 1, prize: { kind: 'NONE' } };
+    // The first two are unchanged, so a wheel saved before colours existed keeps
+    // the look it had at the sizes most wheels actually are.
     expect(colourFor(plain, 0)).toBe('paper');
     expect(colourFor(plain, 1)).toBe('brass');
+
+    // Across a full twelve-segment wheel every wedge is distinct — including
+    // the wrap from the last back to the first, which is where an eleven-colour
+    // palette collided.
+    const wheel = Array.from({ length: 12 }, (_, i) => colourFor(plain, i));
+    expect(new Set(wheel).size).toBe(12);
+    for (let i = 0; i < wheel.length; i++) {
+      expect(wheel[i], `segment ${i}`).not.toBe(wheel[(i + 1) % wheel.length]);
+    }
   });
 
   it('prefers the chosen colour over the fallback', () => {

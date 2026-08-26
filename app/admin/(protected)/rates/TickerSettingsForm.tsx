@@ -127,14 +127,17 @@ export default function TickerSettingsForm({
           />
         </label>
 
-        <label className="flex items-center gap-2">
-          <input type="checkbox" name="showTimestamp" defaultChecked={settings.showTimestamp} />
-          <span>Show when the rates were set</span>
-        </label>
+        {/* No "show the timestamp" toggle any more.
+            The strip does not carry one at all — a scrolling time is noise where
+            nothing is being committed, and it invites a customer to treat a
+            marquee as the record of what they were charged. Leaving a switch
+            here that changed nothing would be the same lie the campaign
+            switches used to tell. */}
         <p className="text-xs text-ink-soft">
-          Recommended. A rate with no time attached is a dispute waiting to happen — and if the
-          latest rate is more than two days old the strip says the rates are being updated rather
-          than quoting a stale number.
+          The strip shows the rate only. When the rate was set appears on each product&apos;s price
+          breakup and on the order itself, which is what answers a dispute. If the latest rate is
+          more than two days old the strip says the rates are being updated rather than quoting a
+          stale number.
         </p>
 
         {error && <p className="text-xs text-red-700">{error}</p>}

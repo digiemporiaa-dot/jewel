@@ -382,6 +382,14 @@ model RateTickerSettings {
   background    String   @default("velvet")
   /// "as on <time>". A rate with no time attached is a customer dispute waiting
   /// to happen, so this defaults on.
+  /// No longer read.
+  ///
+  /// The strip stopped carrying a timestamp: a scrolling "as on ..." is noise
+  /// where nothing is being committed, and it invites a customer to treat a
+  /// marquee as the record of what they were charged. The timestamped rate lives
+  /// on the product's price breakup and on the frozen order snapshot instead,
+  /// which is what actually answers a dispute. Kept rather than dropped so the
+  /// preference survives if the strip ever wants it back.
   showTimestamp Boolean  @default(true)
   /// Optional line shown alongside the rates, e.g. a festival message.
   message       String?

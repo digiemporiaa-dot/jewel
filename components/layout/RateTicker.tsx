@@ -2,7 +2,7 @@ import { getTickerData } from '@/lib/rates/ticker-settings';
 import { formatCurrency } from '@/lib/utils/format';
 import { cn } from '@/lib/utils/cn';
 import {
-  selectRates, asOn, formatAsOn, isStale, tickerBackground, type TickerRate,
+  selectRates, asOn, isStale, tickerBackground, type TickerRate,
 } from '@/lib/rates/ticker';
 
 /**
@@ -38,8 +38,15 @@ export default async function RateTicker() {
     );
   }
 
-  const stamp = settings.showTimestamp && asOnDate ? `as on ${formatAsOn(asOnDate)}` : null;
-  const items = <Items rates={shown} stamp={stamp} message={settings.message} theme={theme} />;
+  // No timestamp in the strip.
+  //
+  // A scrolling "as on 22 Aug, 8:39 AM" is noise where nothing is being
+  // committed — and worse, it invites a customer to treat a marquee as the
+  // record of what they were charged. The timestamped rate stays exactly where
+  // it decides a dispute: the price breakup on the product page, and the frozen
+  // snapshot written onto the order. `asOnDate` is still read above, because
+  // refusing to show a stale rate at all is a separate and more important job.
+  const items = <Items rates={shown} message={settings.message} theme={theme} />;
 
   return (
     <div className={cn('h-9', theme.bar)}>
@@ -66,10 +73,9 @@ export default async function RateTicker() {
 }
 
 function Items({
-  rates, stamp, message, theme,
+  rates, message, theme,
 }: {
   rates: TickerRate[];
-  stamp: string | null;
   message: string | null;
   theme: ReturnType<typeof tickerBackground>;
 }) {
@@ -89,14 +95,6 @@ function Items({
           <span className={cn('font-medium', theme.strong)}>{formatCurrency(r.ratePerGram)}/g</span>
         </span>
       ))}
-      {stamp && (
-        // The timestamp travels with the rates rather than sitting in a corner:
-        // whichever part of the strip is on screen, the time it was set is next
-        // to it. A rate without a time is a customer dispute waiting to happen.
-        <span className={cn('whitespace-nowrap px-5 text-[0.65rem] tracking-[0.1em] uppercase', theme.muted)}>
-          {stamp}
-        </span>
-      )}
     </>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils/cn';
 import { getWheelOffer, spinAction, dismissWheel, type WheelOffer } from '@/lib/spin/actions';
 import type { PublicSegment } from '@/lib/spin';
@@ -27,6 +27,7 @@ type Phase = 'idle' | 'spinning' | 'result';
 
 export default function SpinWheel() {
   const pathname = usePathname();
+  const router = useRouter();
   const [fetched, setFetched] = useState<WheelOffer | null>(null);
   /**
    * The offer as it was when the wheel opened.
@@ -45,6 +46,7 @@ export default function SpinWheel() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ label: string; won: boolean; code?: string; terms?: string } | null>(null);
   const [rotation, setRotation] = useState(0);
+  const [copied, setCopied] = useState(false);
 
   const dialogRef = useRef<HTMLDivElement>(null);
   const openerFocus = useRef<Element | null>(null);
@@ -164,6 +166,39 @@ export default function SpinWheel() {
     if (remember === 'dismissed') void dismissWheel().then(notifyCookieChange);
     else if (remember === 'done') notifyCookieChange();
   }, [reveal]);
+
+  /**
+   * The one way out of a finished spin.
+   *
+   * Marks the wheel done — so it never reappears for somebody who has already
+   * had their turn — and only then navigates. Both the winning and losing
+   * branches call this; they each had their own exit before, and the winning
+   * one forgot to close at all.
+   */
+  const finish = useCallback((href?: string) => {
+    close('done');
+    if (href) router.push(href);
+  }, [close, router]);
+
+  /**
+   * Put the code on the clipboard.
+   *
+   * `navigator.clipboard` is unavailable on an insecure origin and can be
+   * refused outright, so a failure leaves the button as it was rather than
+   * claiming a copy that did not happen — the code is still on screen and still
+   * selectable.
+   */
+  const copyCode = useCallback(() => {
+    const code = result?.code;
+    if (!code) return;
+    void navigator.clipboard?.writeText(code).then(
+      () => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 2000);
+      },
+      () => { /* left as "Copy code" — nothing was copied */ }
+    );
+  }, [result]);
 
   // ── Focus trap, Escape, and scroll lock while open ────────────────────────
   useEffect(() => {
@@ -339,7 +374,7 @@ export default function SpinWheel() {
             <div className="mt-5">
               {result?.won ? (
                 <>
-                  <p className="text-sm text-ink-soft">{result.label}</p>
+                  <p className={cn('text-sm', dark ? 'text-paper/70' : 'text-ink-soft')}>{result.label}</p>
                   {/* Focused on arrival: the input that had focus is gone, and
                       without this a keyboard user lands back at the top of the
                       document with no idea a code was awarded. `tabIndex={-1}`
@@ -352,10 +387,38 @@ export default function SpinWheel() {
                   >
                     {result.code}
                   </p>
-                  <p className="mt-2 text-xs text-ink-soft">{result.terms}</p>
-                  <Link href="/c/new-arrivals" className="btn-primary mt-5 inline-flex w-full justify-center">
+                  {/* Copy before you leave.
+                      The code is the only thing the customer walks away with, and
+                      on a phone selecting 10 characters out of a modal that is
+                      about to close is a poor last chance. */}
+                  <button
+                    type="button"
+                    onClick={copyCode}
+                    className={cn(
+                      'mt-2 text-xs underline decoration-line-strong underline-offset-4 hover:text-brass',
+                      dark ? 'text-paper/70' : 'text-ink-soft'
+                    )}
+                  >
+                    {copied ? 'Copied' : 'Copy code'}
+                  </button>
+                  <p className={cn('mt-2 text-xs', dark ? 'text-paper/70' : 'text-ink-soft')}>{result.terms}</p>
+                  <p className={cn('mt-1 text-xs', dark ? 'text-paper/60' : 'text-ink-soft')}>
+                    Saved to your account — you can find it again under My Account.
+                  </p>
+
+                  {/* Both outcomes leave through `finish`.
+                      This used to be a plain `<Link>`, which navigated without
+                      ever calling `close()` — so the dialog stayed mounted and,
+                      worse, the `done` cookie was never written and the wheel
+                      could reappear for somebody who had already spun and been
+                      issued a coupon. */}
+                  <button
+                    type="button"
+                    onClick={() => finish('/c/new-arrivals')}
+                    className="btn-primary mt-5 inline-flex w-full justify-center"
+                  >
                     Start shopping
-                  </Link>
+                  </button>
                 </>
               ) : (
                 <>
@@ -363,7 +426,7 @@ export default function SpinWheel() {
                       prize would make the wheel a formality, which is exactly
                       what the losing segment is there to avoid. */}
                   <p className={cn('text-sm', dark ? 'text-paper/70' : 'text-ink-soft')}>{look.loseMessage}</p>
-                  <button onClick={() => close('done')} className="btn-outline mt-5 w-full">Close</button>
+                  <button onClick={() => finish()} className="btn-outline mt-5 w-full">Close</button>
                 </>
               )}
             </div>

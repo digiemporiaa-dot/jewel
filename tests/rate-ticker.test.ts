@@ -204,3 +204,43 @@ describe('reading a stored row', () => {
     expect(s.message).toBeNull();
   });
 });
+
+describe('the strip carries the rate, not a timestamp', () => {
+  it('no longer offers a timestamp toggle in the admin form', async () => {
+    // A control that changed nothing would be the same lie the campaign
+    // switches used to tell, so it was removed rather than left inert.
+    const { readFileSync } = await import('node:fs');
+    const form = readFileSync('app/admin/(protected)/rates/TickerSettingsForm.tsx', 'utf8');
+    expect(form).not.toContain('name="showTimestamp"');
+  });
+
+  it('does not render a timestamp in the marquee', async () => {
+    // Asserted against what the component imports and renders, not against
+    // prose — an earlier version of this test matched the explanatory comment
+    // that says why the timestamp went away, and passed only until that comment
+    // was written.
+    const { readFileSync } = await import('node:fs');
+    const ticker = readFileSync('components/layout/RateTicker.tsx', 'utf8');
+    expect(ticker, 'formatAsOn is no longer called here').not.toMatch(/\bformatAsOn\(/);
+    expect(ticker, 'formatAsOn is no longer imported here').not.toMatch(/import[\s\S]*?formatAsOn[\s\S]*?from/);
+    expect(ticker, 'no stamp is interpolated into the strip').not.toContain('{stamp}');
+    expect(ticker, 'the Items row takes no stamp').not.toMatch(/stamp[?]?:\s*string/);
+  });
+
+  it('still refuses to show a stale rate', async () => {
+    // Independent of the stamp and more important than it: every price on the
+    // site derives from these numbers.
+    const { readFileSync } = await import('node:fs');
+    const ticker = readFileSync('components/layout/RateTicker.tsx', 'utf8');
+    expect(ticker).toContain('isStale');
+  });
+
+  it('keeps the timestamped rate where a dispute is actually settled', async () => {
+    // The product price breakup. This is the one a customer arguing about what
+    // rate they were charged is answered by.
+    const { readFileSync } = await import('node:fs');
+    const breakup = readFileSync('app/(storefront)/p/[slug]/PriceBreakup.tsx', 'utf8');
+    expect(breakup).toContain('Rate as of');
+    expect(breakup).toContain('Metal rate used');
+  });
+});
