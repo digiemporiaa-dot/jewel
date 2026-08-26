@@ -18,13 +18,23 @@ import { rememberAddress } from '@/lib/addresses';
 
 // ── OTP ──────────────────────────────────────────────────────────────────────
 
-export async function sendCheckoutOtp(phone: string): Promise<{ ok: boolean; error?: string; devCode?: string }> {
-  const parsed = phoneSchema.safeParse(phone);
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid phone' };
+/**
+ * Signing in at checkout, and on the account page.
+ *
+ * The code goes to the **email address**, not the phone. Email is the verified
+ * identifier now; the phone is collected on the order form and stored
+ * unverified. Nothing here sends an SMS, and nothing will until `OTP_CHANNELS`
+ * includes phone.
+ */
+const otpEmailSchema = z.string().trim().toLowerCase().email('Enter a valid email address').max(160);
+
+export async function sendCheckoutOtp(email: string): Promise<{ ok: boolean; error?: string; devCode?: string }> {
+  const parsed = otpEmailSchema.safeParse(email);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid email' };
 
   // Rate limit per IP and per destination — OTP is the most abusable surface.
   const ip = await getClientIp();
-  for (const key of [`otp:send:ip:${ip}`, `otp:send:phone:${parsed.data}`]) {
+  for (const key of [`otp:send:ip:${ip}`, `otp:send:email:${parsed.data}`]) {
     const rl = await checkLimit(key, LIMITS.otpSend);
     if (!rl.allowed) {
       return { ok: false, error: `Too many code requests. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).` };
@@ -35,9 +45,9 @@ export async function sendCheckoutOtp(phone: string): Promise<{ ok: boolean; err
   return res.ok ? { ok: true, devCode: res.devCode } : { ok: false, error: res.error };
 }
 
-export async function verifyCheckoutOtp(phone: string, code: string): Promise<{ ok: boolean; error?: string }> {
-  const parsed = phoneSchema.safeParse(phone);
-  if (!parsed.success) return { ok: false, error: 'Invalid phone' };
+export async function verifyCheckoutOtp(email: string, code: string): Promise<{ ok: boolean; error?: string }> {
+  const parsed = otpEmailSchema.safeParse(email);
+  if (!parsed.success) return { ok: false, error: 'Invalid email' };
   const codeParsed = z.string().trim().regex(/^\d{6}$/).safeParse(code);
   if (!codeParsed.success) return { ok: false, error: 'Enter the 6-digit code' };
 
@@ -49,11 +59,12 @@ export async function verifyCheckoutOtp(phone: string, code: string): Promise<{ 
   const res = await verifyOtp(parsed.data, 'CHECKOUT', codeParsed.data);
   if (!res.ok) return { ok: false, error: res.error };
 
-  // Create or link the customer, then start a session.
+  // Create or link the customer, then start a session. Keyed on the address
+  // because that is what was just proven.
   const customer = await prisma.customer.upsert({
-    where: { phone: parsed.data },
-    create: { phone: parsed.data, phoneVerified: true },
-    update: { phoneVerified: true },
+    where: { email: parsed.data },
+    create: { email: parsed.data, emailVerified: true },
+    update: { emailVerified: true },
   });
   await setCustomerSession(customer.id);
   return { ok: true };
@@ -96,7 +107,19 @@ export async function placeOrder(input: unknown): Promise<PlaceResult> {
     // (best-effort — neither may fail a checkout). The comment here promised the
     // address too and only ever saved the name and email, which is why a
     // returning customer retyped their address on every order.
-    prisma.customer.update({ where: { id: customerId }, data: { name: d.contactName, email: d.contactEmail || undefined } }).catch(() => {});
+    // The order form is the other place both identifiers arrive. Written back
+    // so a customer who signed in by email leaves with a phone on their record
+    // — and vice versa for one created before email was required. `phone` is
+    // unique, so a number already held by another record is left alone rather
+    // than failing the order: the admin's missing-fields list is where that
+    // gets chased, not the checkout.
+    prisma.customer
+      .update({ where: { id: customerId }, data: { name: d.contactName, email: d.contactEmail, phone: d.contactPhone } })
+      .catch(() =>
+        prisma.customer
+          .update({ where: { id: customerId }, data: { name: d.contactName, email: d.contactEmail } })
+          .catch(() => {})
+      );
     void rememberAddress(customerId, {
       name: d.contactName,
       phone: d.contactPhone,

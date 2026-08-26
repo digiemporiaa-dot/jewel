@@ -27,7 +27,7 @@ export default async function SignupPage() {
           customer
             ? {
                 name: customer.name ?? '',
-                email: customer.email ?? '',
+                phone: customer.phone ?? '',
                 dob: toDateInput(customer.dob),
                 gender: customer.gender ?? '',
                 anniversary: toDateInput(customer.anniversary),
@@ -38,7 +38,7 @@ export default async function SignupPage() {
         heading={customer ? 'Complete your details' : 'Create your account'}
         intro={
           customer
-            ? 'Your mobile number is already verified. A few more details and you are done.'
+            ? 'Your email address is already verified. A few more details and you are done.'
             : 'One minute, and your orders, addresses and offers are all in one place.'
         }
       />

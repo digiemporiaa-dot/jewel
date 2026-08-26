@@ -21,11 +21,11 @@ export type SavedAddressOption = {
 };
 
 export default function CheckoutClient({
-  summary, lines, verifiedPhone, panRequired, codAllowed, brandName, analyticsItems,
+  summary, lines, verifiedEmail, panRequired, codAllowed, brandName, analyticsItems,
   savedAddresses, customerName,
 }: {
   summary: SummaryTotals; lines: SummaryLine[];
-  verifiedPhone: string | null; panRequired: boolean; codAllowed: boolean; brandName: string;
+  verifiedEmail: string | null; panRequired: boolean; codAllowed: boolean; brandName: string;
   analyticsItems: EventItem[];
   /** Addresses this customer has already saved, default first. */
   savedAddresses: SavedAddressOption[];
@@ -44,9 +44,9 @@ export default function CheckoutClient({
 
   // Contact + OTP
   const [name, setName] = useState(preset?.name ?? customerName ?? '');
-  const [phone, setPhone] = useState(verifiedPhone ?? '');
+  const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [verified, setVerified] = useState(!!verifiedPhone);
+  const [verified, setVerified] = useState(!!verifiedEmail);
   const [otpSent, setOtpSent] = useState(false);
   const [otp, setOtp] = useState('');
   const [devCode, setDevCode] = useState<string | null>(null);
@@ -61,7 +61,7 @@ export default function CheckoutClient({
   function applySavedAddress(saved: SavedAddressOption) {
     setAddressId(saved.id);
     setName(saved.name);
-    if (!verifiedPhone) setPhone(saved.phone);
+    setPhone(saved.phone);
     setAddr({ line1: saved.line1, line2: saved.line2 ?? '', city: saved.city, state: saved.state, pincode: saved.pincode });
   }
   const [pan, setPan] = useState('');
@@ -107,7 +107,7 @@ export default function CheckoutClient({
   function sendCode() {
     setError(null);
     start(async () => {
-      const res = await sendCheckoutOtp(phone);
+      const res = await sendCheckoutOtp(email);
       if (res.ok) { setOtpSent(true); setDevCode(res.devCode ?? null); }
       else setError(res.error ?? 'Could not send code');
     });
@@ -115,7 +115,7 @@ export default function CheckoutClient({
   function verify() {
     setError(null);
     start(async () => {
-      const res = await verifyCheckoutOtp(phone, otp);
+      const res = await verifyCheckoutOtp(email, otp);
       if (res.ok) setVerified(true);
       else setError(res.error ?? 'Invalid code');
     });
@@ -178,15 +178,25 @@ export default function CheckoutClient({
       <div className="space-y-6">
         {/* Contact */}
         <Section step="1" title="Contact & verification">
-          <div className="grid sm:grid-cols-2 gap-3">
-            <Input label="Full name" value={name} onChange={setName} />
-            <Input label="Email (for confirmation)" value={email} onChange={setEmail} type="email" />
-          </div>
+          <Input label="Full name" value={name} onChange={setName} />
+          {/* The code goes here. Email is the identifier that gets verified;
+              the number below is how the courier reaches you, and nothing
+              sends a code to it. */}
           <div className="flex gap-2 items-end mt-3">
-            <Input label="Mobile number" value={phone} onChange={(v) => { setPhone(v); setVerified(false); setOtpSent(false); }} disabled={verified} className="flex-1" />
-            {!verified && <button onClick={sendCode} disabled={pending || phone.length < 10} className="btn-outline text-xs h-[42px]">{otpSent ? 'Resend' : 'Send OTP'}</button>}
+            <Input
+              label="Email address"
+              value={email}
+              onChange={(v) => { setEmail(v); setVerified(false); setOtpSent(false); }}
+              type="email"
+              disabled={verified}
+              className="flex-1"
+            />
+            {!verified && <button onClick={sendCode} disabled={pending || !email.includes('@')} className="btn-outline text-xs h-[42px]">{otpSent ? 'Resend' : 'Send OTP'}</button>}
           </div>
-          {verified && <p className="text-xs text-velvet mt-1">✓ Phone verified</p>}
+          {verified && <p className="text-xs text-velvet mt-1">✓ Email verified</p>}
+          <div className="mt-3">
+            <Input label="Mobile number (for delivery)" value={phone} onChange={setPhone} />
+          </div>
           {otpSent && !verified && (
             <div className="mt-3 flex gap-2 items-end">
               <Input label="Enter OTP" value={otp} onChange={setOtp} className="flex-1" />

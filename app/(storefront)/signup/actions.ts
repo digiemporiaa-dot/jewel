@@ -13,57 +13,61 @@ import { sendWelcome } from '@/lib/email/notifications';
 /**
  * Signing up.
  *
- * Two steps, in this order and not the other one: verify the phone, then take
- * the details. The number is the identity key for every order, coupon and spin
- * in the system, so it is proven before anything is attached to it — and a
- * shopper who abandons after the OTP has cost the shop one SMS rather than
- * leaving an unverified profile lying around claiming a number.
+ * Two steps, in this order and not the other one: verify the **email**, then
+ * take the details. The address is the identity key — it is what signs a
+ * customer back in — so it is proven before anything is attached to it, and a
+ * shopper who abandons after the code leaves no unverified profile claiming an
+ * address that is not theirs.
+ *
+ * The mobile number is required in step two and stored unverified. Nothing
+ * confirms it until `OTP_CHANNELS` includes phone, which is why it is validated
+ * hard on the way in — see lib/validations/phone.ts.
  */
 
-const phoneSchema = z.string().trim().regex(/^[6-9]\d{9}$/, 'Enter a 10-digit Indian mobile number');
+const emailSchema = z.string().trim().toLowerCase().email('Enter a valid email address').max(160);
 const codeSchema = z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit code');
 
 export type OtpResult = { ok: boolean; error?: string; devCode?: string };
 
-export async function sendSignupOtp(phone: string): Promise<OtpResult> {
-  const parsed = phoneSchema.safeParse(phone);
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid phone' };
+export async function sendSignupOtp(email: string): Promise<OtpResult> {
+  const parsed = emailSchema.safeParse(email);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Invalid email' };
 
-  // Per-IP and per-destination, like every other OTP entry point. Sending an SMS
-  // costs money and lands on somebody's phone, so an open one is both a bill and
-  // a way to harass a stranger.
+  // Per-IP and per-destination, like every other OTP entry point. A code lands
+  // in somebody's inbox, so an open endpoint is a way to harass a stranger and
+  // a fast route to the sending domain's reputation.
   const ip = await getClientIp();
-  for (const key of [`otp:send:ip:${ip}`, `otp:send:phone:${parsed.data}`]) {
+  for (const key of [`otp:send:ip:${ip}`, `otp:send:email:${parsed.data}`]) {
     const rl = await checkLimit(key, LIMITS.otpSend);
     if (!rl.allowed) {
       return { ok: false, error: `Too many code requests. Try again in ${Math.ceil(rl.retryAfterSeconds / 60)} minute(s).` };
     }
   }
 
-  const res = await sendOtp(parsed.data, 'PHONE_VERIFY');
+  const res = await sendOtp(parsed.data, 'EMAIL_VERIFY');
   return res.ok ? { ok: true, devCode: res.devCode } : { ok: false, error: res.error };
 }
 
-export async function verifySignupOtp(phone: string, code: string): Promise<OtpResult> {
-  const parsedPhone = phoneSchema.safeParse(phone);
-  if (!parsedPhone.success) return { ok: false, error: 'Invalid phone' };
+export async function verifySignupOtp(email: string, code: string): Promise<OtpResult> {
+  const parsedEmail = emailSchema.safeParse(email);
+  if (!parsedEmail.success) return { ok: false, error: 'Invalid email' };
   const parsedCode = codeSchema.safeParse(code);
   if (!parsedCode.success) return { ok: false, error: parsedCode.error.issues[0]?.message ?? 'Invalid code' };
 
   const ip = await getClientIp();
-  const rl = await checkLimit(`otp:verify:${ip}:${parsedPhone.data}`, LIMITS.otpVerify);
+  const rl = await checkLimit(`otp:verify:${ip}:${parsedEmail.data}`, LIMITS.otpVerify);
   if (!rl.allowed) return { ok: false, error: 'Too many attempts. Please request a new code shortly.' };
 
-  const res = await verifyOtp(parsedPhone.data, 'PHONE_VERIFY', parsedCode.data);
+  const res = await verifyOtp(parsedEmail.data, 'EMAIL_VERIFY', parsedCode.data);
   if (!res.ok) return { ok: false, error: res.error };
 
-  // An existing record is reused rather than refused. Someone who has ordered as
-  // a guest already has a row keyed on this number; signing up should fill that
-  // row in, not collide with it or start a second history beside it.
+  // An existing record is reused rather than refused. Someone who gave this
+  // address at checkout already has a row; verifying it should sign them into
+  // that row, not start a second history beside it.
   const customer = await prisma.customer.upsert({
-    where: { phone: parsedPhone.data },
-    create: { phone: parsedPhone.data, phoneVerified: true },
-    update: { phoneVerified: true },
+    where: { email: parsedEmail.data },
+    create: { email: parsedEmail.data, emailVerified: true },
+    update: { emailVerified: true },
   });
   await setCustomerSession(customer.id);
   return { ok: true };
@@ -96,7 +100,10 @@ export async function completeSignup(raw: unknown): Promise<SignupResult> {
     if (!rl.allowed) return { ok: false, error: 'Too many attempts. Please wait a moment and try again.' };
   }
 
-  const parsed = signupSchema.omit({ phone: true }).safeParse(raw);
+  // Email is omitted, not submitted: it is the verified identity on the session
+  // and must not be re-read from a request body. The phone is the opposite —
+  // required here, and the only field in the form nothing has proven.
+  const parsed = signupSchema.omit({ email: true }).safeParse(raw);
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     const field = issue?.path[0];
@@ -104,7 +111,7 @@ export async function completeSignup(raw: unknown): Promise<SignupResult> {
       ok: false,
       error: issue?.message ?? 'Please check the form',
       field:
-        field === 'email' || field === 'dob' || field === 'anniversary' || field === 'gender'
+        field === 'phone' || field === 'dob' || field === 'anniversary' || field === 'gender'
           ? field
           : undefined,
     };
@@ -112,13 +119,13 @@ export async function completeSignup(raw: unknown): Promise<SignupResult> {
 
   const customer = await prisma.customer.findFirst({
     where: { id: customerId, deletedAt: null },
-    select: { phone: true },
+    select: { email: true },
   });
-  if (!customer) return { ok: false, error: 'Verify your mobile number first.' };
+  if (!customer?.email) return { ok: false, error: 'Verify your email address first.' };
 
   const result = await saveCustomerProfile({
     customerId,
-    input: { ...parsed.data, phone: customer.phone },
+    input: { ...parsed.data, email: customer.email },
   });
 
   // Fire-and-forget: a welcome email that fails to send must not fail the

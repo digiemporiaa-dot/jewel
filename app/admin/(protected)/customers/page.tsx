@@ -5,14 +5,15 @@ import { formatDate } from '@/lib/utils/format';
 import PageHeader from '@/components/admin/PageHeader';
 import ArchiveToggle from '@/components/admin/ArchiveToggle';
 import { Gender } from '@prisma/client';
-import { GENDER_LABELS, GENDERS } from '@/lib/validations/signup';
+import { GENDER_LABELS, GENDERS, GAP_LABELS, profileGaps } from '@/lib/validations/signup';
+import { formatIndianMobile } from '@/lib/validations/phone';
 
 export const dynamic = 'force-dynamic';
 
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; page?: string; deleted?: string; gender?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; deleted?: string; gender?: string; incomplete?: string }>;
 }) {
   await requirePermission('customers.view');
   const sp = await searchParams;
@@ -20,7 +21,8 @@ export default async function CustomersPage({
   // Validated against the enum rather than passed through: a query string is
   // caller-supplied, and Prisma would throw on anything that is not a member.
   const gender = parseGenderFilter(sp.gender);
-  const result = await listCustomers({ q: sp.q, page: sp.page ? Number(sp.page) : 1, deleted, gender });
+  const incomplete = sp.incomplete === '1';
+  const result = await listCustomers({ q: sp.q, page: sp.page ? Number(sp.page) : 1, deleted, gender, incomplete });
 
   return (
     <div>
@@ -47,6 +49,14 @@ export default async function CustomersPage({
               trying to reach — not an absence to hide. */}
           <option value="UNKNOWN">Not recorded</option>
         </select>
+        {/* Both identifiers are required by every form now, so a row missing one
+            was created before the rule — by the old phone-only checkout, or by
+            the wheel, which asks for a number and nothing else. This is the
+            list to chase, so it gets a control rather than a saved query. */}
+        <label className="flex items-center gap-2 px-2 text-xs text-ink-soft">
+          <input type="checkbox" name="incomplete" value="1" defaultChecked={incomplete} />
+          Missing email or phone
+        </label>
         <button className="btn-outline text-xs">Search</button>
       </form>
 
@@ -73,7 +83,12 @@ export default async function CustomersPage({
                   <td className="px-4 py-2">
                     <Link href={`/admin/customers/${c.id}`} className="font-medium hover:text-brass">{c.name ?? 'Guest customer'}</Link>
                   </td>
-                  <td className="px-4 py-2 text-ink-soft">{c.phone}{c.email ? <div className="text-xs">{c.email}</div> : null}</td>
+                  <td className="px-4 py-2 text-ink-soft">
+                    {/* Stored as ten digits, shown the way it is written. */}
+                    <div>{c.phone ? formatIndianMobile(c.phone) : <MissingValue>No phone</MissingValue>}</div>
+                    <div className="text-xs">{c.email ?? <MissingValue>No email</MissingValue>}</div>
+                    <MissingBadges customer={c} />
+                  </td>
                   <td className="px-4 py-2 text-ink-soft">{c.gender ? GENDER_LABELS[c.gender] : '—'}</td>
                   <td className="px-4 py-2">{c._count.orders}</td>
                   <td className="px-4 py-2 text-ink-soft">{formatDate(c.createdAt)}</td>
@@ -108,4 +123,34 @@ function parseGenderFilter(value: string | undefined): Gender | 'UNKNOWN' | unde
   if (!value) return undefined;
   if (value === 'UNKNOWN') return 'UNKNOWN';
   return (GENDERS as readonly string[]).includes(value) ? (value as Gender) : undefined;
+}
+
+/** A field the record does not have, said plainly rather than left as a dash. */
+function MissingValue({ children }: { children: React.ReactNode }) {
+  return <span className="text-brass">{children}</span>;
+}
+
+/**
+ * What is still missing from this record.
+ *
+ * Shown on the row rather than only behind the filter, so the gap is visible
+ * to whoever is already looking at the customer instead of only to whoever
+ * thought to go looking for gaps.
+ */
+function MissingBadges({
+  customer,
+}: {
+  customer: { name: string | null; email: string | null; phone: string | null; dob: Date | null; gender: Gender | null };
+}) {
+  const gaps = profileGaps(customer).filter((g) => g !== 'email' && g !== 'phone');
+  if (gaps.length === 0) return null;
+  return (
+    <div className="mt-1 flex flex-wrap gap-1">
+      {gaps.map((g) => (
+        <span key={g} className="border border-line px-1.5 py-0.5 text-[0.6rem] text-ink-soft">
+          no {GAP_LABELS[g].replace(/^your /, '').replace(/^how you would like to be addressed$/, 'gender')}
+        </span>
+      ))}
+    </div>
+  );
 }

@@ -15,20 +15,13 @@ export interface SmsProvider {
 }
 
 /**
- * Indian mobile numbers reach the gateway as 91XXXXXXXXXX. Input may arrive as
- * "9876543210", "+91 98765 43210" or "09876543210", so everything non-numeric is
- * stripped before the country code is applied.
+ * Indian mobile numbers reach the gateway as 91XXXXXXXXXX.
+ *
+ * Re-exported rather than defined here. The identical rule now has to run in a
+ * browser as well — the signup form validates a phone before it is submitted,
+ * and this module is `server-only` — so the implementation moved to
+ * `lib/validations/phone.ts` and both sides import the one copy. The export
+ * stays on this module because `lib/otp.ts` and the gateway clients import it
+ * from here, and there was no reason to make them move too.
  */
-export function normalizeIndianMobile(input: string): string | null {
-  const digits = String(input ?? '').replace(/\D/g, '');
-  if (digits.length === 10) return /^[6-9]/.test(digits) ? `91${digits}` : null;
-  if (digits.length === 11 && digits.startsWith('0')) {
-    const rest = digits.slice(1);
-    return /^[6-9]/.test(rest) ? `91${rest}` : null;
-  }
-  if (digits.length === 12 && digits.startsWith('91')) {
-    const rest = digits.slice(2);
-    return /^[6-9]/.test(rest) ? digits : null;
-  }
-  return null;
-}
+export { normalizeIndianMobile } from '@/lib/validations/phone';

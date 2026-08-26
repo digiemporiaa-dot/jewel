@@ -11,12 +11,17 @@ import { profileGaps } from '@/lib/validations/signup';
  * form — so an incomplete profile must never stand between somebody and an
  * order. These assertions are the guard rail: they fail the moment a required
  * profile field is added to the checkout path.
+ *
+ * The line moved once, deliberately. **Email and phone are now required here**
+ * — they are the identifier a customer signs back in with and the number a
+ * courier calls, both of which checkout genuinely needs. Gender, date of birth
+ * and anniversary are still refused, and that is what these tests defend.
  */
 
 const VALID_CHECKOUT = {
   contactName: 'Ananya Sharma',
   contactPhone: '9810012345',
-  contactEmail: '',
+  contactEmail: 'ananya@example.com',
   pan: '',
   couponCode: '',
   paymentMethod: 'RAZORPAY' as const,
@@ -37,9 +42,24 @@ describe('checkout asks for phone and address, and nothing else', () => {
     expect(placeOrderSchema.safeParse(VALID_CHECKOUT).success).toBe(true);
   });
 
-  it('accepts an order with no email either', () => {
-    // Email is required to complete a *profile*, not to buy something.
-    expect(placeOrderSchema.safeParse({ ...VALID_CHECKOUT, contactEmail: '' }).success).toBe(true);
+  it('now requires an email, because that is how the customer signs back in', () => {
+    // This assertion used to say the opposite. Email became the verified
+    // identifier, so an order with no address leaves a customer who cannot get
+    // back into the account the order is attached to.
+    expect(placeOrderSchema.safeParse({ ...VALID_CHECKOUT, contactEmail: '' }).success).toBe(false);
+  });
+
+  it('requires a phone that could actually be dialled', () => {
+    // Nothing verifies it, so the shape check is the only thing between a typo
+    // and a courier calling a stranger.
+    for (const bad of ['', '1234567890', '9999999999', '9876543210', '98100']) {
+      expect(placeOrderSchema.safeParse({ ...VALID_CHECKOUT, contactPhone: bad }).success, bad).toBe(false);
+    }
+  });
+
+  it('stores the phone as the ten digits everything else looks it up by', () => {
+    const parsed = placeOrderSchema.safeParse({ ...VALID_CHECKOUT, contactPhone: '+91 98100 12345' });
+    expect(parsed.success && parsed.data.contactPhone).toBe('9810012345');
   });
 
   it('has no profile fields in its schema at all', () => {

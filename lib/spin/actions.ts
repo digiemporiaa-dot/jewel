@@ -9,6 +9,7 @@ import { getCustomerId } from '@/lib/customer-session';
 import { activeCampaign, publicSegments, spin, type SpinOutcome, type PublicSegment } from '@/lib/spin';
 import type { ResolvedPresentation } from '@/lib/spin/segments';
 import { SPIN_COOKIE, cookieMaxAgeSeconds, isSuppressedPath, type SpinCookieState } from '@/lib/spin/display';
+import { phoneField } from '@/lib/validations/phone';
 
 /**
  * The wheel's server side.
@@ -20,7 +21,17 @@ import { SPIN_COOKIE, cookieMaxAgeSeconds, isSuppressedPath, type SpinCookieStat
  * of how it would be discovered and the reverse order of how much it costs.
  */
 
-const phoneSchema = z.string().trim().regex(/^[6-9]\d{9}$/, 'Enter a 10-digit Indian mobile number');
+/**
+ * The shared rule. The wheel mints a coupon bound to this number and a courier
+ * never calls it, but a junk number here still buys a prize nobody can claim
+ * and leaves a customer row that has to be chased.
+ *
+ * The wheel still identifies a customer by phone alone — it asks for nothing
+ * else, and adding an email box to a pop-up is a different decision from
+ * requiring one on a form somebody chose to fill in. Rows it creates therefore
+ * show up in the admin's missing-details list, which is what that list is for.
+ */
+const phoneSchema = phoneField;
 
 export type WheelOffer =
   | { available: false }

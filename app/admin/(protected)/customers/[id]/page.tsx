@@ -117,7 +117,8 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
 
           <CustomerRemoval
             id={customer.id}
-            phone={customer.phone}
+            // Whichever identifier this record has. See `confirmationHandle`.
+            phone={customer.phone ?? customer.email ?? ''}
             orderCount={customer.orders.length}
             deletedAt={customer.deletedAt?.toISOString() ?? null}
             anonymisedAt={customer.anonymisedAt?.toISOString() ?? null}

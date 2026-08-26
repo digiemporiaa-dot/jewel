@@ -9,16 +9,16 @@ import {
   GENDERS, GENDER_LABELS, type Gender,
 } from '@/lib/validations/signup';
 
-type Step = 'phone' | 'code' | 'details' | 'done';
+type Step = 'email' | 'code' | 'details' | 'done';
 
 export default function SignupForm({
   initial,
   heading = 'Create your account',
   intro = 'One minute, and your orders, addresses and offers are all in one place.',
 }: {
-  /** Set when the phone is already verified — the account page's prompt. */
+  /** Set when the email is already verified — the account page's prompt. */
   initial?: {
-    name: string; email: string; dob: string; anniversary: string;
+    name: string; phone: string; dob: string; anniversary: string;
     gender: Gender | ''; marketingOptIn: boolean;
   } | null;
   heading?: string;
@@ -26,8 +26,8 @@ export default function SignupForm({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [step, setStep] = useState<Step>(initial ? 'details' : 'phone');
-  const [phone, setPhone] = useState('');
+  const [step, setStep] = useState<Step>(initial ? 'details' : 'email');
+  const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [devCode, setDevCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +36,7 @@ export default function SignupForm({
 
   const [form, setForm] = useState({
     name: initial?.name ?? '',
-    email: initial?.email ?? '',
+    phone: initial?.phone ?? '',
     dob: initial?.dob ?? '',
     // Empty rather than a pre-selected option: defaulting to one would record an
     // answer the customer never gave, on a field a record may legitimately lack.
@@ -58,7 +58,7 @@ export default function SignupForm({
   function send() {
     setError(null);
     start(async () => {
-      const res = await sendSignupOtp(phone);
+      const res = await sendSignupOtp(email);
       if (res.ok) { setStep('code'); setDevCode(res.devCode ?? null); }
       else setError(res.error ?? 'Could not send the code');
     });
@@ -67,7 +67,7 @@ export default function SignupForm({
   function verify() {
     setError(null);
     start(async () => {
-      const res = await verifySignupOtp(phone, code);
+      const res = await verifySignupOtp(email, code);
       if (res.ok) setStep('details');
       else setError(res.error ?? 'Incorrect code');
     });
@@ -116,16 +116,16 @@ export default function SignupForm({
 
       {step !== 'details' && (
         <div className="mt-6 space-y-3">
-          <L label="Mobile number" hint="We send a one-time code to confirm it is yours.">
+          <L label="Email address" hint="We send a one-time code to confirm it is yours. This is how you sign in.">
             <input
-              inputMode="numeric" autoComplete="tel" value={phone} disabled={step === 'code'}
-              onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+              type="email" autoComplete="email" value={email} disabled={step === 'code'}
+              onChange={(e) => setEmail(e.target.value)}
               className="s-inp disabled:bg-paper-2"
             />
           </L>
 
-          {step === 'phone' ? (
-            <button onClick={send} disabled={pending || phone.length !== 10} className="btn-primary w-full">
+          {step === 'email' ? (
+            <button onClick={send} disabled={pending || !email.includes('@')} className="btn-primary w-full">
               {pending ? 'Sending…' : 'Send code'}
             </button>
           ) : (
@@ -141,8 +141,8 @@ export default function SignupForm({
               <button onClick={verify} disabled={pending || code.length !== 6} className="btn-primary w-full">
                 {pending ? 'Checking…' : 'Verify'}
               </button>
-              <button onClick={() => { setStep('phone'); setCode(''); }} disabled={pending} className="w-full text-xs text-ink-soft underline underline-offset-4">
-                Change number
+              <button onClick={() => { setStep('email'); setCode(''); }} disabled={pending} className="w-full text-xs text-ink-soft underline underline-offset-4">
+                Change address
               </button>
             </>
           )}
@@ -158,10 +158,13 @@ export default function SignupForm({
             />
           </L>
 
-          <L label="Email address" invalid={fieldError === 'email'}>
+          {/* Required, and the one field on this form nothing verifies. It is
+              how a courier reaches you, so it is checked hard on the server —
+              see lib/validations/phone.ts. */}
+          <L label="Mobile number" hint="For delivery updates. We do not send a code to it." invalid={fieldError === 'phone'}>
             <input
-              required type="email" autoComplete="email" value={form.email}
-              onChange={(e) => set('email', e.target.value)} className="s-inp"
+              required inputMode="numeric" autoComplete="tel" value={form.phone}
+              onChange={(e) => set('phone', e.target.value)} className="s-inp"
             />
           </L>
 

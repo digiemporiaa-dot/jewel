@@ -138,6 +138,15 @@ export async function listCustomers(params: {
   deleted?: boolean;
   /** `'UNKNOWN'` selects the records that predate the profile form. */
   gender?: Gender | 'UNKNOWN';
+  /**
+   * Only the records missing an email or a phone.
+   *
+   * Both are required by every form now, so a row without one was made before
+   * the rule existed — by the old phone-only checkout, or by the spin wheel,
+   * which asks for a number and nothing else. This is the list to work through,
+   * not a filter that happens to exist.
+   */
+  incomplete?: boolean;
 }) {
   const page = Math.max(1, params.page ?? 1);
   const size = 20;
@@ -147,6 +156,11 @@ export async function listCustomers(params: {
     // "Not recorded" is a segment worth having, not an absence to hide: it is
     // exactly the list of customers the profile prompt is trying to reach.
     where.gender = params.gender === 'UNKNOWN' ? null : params.gender;
+  }
+  if (params.incomplete) {
+    // AND, not OR, with whatever else is filtering: a null email and a null
+    // phone are both "missing", and either one puts the row on the list.
+    where.AND = [{ OR: [{ email: null }, { phone: null }] }];
   }
   if (params.q) {
     where.OR = [

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { phoneField } from '@/lib/validations/phone';
 
 /**
  * Signing up as a customer, and the consent rules that go with it.
@@ -128,11 +129,20 @@ const dateOnly = (label: string) =>
 
 export const signupSchema = z.object({
   name: z.string().trim().min(2, 'Name is required').max(80),
-  // The identity key. `Customer.phone` is unique and every order, OTP and spin
-  // hangs off it, so it is validated to exactly the shape the SMS provider takes.
-  phone: z.string().trim().regex(/^[6-9]\d{9}$/, 'Enter a 10-digit Indian mobile number'),
-  // Required here, unlike at checkout: without it there is nothing to send a
-  // birthday offer, an order confirmation or a password-free sign-in link to.
+  /**
+   * Required, stored, and — for now — never verified.
+   *
+   * The OTP proves the email; nothing proves this. That is precisely why it goes
+   * through `phoneField` rather than a regex: a shape check would accept
+   * 9999999999 and a courier would eventually dial it. See lib/validations/phone.ts.
+   */
+  phone: phoneField,
+  /**
+   * The login identifier, and the one thing an OTP actually proves.
+   *
+   * Required here and at checkout: without an address there is no way to sign
+   * somebody back in, no order confirmation, and no birthday offer.
+   */
   email: z.string().trim().toLowerCase().email('Enter a valid email address').max(160),
   dob: dateOnly('Date of birth'),
   /**
@@ -185,19 +195,27 @@ export const DATE_PROBLEM_MESSAGES: Record<Exclude<DateFieldProblem, null>, stri
 /**
  * What a customer still has to fill in.
  *
- * Drives the prompt on the account page. Phone is never listed: a customer only
- * has a record at all because a phone number was verified, so it cannot be
- * missing and offering to "complete" it would be nonsense.
+ * Drives the prompt on the account page, and the chase list in the admin.
+ *
+ * Phone is listed now. It used to be excluded on the grounds that a record only
+ * existed because a number had been verified — which stopped being true the
+ * moment email became the identifier. A customer who signs up by email today,
+ * and every customer created by the old checkout who never gave one, can be
+ * missing either side of the pair.
  */
-export type ProfileGap = 'name' | 'email' | 'dob' | 'gender';
+export type ProfileGap = 'name' | 'email' | 'phone' | 'dob' | 'gender';
 
 export function profileGaps(customer: {
   name: string | null;
   email: string | null;
+  phone?: string | null;
   dob: Date | null;
   gender: string | null;
 }): ProfileGap[] {
   const gaps: ProfileGap[] = [];
+  // `phone` is optional on the parameter so callers that genuinely do not
+  // select the column are not forced to claim it is missing.
+  if (customer.phone !== undefined && !customer.phone) gaps.push('phone');
   if (!customer.name?.trim()) gaps.push('name');
   if (!customer.email?.trim()) gaps.push('email');
   if (!customer.dob) gaps.push('dob');
@@ -208,6 +226,7 @@ export function profileGaps(customer: {
 export const GAP_LABELS: Record<ProfileGap, string> = {
   name: 'your name',
   email: 'your email address',
+  phone: 'your mobile number',
   dob: 'your date of birth',
   gender: 'how you would like to be addressed',
 };

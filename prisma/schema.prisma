@@ -250,6 +250,8 @@ enum OtpPurpose {
   LOGIN
   CHECKOUT
   PHONE_VERIFY
+  /// Proving an email address. The one identifier this shop verifies.
+  EMAIL_VERIFY
 }
 
 // ─── Store configuration (resellable / white-label) ──────────────────────────
@@ -533,7 +535,16 @@ model User {
 
 model Customer {
   id             String    @id @default(cuid())
-  phone          String    @unique
+  /// Required by every form and server action, nullable in the column.
+  ///
+  /// Same reasoning as `gender` below. Nothing verifies a phone number until
+  /// `OTP_CHANNELS` includes it, and the records this shop already holds were
+  /// created before the rule existed. A NOT NULL column would either fail the
+  /// migration or force a fabricated number onto a real record — and a
+  /// fabricated phone number is worse than a missing one, because somebody will
+  /// eventually dial it.
+  phone          String?   @unique
+  /// The login identifier, and the only one that is OTP-verified.
   email          String?   @unique
   name           String?
   /// Stays nullable even though the form requires it.
@@ -547,7 +558,13 @@ model Customer {
   dob            DateTime?
   anniversary    DateTime?
   marketingOptIn Boolean   @default(false)
+  /// Stays false for every customer created from now until an SMS route is
+  /// live. Kept rather than dropped: the column is the honest record of which
+  /// numbers were ever actually proven, and the ones verified before the switch
+  /// to email should not lose that.
   phoneVerified  Boolean   @default(false)
+  /// Set when the address behind the login identifier was proven by OTP.
+  emailVerified  Boolean   @default(false)
 
   /// When this customer agreed to the terms and the privacy policy.
   ///

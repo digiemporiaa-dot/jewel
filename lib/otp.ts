@@ -3,6 +3,8 @@ import { createHmac, timingSafeEqual, randomInt } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
 import { getSmsProvider } from '@/lib/sms';
 import { normalizeIndianMobile } from '@/lib/sms/provider';
+import { sendEmail } from '@/lib/email';
+import { isOtpChannelEnabled } from '@/lib/otp-channels';
 import type { OtpPurpose } from '@prisma/client';
 
 /**
@@ -79,7 +81,35 @@ export async function sendOtp(target: string, purpose: OtpPurpose): Promise<Send
     return { ok: true };
   }
 
-  // Only phone targets go to SMS. Email delivery is a separate channel.
+  // Email is the channel that verifies identity. Added alongside the SMS path
+  // rather than in place of it: the phone route below is unchanged and comes
+  // back the day `OTP_CHANNELS` includes it.
+  if (normalized.includes('@')) {
+    if (!isOtpChannelEnabled('email')) {
+      return { ok: false, error: 'Email codes are not switched on.' };
+    }
+    const delivered = await sendEmail({
+      to: normalized,
+      subject: `${code} is your verification code`,
+      html: otpEmailHtml(code),
+      text: `Your verification code is ${code}. It expires in ${OTP_TTL_MINUTES} minutes.`,
+      templateKey: 'otp',
+    });
+    if (!delivered) {
+      // Same reasoning as the SMS branch: a stored code the customer never
+      // received only makes them sit out the resend cooldown for nothing.
+      await prisma.otp.deleteMany({ where: { target: normalized, purpose, consumedAt: null } });
+      return { ok: false, error: 'We could not send the code. Please try again shortly.' };
+    }
+    return { ok: true };
+  }
+
+  // Phone. Held behind the channel switch because nothing delivers an SMS yet,
+  // and a code that cannot arrive strands the customer at the code box rather
+  // than telling them anything.
+  if (!isOtpChannelEnabled('phone')) {
+    return { ok: false, error: 'Codes are sent by email. Please use your email address.' };
+  }
   if (!normalizeIndianMobile(normalized)) {
     return { ok: false, error: 'Enter a valid 10-digit mobile number' };
   }
@@ -93,6 +123,23 @@ export async function sendOtp(target: string, purpose: OtpPurpose): Promise<Send
     return { ok: false, error: sms.error };
   }
   return { ok: true };
+}
+
+/**
+ * The code, and nothing else.
+ *
+ * No links, no branding to click, no unsubscribe: a verification mail that
+ * looks like marketing gets filtered like marketing, and this one has ten
+ * minutes to arrive.
+ */
+function otpEmailHtml(code: string): string {
+  return [
+    '<div style="font-family:Georgia,serif;font-size:16px;color:#161513">',
+    '<p>Your verification code is</p>',
+    `<p style="font-size:32px;letter-spacing:6px;margin:16px 0"><strong>${code}</strong></p>`,
+    `<p style="color:#6b675f;font-size:14px">It expires in ${OTP_TTL_MINUTES} minutes. If you did not ask for it, ignore this email.</p>`,
+    '</div>',
+  ].join('');
 }
 
 export type VerifyOtpResult = { ok: true } | { ok: false; error: string };

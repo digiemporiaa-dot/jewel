@@ -117,8 +117,27 @@ describe('the signup form contract', () => {
   });
 
   it('rejects a phone that is not an Indian mobile', () => {
-    for (const bad of ['1234567890', '98100123', '+919810012345', '5810012345']) {
+    // `+919810012345` is off this list now: twelve digits behind a country code
+    // is a real number written a common way, and `phoneField` accepts it and
+    // normalises it. What stays rejected is anything that could not be dialled.
+    for (const bad of ['1234567890', '98100123', '5810012345', '']) {
       expect(signupSchema.safeParse({ ...valid, phone: bad }).success, bad).toBe(false);
+    }
+  });
+
+  it('rejects the numbers people type to get past a required field', () => {
+    // Nothing verifies this field until OTP_CHANNELS includes phone, so a
+    // placeholder that parses is a courier calling nobody.
+    for (const junk of ['9999999999', '9876543210', '6666666666']) {
+      expect(signupSchema.safeParse({ ...valid, phone: junk }).success, junk).toBe(false);
+    }
+  });
+
+  it('accepts a real number however it was written, and stores ten digits', () => {
+    for (const written of ['9810012345', '+91 98100 12345', '098100-12345', '919810012345']) {
+      const parsed = signupSchema.safeParse({ ...valid, phone: written });
+      expect(parsed.success, written).toBe(true);
+      if (parsed.success) expect(parsed.data.phone).toBe('9810012345');
     }
   });
 

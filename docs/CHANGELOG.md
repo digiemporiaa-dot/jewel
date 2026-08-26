@@ -1,5 +1,148 @@
 # Changelog
 
+## Email is the identifier; the phone is required and unproven · 2026-08-26
+
+Both are mandatory at every path that creates a customer. Only one of them is
+verified, and it is no longer the one it used to be.
+
+### The identifier moved
+
+Sign-in was a code sent to a mobile number. It is now a code sent to an email
+address — on `/signup`, at checkout, and on the account page. `Customer.email`
+carries a new `emailVerified` flag and is what a session is keyed to.
+
+`phoneVerified` stays, and stays `false` for everyone created from now on. It is
+not dead weight: it is the honest record of which numbers were ever actually
+proven, and the customers verified before this change should not silently lose
+that.
+
+### Both columns stay nullable, and that is the point
+
+`Customer.phone` was `String @unique`, NOT NULL. It is nullable now. Every form
+and every server action requires both fields; the columns record what is
+actually true. A NOT NULL phone column would have either failed the migration or
+forced a fabricated number onto a real record — and a fabricated phone number is
+worse than a missing one, because somebody eventually dials it.
+
+`emailVerified` is added defaulting to false and **is not backfilled**. Nobody's
+address had been proven at the moment of the migration, and inventing that on
+the field sign-in now depends on would be the one lie that actually matters
+here.
+
+### Phone validation, because nothing else will catch it
+
+A number nothing verifies is a number a courier finds out about. There were
+**four** implementations of "is this an Indian mobile" in the codebase — in
+`lib/sms/provider.ts`, in the checkout schema, in the spin action, and in the
+signup schema — each slightly different, and none of them able to tell a real
+number from `9999999999`.
+
+There is one now, in `lib/validations/phone.ts`, and the other three import it.
+`lib/sms/provider.ts` re-exports it rather than defining it, so `lib/otp.ts` and
+the gateway clients did not have to move.
+
+It does three things a regex did not:
+
+- **Normalises.** `+91 98100 12345`, `098100-12345` and `919810012345` all
+  become `9810012345`. Ten digits, not the gateway's `91`-prefixed form —
+  every `Customer` row and every `where: { phone }` in this codebase uses ten
+  digits, and switching would have orphaned all of them behind a key nothing
+  looks them up by.
+- **Formats for display.** `+91 98100 12345` in the admin; the column keeps its
+  ten digits.
+- **Refuses placeholders.** One digit repeated, and ascending or descending runs
+  — which is how `9876543210`, the placeholder mobile number of the entire
+  Indian internet, gets in. Nothing else is guessed at: a filter working on a
+  hunch turns a paying customer away at checkout, and that is the worse failure.
+
+### Codes go where they can arrive
+
+`OTP_CHANNELS` lists the channels a code may be sent on, defaulting to email
+alone. `lib/otp.ts` gained an email branch beside the SMS one — the phone path
+is unchanged and comes back the day the variable includes it. Until then a
+phone target is refused with a sentence that says to use email, rather than a
+code that silently never arrives.
+
+An unparseable value falls back to email rather than switching everything off. A
+typo in an environment variable must not disable sign-in.
+
+### Where the line moved at checkout, and where it did not
+
+Email and phone are required on the order form now. Gender, date of birth and
+anniversary are still refused there, and
+`tests/profile-not-required-at-checkout.test.ts` still fails if anybody adds
+them — a customer holding a ₹70,000 cart is not asked for their birthday.
+
+One assertion in that file was reversed on purpose, and says so in place: it
+used to prove an order could be placed with no email. It cannot, because an
+order with no address leaves a customer who cannot get back into the account
+the order is attached to.
+
+### Chasing the records that predate the rule
+
+The admin customer list gained a **Missing email or phone** filter and shows the
+gap on the row — a formatted number or "No phone", the address or "No email",
+and small badges for the rest of the profile. Every path that creates a customer
+now requires both, so anything on that list was made before the rule: by the old
+phone-only checkout, or by the spin wheel, which asks for a number and nothing
+else.
+
+**The wheel was left asking for a number alone.** Adding an email box to a
+pop-up that interrupts somebody is a different decision from requiring one on a
+form they chose to open, and it was not part of this change. Its rows appear on
+the chase list, which is what that list is for. It does now use the shared phone
+rule, so it can no longer mint a coupon bound to `9999999999`.
+
+### Two collisions this creates, and what happens
+
+A customer who ordered through the old phone-only checkout has a record keyed on
+their number with no address on it. When they sign up by email, a second record
+is made — and their number is already taken by the first.
+
+That is **refused with a message that puts a person in front of it**, not merged.
+Merging two customers means moving orders, carts, wishlists, reviews and won
+coupons between them, and getting it wrong loses somebody's purchase history.
+The Prisma unique-violation catch now reads which column lost the race, because
+telling somebody their email is taken when it was their phone sends them to
+change the wrong field.
+
+At checkout the same write is attempted and allowed to fail quietly, falling
+back to saving the name and email alone. A number already held by another record
+must not block an order that is otherwise ready to pay.
+
+### Verified end to end
+
+Against a running production build, with SMTP unconfigured so the code goes to
+the mail log:
+
+```
+step 1 asks for       : Email address
+code delivered        : yes, to test-…@example.com
+step 2 asks for phone : true
+junk phone refused    : true      (9999999999)
+real phone accepted   : true      (+91 98100 12399)
+```
+
+and the row it wrote:
+
+```
+emailVerified : true          phone         : "9810012399"
+phoneVerified : false         termsAcceptedAt: set
+```
+
+The admin list: 19 customers, 10 on the missing-details filter, every one of
+them genuinely missing something, phones rendered `+91 98100 12345`.
+
+### Two protected files were edited
+
+`lib/otp.ts` and `lib/sms/provider.ts` are on the do-not-touch list, and both
+changed. Neither could be avoided: email cannot be OTP-verified without a
+delivery branch in the first, and "reuse the existing normaliser" cannot be done
+from a client component while the second is `server-only`. Both edits are
+additive — the SMS dispatch path is untouched, and the provider's exported
+surface is identical.
+
+
 ## The logo is on the site now, not only in the database · 2026-08-26
 
 `StoreSetting.logoUrl` had been a column since the schema was written. The

@@ -63,7 +63,7 @@ export default async function CheckoutPage() {
           pincode: a.pincode, isDefault: a.isDefault,
         }))}
         customerName={customer?.name ?? null}
-        verifiedPhone={customer?.phoneVerified ? customer.phone : null}
+        verifiedEmail={customer?.emailVerified ? customer.email : null}
         panRequired={panRequired}
         codAllowed={codAllowed}
         brandName={store.brandName}

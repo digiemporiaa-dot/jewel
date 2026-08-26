@@ -8,12 +8,17 @@ import { getClientIp } from '@/lib/request-id';
 import { sendTemplate } from '@/lib/templates';
 import { prisma } from '@/lib/prisma';
 import { AppointmentType } from '@prisma/client';
+import { phoneField } from '@/lib/validations/phone';
 
 const bookSchema = z.object({
   type: z.enum(['SHOWROOM_VISIT', 'VIDEO_CONSULTATION']),
   name: z.string().trim().min(2, 'Name is required').max(80),
-  phone: z.string().trim().regex(/^(\+91)?[6-9]\d{9}$/, 'Enter a valid mobile number'),
-  email: z.string().trim().email('Enter a valid email').optional().or(z.literal('')),
+  // The shared rule, not a fifth regex. Booking a showroom visit is exactly the
+  // case where a wrong number costs somebody a wasted afternoon.
+  phone: phoneField,
+  // Required, like every other path that creates a customer record: it is what
+  // the confirmation and any change of time are sent to.
+  email: z.string().trim().toLowerCase().email('Enter a valid email address').max(160),
   date: z.string().min(1, 'Pick a date'),
   slot: z.string().min(1, 'Pick a time slot'),
   productId: z.string().optional().or(z.literal('')),
@@ -45,7 +50,7 @@ export async function bookAppointmentAction(input: unknown): Promise<{ ok: boole
     const customerId = await getCustomerId();
     await bookAppointment({
       type: d.type as AppointmentType,
-      name: d.name, phone: d.phone, email: d.email || null,
+      name: d.name, phone: d.phone, email: d.email,
       date, slot: d.slot,
       productId: d.productId || null,
       notes: d.notes || null,
