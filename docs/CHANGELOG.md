@@ -1,5 +1,58 @@
 # Changelog
 
+## A second door for the Shiprocket webhook · 2026-08-26
+
+Shiprocket's webhook dashboard refuses to save any URL whose text contains
+"shiprocket", "sr" or "kr", answering "Address is not allowed". Our endpoint
+lived at `/api/webhooks/shiprocket`, so the integration could not be registered
+with them at all — not a fault in the endpoint, which exports POST, is publicly
+reachable and authenticates on `x-api-key`, but in their input validation.
+
+`/api/webhooks/logistics` is the same endpoint under a name their form accepts.
+Two characters is a short banned substring, so the name is checked in
+`tests/webhook-alias.test.ts` rather than trusted: the test asserts the served
+path against all three, and asserts the constant it checks is the folder that
+actually serves it — otherwise a rename would leave the check passing against a
+string nothing routes.
+
+### One handler, two routes
+
+The alias re-exports:
+
+```ts
+export { POST } from '../shiprocket/route';
+export const dynamic = 'force-dynamic';
+```
+
+Nothing is copied. A change to token comparison, event recording or status
+mapping lands on both paths or neither, which is the point — a duplicated
+handler would take the next fix on one path only, and nobody would notice until
+a delivery status stopped moving. The segment config is declared rather than
+re-exported because Next reads it by static analysis of the segment's own file
+and does not follow re-exports.
+
+The original path is untouched and still works. Anything already pointed at it
+keeps working.
+
+### Idempotency spans both paths
+
+Both record `provider: 'shiprocket'`, so the event key is the same on either
+door. Verified against a running build: the same event delivered to `/logistics`
+and then to `/shiprocket` produced one `WebhookEvent` row with `attempts: 1`, the
+second call answering `{"ok":true,"duplicate":true}`. A provider retry that
+lands on the other path is recognised, not processed twice.
+
+Both paths were exercised end to end and behave identically — 401 with no token,
+401 with a wrong one, 400 on malformed JSON, 200 on a valid event, and a
+duplicate on replay.
+
+### Note on the domain
+
+Their validator reads the whole URL, not the path. A deployment domain
+containing "sr" or "kr" would be refused whatever the route is called; that is
+documented in `DEPLOYMENT.md` and `VERCEL.md` next to the URL to paste.
+
+
 ## Spin wheel: an exit that works, and a palette that reads · 2026-08-26
 
 ### The win screen had no way out

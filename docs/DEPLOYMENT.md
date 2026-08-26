@@ -139,8 +139,13 @@ Point the provider dashboards at the live domain:
 
 - Razorpay -> `https://your-domain.com/api/webhooks/razorpay`, with the same
   secret in `RAZORPAY_WEBHOOK_SECRET`.
-- Shiprocket -> `https://your-domain.com/api/webhooks/shiprocket`, sending
-  `x-api-key: $SHIPROCKET_WEBHOOK_TOKEN`.
+- Shiprocket -> `https://your-domain.com/api/webhooks/logistics`, sending
+  `x-api-key: $SHIPROCKET_WEBHOOK_TOKEN`. **Use the `/logistics` path, not
+  `/shiprocket`** - their dashboard rejects any URL containing "shiprocket",
+  "sr" or "kr" with "Address is not allowed". Both paths run the same handler;
+  `/api/webhooks/shiprocket` still works for anything already pointed at it.
+  If the deployed domain itself contains one of those substrings, their form
+  will refuse it regardless of the path.
 
 Both verify signatures and are idempotent - a redelivered event is recorded and
 ignored, never processed twice.

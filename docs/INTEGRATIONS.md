@@ -30,8 +30,13 @@ phases noted below; the data model and env contract exist now.
   AWBs, schedules pickups, generates labels/manifests, refreshes tracking, and
   applies status changes with side effects — commit stock + capture COD on
   delivery (recording a `BALANCE` payment row), release stock on RTO.
-- **Webhook**: `POST /api/webhooks/shiprocket` — shared-token authenticated
+- **Webhook**: `POST /api/webhooks/logistics` — shared-token authenticated
   (`x-api-key`), recorded as an idempotent `WebhookEvent`, reprocessable on failure.
+  Also served at `POST /api/webhooks/shiprocket`, the original path: one handler,
+  re-exported, so the two cannot drift. Register `/logistics` in their dashboard —
+  it refuses any URL containing "shiprocket", "sr" or "kr". Idempotency is shared
+  across both paths (same `provider` + `eventId`), so a retry that arrives on the
+  other path is still recognised as a duplicate.
 - **Reconciliation cron**: `POST /api/cron/shipment-reconciliation` (CRON_SECRET)
   polls non-terminal shipments in case webhooks are late or missed.
 - **Customer tracking**: `/track` (order number + phone, ownership-checked) and a
