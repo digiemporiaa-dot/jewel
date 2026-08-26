@@ -1,5 +1,92 @@
 # Changelog
 
+## A wrong password should not lock the courier account · 2026-08-26
+
+`SHIPROCKET_PASSWORD` was wrong in production. Every press of "Create shipment"
+called `/auth/login` again, every call counted as another failed attempt, and
+Shiprocket eventually answered:
+
+```
+{"message":"User blocked due to too many failed login attempts.","status_code":403}
+```
+
+The API user was locked, which needs Shiprocket's support to undo, and blocks
+every order rather than the one being worked on. Separately, each failure threw
+out of the server action and replaced `/admin/orders/[id]` with "We hit an
+unexpected snag", so staff lost the order they were reading as well.
+
+Two defects, and the second was hiding the first: with the page gone, nobody
+could see what the courier had actually said.
+
+### The request is the damage
+
+`lib/shipping/auth-breaker.ts` is a small state machine that decides when to
+stop asking. After two consecutive credential refusals it opens for fifteen
+minutes; a reply saying the account is *blocked* opens it for an hour, on the
+first sighting rather than the second — waiting for a second attempt would spend
+another login on an account that is already locked, which can only extend the
+lockout.
+
+Transient failures — a 500, a timeout, a gateway error — never open it. Refusing
+to ship for an hour over the provider's bad afternoon would be its own outage.
+They also do not *reset* the count: a 500 arriving between two 401s is no
+evidence the password became correct. Only a successful login clears it.
+
+The trade being made is explicit. A shipment delayed until somebody fixes a
+password is recoverable in minutes; a locked account is recoverable only through
+somebody else's support queue.
+
+The token cache moved from the instance to module scope, keyed off the `exp`
+claim in the token rather than a guessed hour, and concurrent callers now share
+one in-flight login instead of each starting their own. Reading `exp` is not a
+signature check and must not be mistaken for one — the only decision made from
+that number is when to ask for a new token.
+
+### Three failures, three different sentences
+
+`HTTP 401` in an admin panel tells whoever is standing at the counter nothing.
+Each case now says who can fix it:
+
+- **locked** — only Shiprocket support can clear it, and retrying makes it worse
+- **wrong credentials** — names `SHIPROCKET_EMAIL` and `SHIPROCKET_PASSWORD`
+- **their outage** — try again shortly, and no cooldown is imposed
+
+Where attempts are paused the message says until when, in IST, so nobody stands
+there clicking a dead button. The provider's raw body is logged, not displayed.
+
+### One guard, not six
+
+Five of the six shipment actions carried their own `try`/`catch`. The sixth —
+"Create shipment", the one staff press first — did not, which is why a courier
+error reached the root error boundary. All six now share one `guarded()`
+wrapper. The defect was never the missing `catch`; it was that a `catch` could
+go missing at all, so a seventh action written next year gets this for free.
+`tests/shipping-auth.test.ts` fails if any exported action stops routing through
+it — checked by reintroducing the original bug and watching the test go red.
+
+The reconciliation cron stops its whole pass on a login refusal rather than
+carrying on through the queue. Two hundred shipments meant two hundred failed
+logins in a single run, which made the cron a faster route to a lockout than the
+admin buttons ever were.
+
+### Measured, not assumed
+
+Six presses of "Create shipment" against a courier stubbed to refuse, driven
+through the real server, the real action and the real error boundary — before
+the fix and after:
+
+| | before | after |
+|---|---|---|
+| logins sent to Shiprocket | 6 | 1 |
+| error boundary hit | 6 / 6 | 0 / 6 |
+| order still on screen | 0 / 6 | 6 / 6 |
+| message shown to staff | none | names the cause and the fix |
+
+With a plain wrong password rather than a lockout, the same six presses send two
+logins and stop. With working credentials, one login, one shipment, and the
+button correctly disappears.
+
+
 ## A second door for the Shiprocket webhook · 2026-08-26
 
 Shiprocket's webhook dashboard refuses to save any URL whose text contains

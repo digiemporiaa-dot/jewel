@@ -42,6 +42,18 @@ phases noted below; the data model and env contract exist now.
 - **Customer tracking**: `/track` (order number + phone, ownership-checked) and a
   tracking block on the order page.
 - Pincode serviceability cached 24h (`PincodeServiceability`).
+- **Login handling**: the token is cached at module scope until its own `exp`
+  claim runs out, and one login at a time is attempted however many callers are
+  waiting. After two consecutive 401/403 refusals a breaker opens for 15
+  minutes; a 403 whose body says the account is *blocked* opens it for an hour,
+  on the first sighting. During a cooldown nothing is sent to Shiprocket at all
+  — the request itself is the damage, because enough failed logins locks the API
+  user and only their support can unlock it. A cooldown clears on the next
+  successful login, or on redeploy.
+- **What staff see**: a locked account, a wrong password and a Shiprocket outage
+  produce three different sentences, each naming who can fix it. Wrong password
+  names `SHIPROCKET_EMAIL` / `SHIPROCKET_PASSWORD`; a lockout says only
+  Shiprocket support can clear it. The provider's raw body is logged, never shown.
 - Env: `SHIPROCKET_EMAIL`, `SHIPROCKET_PASSWORD`, `SHIPROCKET_WEBHOOK_TOKEN`,
   `SHIPROCKET_PICKUP_PINCODE`, `SHIPROCKET_PICKUP_LOCATION`.
 

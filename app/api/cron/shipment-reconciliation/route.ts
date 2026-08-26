@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { isAuthorizedCron } from '@/lib/cron';
 import { refreshTracking } from '@/lib/shipping/shipments';
+import { ShippingAuthError } from '@/lib/shipping/auth-breaker';
 import { isTerminalShipmentStatus } from '@/lib/shipping/status';
 import { ShipmentStatus } from '@prisma/client';
 import { runJob } from '@/lib/system/jobs';
@@ -31,17 +32,28 @@ async function handler(request: Request) {
     });
 
     let refreshed = 0;
+    let stoppedEarly: string | null = null;
     for (const s of active) {
       if (isTerminalShipmentStatus(s.status)) continue;
       try {
         await refreshTracking(s.orderId);
         refreshed += 1;
       } catch (e) {
+        if (e instanceof ShippingAuthError) {
+          // Not this shipment's problem — the courier will not let us in at all,
+          // so the remaining two hundred would fail identically. Carrying on
+          // would bury the real cause under two hundred identical log lines,
+          // and before the breaker existed it was this loop, not the admin
+          // buttons, that burned through the account's login attempts fastest.
+          stoppedEarly = e.message;
+          console.error('[cron] reconcile stopped: courier auth unavailable —', e.message);
+          break;
+        }
         // One courier failing must not abandon the rest of the queue.
         console.error('[cron] reconcile failed for order', s.orderId, e);
       }
     }
-    return { checked: active.length, refreshed };
+    return { checked: active.length, refreshed, ...(stoppedEarly ? { stoppedEarly } : {}) };
   });
 
   return NextResponse.json({ ok: true, ...result });
