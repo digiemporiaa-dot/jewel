@@ -1,5 +1,107 @@
 # Changelog
 
+## The wheel now stops on the prize it announces · 2026-08-26
+
+The pointer was resting between two segments. Three separate causes, each able
+to produce that on its own, and all three were live.
+
+### 1. Position was derived from display text
+
+```ts
+const index = Math.max(0, segments.findIndex((s) => s.label === res.label));
+```
+
+A label is not an identity. Two segments may legitimately share one — "Better
+luck next time" twice is an ordinary wheel — and an operator editing a label
+between a page loading and a customer spinning breaks the match. When the search
+missed, `Math.max(0, -1)` turned the miss into segment 0 and the wheel animated
+confidently to the wrong prize while the dialog announced another.
+
+The draw now returns a **position**. `pickSegmentIndex` gives the index into the
+campaign's ordered segment list, `SpinOutcome` carries it as `segmentIndex`, and
+the animation uses it directly. The label travels alongside for display only.
+
+The client checks the position is real before using it — an integer, in range —
+and cross-checks the label at that index as a tripwire for the two lists having
+drifted apart. The label is never used to *find* the wedge; it only reports that
+the wheel rendered here and the wheel weighted there are no longer the same
+wheel. When either check fails, the animation is skipped and the result panel is
+shown directly, with the mismatch logged. A wheel that skips its flourish is a
+small disappointment; a wheel that points confidently at the wrong prize on a
+page awarding real money is something else.
+
+### 2. Every label was drawn a quarter-turn from its own wedge
+
+The wedge colours come from a `conic-gradient`, which starts at 12 o'clock —
+where the pointer is — so segment `i` is centred at `i·slice + slice/2`. The
+label element is `inset-0` with its text pushed to the right edge, so before any
+rotation it already sits at **3 o'clock**. Rotating it by the midpoint alone
+added 90° to a position that was already 90° round.
+
+Measured in a browser on a six-segment wheel: every label rendered exactly 90°
+clockwise of the wedge it named. The pointer came to rest on the correct
+*colour* every time — and the *text* under it belonged to a segment two places
+away. Where the offset was not a whole number of wedges (three, five and nine
+segments) the text under the pointer straddled a boundary, which is precisely
+"the pointer stops between two segments".
+
+`labelRotation` subtracts the 90° the layout already contributes. The flip that
+keeps left-hand labels the right way up is judged on the rotation the text
+actually receives, not on the midpoint — those now differ, and using the wrong
+one turns half the wheel upside down.
+
+### 3. The wheel idled on a boundary
+
+`useState(0)`. Zero degrees is not the centre of segment 0; it is the edge
+before it. So before any spin the pointer sat exactly half a slice off centre —
+and it stayed there for anyone whose spin was **refused**. Already spun, rate
+limited, bad number: the error path sets the phase back to idle and never sets a
+rotation, so the customer pressed the button and watched a pointer sitting
+between two prizes on a wheel that had not moved at all. That is the version of
+this bug most customers would have met.
+
+The wheel now idles at `restingRotation(0, count, 0)`, with the first wedge
+centred. Rotation is `null` until a spin decides otherwise, so "no spin yet" is
+a state rather than a coordinate that happens to be wrong.
+
+### The arithmetic lives somewhere it can be checked
+
+`lib/spin/geometry.ts` holds all of it, pure. `tests/spin-geometry.test.ts`
+asserts, for 3, 4, 5, 6, 8 and 9 segments and every segment of each: the winning
+midpoint lands within a degree of the pointer; it clears both wedge boundaries;
+each segment gets a distinct angle; each label sits on its own wedge; and the
+reduced-motion path lands on the identical angle modulo 360, differing only by
+the whole turns nobody can see. `pointerOffsetDegrees` is written as an
+independent inverse rather than a restatement, so the test checks the maths
+instead of echoing it.
+
+Both defects were reintroduced deliberately to confirm the tests fail: the old
+label rotation fails 6 assertions, an off-by-half-a-slice resting angle fails 13.
+
+### Verified in a browser, twice over
+
+Every segment of every wheel size, wedge colour sampled under the pointer and
+the nearest label measured: **35 of 35 correct, 0° off centre**. With the
+shipped label rotation restored, the same harness reports the right colour and
+the wrong text for all of them.
+
+Then against the running app, on the real twelve-segment campaign — comparing
+the label under the pointer with the `SpinResult` row the server wrote:
+
+```
+MATCH awarded "₹500 off"   | pointer on "₹500 off"   (0° off centre)
+MATCH awarded "₹900 off"   | pointer on "₹900 off"   (0° off centre)
+MATCH awarded "₹700 off"   | pointer on "₹700 off"   (0° off centre)
+MATCH awarded "₹700 off"   | pointer on "₹700 off"   (0° off centre)
+MATCH awarded "₹1100 off"  | pointer on "₹1100 off"  (0° off centre)
+MATCH awarded "₹400 off"   | pointer on "₹400 off"   (0° off centre)
+```
+
+An earlier run of the same check is what exposed the third cause: seven spins
+matched at 0°, and the eighth — rejected by the rate limit, so never animated —
+reported 15° off centre on a wheel whose slice is 30°. Exactly a boundary.
+
+
 ## The courier assigned a waybill; we recorded "undefined" · 2026-08-26
 
 Shiprocket assigned AWB 14112366393092 via Xpressbees Surface and moved the

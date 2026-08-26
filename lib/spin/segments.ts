@@ -224,7 +224,13 @@ export function totalWeight(segments: readonly SpinSegment[]): number {
 }
 
 /**
- * Pick the winning segment.
+ * Pick the winning segment, by **position**.
+ *
+ * The position is the identity. Segments carry no id — they are an ordered list
+ * inside one campaign row — and the client renders that same list in that same
+ * order, so index `i` names the same wedge on both sides. The label does not:
+ * two segments may legitimately share one, and an edit to a label must not be
+ * able to move where the wheel stops.
  *
  * `roll` is an integer in `[0, totalWeight)`, supplied by the caller so the
  * randomness comes from `crypto.randomInt` in production and from a fixture in
@@ -234,8 +240,8 @@ export function totalWeight(segments: readonly SpinSegment[]): number {
  *
  * Returns null only for an empty list, which `segmentsSchema` already forbids.
  */
-export function pickSegment(segments: readonly SpinSegment[], roll: number): SpinSegment | null {
-  if (segments.length === 0) return null;
+export function pickSegmentIndex(segments: readonly SpinSegment[], roll: number): number {
+  if (segments.length === 0) return -1;
   const total = totalWeight(segments);
   // Clamped rather than trusted. A caller that passes a roll outside the range
   // would otherwise fall through the loop and silently always return the last
@@ -243,11 +249,16 @@ export function pickSegment(segments: readonly SpinSegment[], roll: number): Spi
   const bounded = Math.min(Math.max(Math.floor(roll), 0), total - 1);
 
   let cursor = 0;
-  for (const segment of segments) {
-    cursor += segment.weight;
-    if (bounded < cursor) return segment;
+  for (let i = 0; i < segments.length; i += 1) {
+    cursor += segments[i]!.weight;
+    if (bounded < cursor) return i;
   }
-  return segments[segments.length - 1] ?? null;
+  return segments.length - 1;
+}
+
+export function pickSegment(segments: readonly SpinSegment[], roll: number): SpinSegment | null {
+  const index = pickSegmentIndex(segments, roll);
+  return index < 0 ? null : segments[index] ?? null;
 }
 
 /** The odds as shown to a customer, so the disclosure and the draw agree. */

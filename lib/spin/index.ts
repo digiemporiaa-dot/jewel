@@ -4,7 +4,7 @@ import { unstable_cache } from 'next/cache';
 import { prisma } from '@/lib/prisma';
 import { CouponType, CouponScope, Prisma } from '@prisma/client';
 import {
-  parseSegments, pickSegment, totalWeight, describePrize, ALLOWED_SCOPES,
+  parseSegments, pickSegmentIndex, totalWeight, describePrize, ALLOWED_SCOPES,
   resolvePresentation, colourFor, COLOUR_HEX,
   type SpinSegment, type CouponPrize, type ResolvedPresentation, type SegmentColour,
 } from '@/lib/spin/segments';
@@ -142,9 +142,15 @@ export function publicSegments(campaign: ActiveCampaign): PublicSegment[] {
   });
 }
 
+/**
+ * `segmentIndex` is the wheel's position in the campaign's ordered segment
+ * list, and it is what the animation is driven from. `label` is for display
+ * only: it is not a key, it is not unique, and the moment position was derived
+ * from it the pointer could rest on a different prize than the one announced.
+ */
 export type SpinOutcome =
-  | { ok: true; label: string; won: false }
-  | { ok: true; label: string; won: true; code: string; terms: string; expiresAt: string }
+  | { ok: true; label: string; segmentIndex: number; won: false }
+  | { ok: true; label: string; segmentIndex: number; won: true; code: string; terms: string; expiresAt: string }
   | { ok: false; error: string; alreadySpun?: boolean; needsSignIn?: boolean };
 
 /** Human-readable, unambiguous: no O/0 or I/1 to mistype off a phone screen. */
@@ -266,7 +272,10 @@ export async function spin(params: {
   // The draw. `randomInt` is crypto-grade and, taking an integer bound, uniform
   // over [0, total) with no modulo bias.
   const total = totalWeight(params.campaign.segments);
-  const segment = pickSegment(params.campaign.segments, randomInt(0, total));
+  // The position, not the segment. It travels to the client as the answer to
+  // "which wedge?", so nothing downstream has to work that out from a label.
+  const segmentIndex = pickSegmentIndex(params.campaign.segments, randomInt(0, total));
+  const segment = segmentIndex >= 0 ? params.campaign.segments[segmentIndex] : undefined;
   if (!segment) return { ok: false, error: 'This wheel is not set up correctly.' };
 
   if (segment.prize.kind === 'NONE') {
@@ -276,7 +285,7 @@ export async function spin(params: {
     await prisma.spinResult.create({
       data: { campaignId: params.campaign.id, customerId, segmentLabel: segment.label, ipHash },
     });
-    return { ok: true, label: segment.label, won: false };
+    return { ok: true, label: segment.label, segmentIndex, won: false };
   }
 
   // A template segment borrows its terms from a coupon the shop already made.
@@ -295,7 +304,7 @@ export async function spin(params: {
     await prisma.spinResult.create({
       data: { campaignId: params.campaign.id, customerId, segmentLabel: segment.label, ipHash },
     });
-    return { ok: true, label: segment.label, won: false };
+    return { ok: true, label: segment.label, segmentIndex, won: false };
   }
 
   const expiresAt = new Date(now.getTime() + params.campaign.couponValidityDays * 24 * 60 * 60 * 1000);
@@ -340,6 +349,7 @@ export async function spin(params: {
   return {
     ok: true,
     label: segment.label,
+    segmentIndex,
     won: true,
     code: created.code,
     terms: describePrize(prize, params.campaign.couponValidityDays),

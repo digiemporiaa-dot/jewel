@@ -8,6 +8,7 @@ import { getWheelOffer, spinAction, dismissWheel, type WheelOffer } from '@/lib/
 import type { PublicSegment } from '@/lib/spin';
 import type { ResolvedPresentation } from '@/lib/spin/segments';
 import { decideDisplay, isSuppressedPath, SPIN_COOKIE_EVENT, type SpinCookieState } from '@/lib/spin/display';
+import { SPIN_TURNS, labelFlipped, labelRotation, restingRotation, sliceAngle } from '@/lib/spin/geometry';
 import { useSpinCookie } from '@/lib/spin/use-spin-cookie';
 
 /**
@@ -45,7 +46,17 @@ export default function SpinWheel() {
   const [phone, setPhone] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ label: string; won: boolean; code?: string; terms?: string } | null>(null);
-  const [rotation, setRotation] = useState(0);
+  /**
+   * `null` until a spin decides where to stop.
+   *
+   * It used to start at 0, and 0 is a boundary: segment 0's centre is half a
+   * slice past the pointer, so at rest the pointer sat exactly between the last
+   * wedge and the first. A customer who was rate-limited, or who had already
+   * spun, pressed the button and saw the pointer stop between two prizes —
+   * without the wheel ever having moved. The wheel now idles with a wedge
+   * centred, and the fallback lives in `Wheel` where the segment count is known.
+   */
+  const [rotation, setRotation] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
 
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -261,14 +272,39 @@ export default function SpinWheel() {
       };
 
       // The server has already decided and already issued the coupon. All the
-      // animation does is come to rest on the segment it was told about.
-      const index = Math.max(0, segments.findIndex((s) => s.label === res.label));
-      const slice = 360 / segments.length;
+      // animation does is come to rest on the wedge it was told about — by
+      // position, never by looking its label up in the rendered list. A label
+      // is display text: two segments may share one, an operator may edit one
+      // between this page loading and this spin, and a lookup that misses used
+      // to be quietly rounded up to segment 0 by `Math.max(0, …)`. The pointer
+      // then rested on a prize the dialog was not announcing.
+      const index = res.segmentIndex;
+      const inRange = Number.isInteger(index) && index >= 0 && index < segments.length;
+      // The list the server weighted against and the list rendered here must be
+      // the same list in the same order. The label is not used to find the
+      // wedge, but comparing it is a cheap check that the two have not drifted
+      // — after an edit mid-session, index `i` names a different prize on each
+      // side. Trimmed, so whitespace alone never costs a customer the flourish.
+      const agrees = inRange && segments[index]!.label.trim() === res.label.trim();
+
+      if (!agrees) {
+        // No guess. Showing the result without the animation is a wheel that
+        // skipped its flourish; animating to an index we do not trust is a
+        // wheel that points at the wrong prize while announcing another, and on
+        // a wheel awarding real money that is the worse of the two by far.
+        console.error(
+          '[spin] refusing to animate: server segment does not match the rendered wheel',
+          { index, rendered: segments.length, serverLabel: res.label, renderedLabel: inRange ? segments[index]!.label : null }
+        );
+        reveal();
+        return;
+      }
+
       const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      // Four extra turns for the flourish, none for anyone who asked for less
-      // motion — for whom the wheel simply arrives at the answer.
-      const turns = reduced ? 0 : 4;
-      setRotation(turns * 360 + (360 - (index * slice + slice / 2)));
+      // Whole extra turns for the flourish, none for anyone who asked for less
+      // motion — for whom the wheel arrives at the identical angle, just
+      // without the spin.
+      setRotation(restingRotation(index, segments.length, reduced ? 0 : SPIN_TURNS));
       window.setTimeout(reveal, reduced ? 0 : 3200);
     });
   }
@@ -472,9 +508,12 @@ export default function SpinWheel() {
 function Wheel({
   segments, rotation, spinning, dark,
 }: {
-  segments: PublicSegment[]; rotation: number; spinning: boolean; dark: boolean;
+  segments: PublicSegment[]; rotation: number | null; spinning: boolean; dark: boolean;
 }) {
-  const slice = 360 / segments.length;
+  const slice = sliceAngle(segments.length);
+  // No spin yet: rest with the first wedge centred under the pointer rather
+  // than at 0°, which is the boundary before it.
+  const applied = rotation ?? restingRotation(0, segments.length, 0);
   return (
     <div className="relative mx-auto mt-5 h-56 w-56">
       {/* The pointer and the rim have to contrast with the *dialog*, not with
@@ -490,7 +529,7 @@ function Wheel({
       <div
         className={cn('spin-wheel h-full w-full rounded-full border-2', dark ? 'border-paper/40' : 'border-velvet')}
         style={{
-          transform: `rotate(${rotation}deg)`,
+          transform: `rotate(${applied}deg)`,
           // Literal hex resolved on the server from a closed token list, so the
           // client never builds a class name Tailwind cannot see.
           background: `conic-gradient(${segments
@@ -499,16 +538,21 @@ function Wheel({
         }}
       >
         {segments.map((s, i) => {
-          const mid = i * slice + slice / 2;
           // Anything on the left half would otherwise render upside-down, which
           // is exactly where half the prizes on a five-segment wheel sit.
-          const flipped = mid > 90 && mid < 270;
+          const flipped = labelFlipped(i, segments.length);
           return (
             <span
-              key={s.label}
+              // Position, not label: two segments may share a label, and React
+              // silently keeps only one of two children with the same key.
+              key={i}
               aria-hidden
               className="absolute inset-0 flex items-center justify-end pr-2"
-              style={{ transform: `rotate(${mid}deg)` }}
+              // `labelRotation`, not the midpoint. The element is `inset-0` with
+              // its text at the right edge, so it starts at 3 o'clock — rotating
+              // it by the midpoint alone put every label a quarter-turn clockwise
+              // of the wedge it names.
+              style={{ transform: `rotate(${labelRotation(i, segments.length)}deg)` }}
             >
               <span
                 className="block max-w-[5.6rem] truncate text-[0.6rem] font-medium tracking-wide"
