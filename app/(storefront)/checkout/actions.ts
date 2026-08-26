@@ -85,9 +85,9 @@ export async function placeOrder(input: unknown): Promise<PlaceResult> {
   const sessionToken = await getSessionToken();
   if (!sessionToken) return { stage: 'error', error: 'Your bag session expired. Please re-add items.' };
 
-  // Phone must be OTP-verified (a customer session was established).
+  // The email must be OTP-verified (a customer session was established).
   const customerId = await getCustomerId();
-  if (!customerId) return { stage: 'error', error: 'Please verify your phone number first.' };
+  if (!customerId) return { stage: 'error', error: 'Please verify your email address first.' };
 
   const d = parsed.data;
   try {
@@ -113,7 +113,14 @@ export async function placeOrder(input: unknown): Promise<PlaceResult> {
     // unique, so a number already held by another record is left alone rather
     // than failing the order: the admin's missing-fields list is where that
     // gets chased, not the checkout.
-    prisma.customer
+    //
+    // Awaited, not fired and forgotten. The prefill below reads this row back,
+    // and an un-awaited write is a race the prefill can lose — which would put
+    // a legacy customer's newly-collected address into their record but not in
+    // front of them at the payment widget. It is still best-effort: both
+    // branches swallow their errors, so a contested phone number cannot fail an
+    // order that is otherwise ready to pay.
+    await prisma.customer
       .update({ where: { id: customerId }, data: { name: d.contactName, email: d.contactEmail, phone: d.contactPhone } })
       .catch(() =>
         prisma.customer
@@ -145,7 +152,16 @@ export async function placeOrder(input: unknown): Promise<PlaceResult> {
         orderNumber: result.orderNumber,
         amountDue: result.amountDue,
         razorpay: { orderId: rzp.id, amount: rzp.amount, keyId: publicKeyId(), dev: rzp.dev },
-        prefill: { name: d.contactName, email: d.contactEmail || '', phone: d.contactPhone },
+        // Read back from the row, not taken from the form.
+        //
+        // The prefill goes into Razorpay's options object the moment the widget
+        // opens, and the widget validates it there and then — an empty or
+        // half-typed address becomes "Enter a valid email" on a screen the
+        // customer is trying to pay on. The row is the settled value: it has
+        // just been written above, it is the verified address for anyone signed
+        // in, and it falls back to what was submitted for a legacy record whose
+        // write lost a race with a unique constraint.
+        prefill: { name: d.contactName, email: await storedEmail(customerId, d.contactEmail), phone: d.contactPhone },
       };
     }
 
@@ -156,6 +172,20 @@ export async function placeOrder(input: unknown): Promise<PlaceResult> {
   } catch (e) {
     return { stage: 'error', error: e instanceof CheckoutError ? e.message : 'Could not place your order. Please try again.' };
   }
+}
+
+/**
+ * The address Razorpay should show, from the customer record.
+ *
+ * Falls back to the submitted value rather than to an empty string: a blank
+ * prefill is the failure this exists to prevent, so the worst case here is the
+ * address the customer just typed, never nothing.
+ */
+async function storedEmail(customerId: string, submitted: string): Promise<string> {
+  const row = await prisma.customer
+    .findUnique({ where: { id: customerId }, select: { email: true } })
+    .catch(() => null);
+  return row?.email?.trim() || submitted.trim();
 }
 
 // ── Confirm payment (browser callback) ───────────────────────────────────────

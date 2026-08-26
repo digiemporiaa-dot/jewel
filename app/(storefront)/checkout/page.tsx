@@ -28,6 +28,20 @@ export default async function CheckoutPage() {
   return (
     <div className="shell py-8 sm:py-12">
       <h1 className="text-3xl mb-6">Checkout</h1>
+      {/*
+        `customerEmail` and `verifiedEmail` answer different questions, which is
+        why both are here.
+
+        `customerEmail` is the address on the record — what the field should be
+        pre-filled with. It was never passed, so the field started blank for
+        everybody; and once email became required, a signed-in customer could
+        not place an order at all, because the empty string reached Razorpay's
+        prefill and came back as "Enter a valid email".
+
+        `verifiedEmail` is whether an OTP has actually proven it. Only that
+        locks the field: an address sitting unverified on a record is a starting
+        point, not a fact.
+      */}
       <CheckoutClient
         summary={{
           itemCount: cart.itemCount,
@@ -63,6 +77,7 @@ export default async function CheckoutPage() {
           pincode: a.pincode, isDefault: a.isDefault,
         }))}
         customerName={customer?.name ?? null}
+        customerEmail={customer?.email ?? null}
         verifiedEmail={customer?.emailVerified ? customer.email : null}
         panRequired={panRequired}
         codAllowed={codAllowed}

@@ -1,5 +1,99 @@
 # Changelog
 
+## The checkout email field was blank for the people who had already given it · 2026-08-26
+
+One prop was missing. `app/(storefront)/checkout/page.tsx` fetched the customer
+and passed their name and their verified status, but never passed
+`customer.email` — so `CheckoutClient` initialised the field to `''` with
+nothing able to fill it, and the OTP step had already disabled the box. A
+signed-in customer saw an empty field they could not type into.
+
+It only became fatal when email became required. The empty string went into
+Razorpay's prefill, the widget validated it at open time, and the customer got
+"Enter a valid email" on the screen they were trying to pay on — with no field
+anywhere they could correct it.
+
+### Pre-filled, and locked only when it is proven
+
+`customerEmail` and `verifiedEmail` are separate props because they answer
+different questions. `customerEmail` is the address on the record and decides
+what the field starts with. `verifiedEmail` is whether an OTP has proven it, and
+only that locks the field.
+
+Three states, and each behaves differently on purpose:
+
+| | field | asks for a code |
+|---|---|---|
+| verified | pre-filled, **read-only**, "Not you?" | no |
+| on record, never verified | pre-filled, **editable** | yes |
+| nothing on record | empty, **editable**, required | yes |
+
+Locking an *unverified* address would be the wrong call: it is a starting point
+somebody may need to correct, and checkout is the one moment they are looking
+at it. Locking a verified one is right for the opposite reason — retyping it
+here would send the confirmation somewhere the account cannot be signed into,
+and leave the account's own address stale.
+
+### `readOnly`, not `disabled`
+
+A disabled input drops out of the tab order, cannot be selected or copied, and
+reads to a screen reader as unavailable — none of which is true of a value that
+is present and correct. It also renders greyed out, which looks like a broken
+form rather than a settled field.
+
+The locked field keeps full-strength ink on a faint tint with a slightly firmer
+border. Measured in the browser: `rgb(22, 21, 19)` on `rgb(241, 236, 228)` —
+legible at a glance as fixed rather than washed out.
+
+Changing it is a link to `/my-account`, not an inline edit. The address is the
+sign-in identifier; editing it mid-order would leave the account pointing at the
+old one.
+
+### The prefill is read back, not passed forward
+
+`prefill.email` was `d.contactEmail || ''` — the form value, and an empty string
+when the form had none. It now reads the customer row:
+
+```ts
+prefill: { …, email: await storedEmail(customerId, d.contactEmail), … }
+```
+
+`storedEmail` falls back to the submitted value rather than to an empty string,
+because a blank prefill is the exact failure this exists to prevent. The
+best-effort write above it is now **awaited** — it was fire-and-forget, and the
+read could lose that race, which would put a legacy customer's newly collected
+address into their record but not in front of them at the payment widget. It
+still swallows its own errors, so a contested phone number cannot fail an order
+that is ready to pay.
+
+The legacy backfill needs no new code: that same write already saves the
+collected address, so the next visit pre-fills.
+
+### Two smaller things found alongside
+
+The place-order button did not check the email at all, so an empty required
+field just moved the failure to the payment screen. And the error for a missing
+session still said "Please verify your phone number first", which stopped being
+true when email became the identifier.
+
+### Verified in a browser
+
+```
+GUEST                     value ""                         readOnly false  required true   OTP asked
+SIGNED IN, VERIFIED       value "co-…@example.com"          readOnly true   disabled false  no OTP
+                          ink rgb(22,21,19) on rgb(241,236,228)   "Not you?" → /my-account
+```
+
+and an order placed end to end on the pre-filled address reached
+`/order/MJ20260826-BFF16A` with no validation error anywhere.
+
+The two remaining states — an address on record that was never verified, and a
+signed-in customer with no address at all — are defensive branches that the live
+UI cannot currently reach, because a session can only be established by
+verifying an email. They are covered by rendering `CheckoutClient` directly with
+those props.
+
+
 ## Email is the identifier; the phone is required and unproven · 2026-08-26
 
 Both are mandatory at every path that creates a customer. Only one of them is

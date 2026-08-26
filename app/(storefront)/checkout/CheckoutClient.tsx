@@ -8,6 +8,7 @@ import { trackEcommerce, type EventItem } from '@/lib/marketing/events';
 import { resolvePayable, type SummaryTotals } from '@/lib/checkout/totals';
 import CheckoutSummary from './CheckoutSummary';
 import type { SummaryLine } from '@/components/storefront/OrderSummary';
+import Link from 'next/link';
 
 declare global {
   interface Window { Razorpay?: new (opts: unknown) => { open: () => void } }
@@ -21,11 +22,15 @@ export type SavedAddressOption = {
 };
 
 export default function CheckoutClient({
-  summary, lines, verifiedEmail, panRequired, codAllowed, brandName, analyticsItems,
+  summary, lines, customerEmail, verifiedEmail, panRequired, codAllowed, brandName, analyticsItems,
   savedAddresses, customerName,
 }: {
   summary: SummaryTotals; lines: SummaryLine[];
-  verifiedEmail: string | null; panRequired: boolean; codAllowed: boolean; brandName: string;
+  /** The address on the record, verified or not. Pre-fills the field. */
+  customerEmail: string | null;
+  /** Set only once an OTP has proven it. Locks the field. */
+  verifiedEmail: string | null;
+  panRequired: boolean; codAllowed: boolean; brandName: string;
   analyticsItems: EventItem[];
   /** Addresses this customer has already saved, default first. */
   savedAddresses: SavedAddressOption[];
@@ -45,8 +50,27 @@ export default function CheckoutClient({
   // Contact + OTP
   const [name, setName] = useState(preset?.name ?? customerName ?? '');
   const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
+  /**
+   * Pre-filled from the record, not blank.
+   *
+   * This was `useState('')` with nothing able to fill it, so a signed-in
+   * customer saw an empty field that the OTP step had already disabled — and
+   * an order they could not place, because the empty string is what reached
+   * validation and, before that, Razorpay's prefill.
+   */
+  const [email, setEmail] = useState(customerEmail ?? '');
   const [verified, setVerified] = useState(!!verifiedEmail);
+
+  /**
+   * Locked, not merely pre-filled — and only when an OTP has proven it.
+   *
+   * Letting a verified customer retype the address here would send the order
+   * confirmation somewhere the account cannot be signed into, and leave the
+   * account's own address stale. An address that is on the record but *not*
+   * verified stays editable: it is a starting point, and it still has to go
+   * through the code below before an order can be placed.
+   */
+  const emailLocked = verifiedEmail !== null;
   const [otpSent, setOtpSent] = useState(false);
   const [otp, setOtp] = useState('');
   const [devCode, setDevCode] = useState<string | null>(null);
@@ -169,7 +193,10 @@ export default function CheckoutClient({
   }
 
   const canPlace = Boolean(
-    verified && name && phone && addr.line1 && addr.city && addr.state &&
+    // `email` is checked explicitly rather than inferred from `verified`. It is
+    // the field that was silently empty, and a button that stays enabled over an
+    // empty required field just moves the failure to the payment screen.
+    verified && email.includes('@') && name && phone && addr.line1 && addr.city && addr.state &&
     /^\d{6}$/.test(addr.pincode) && (!panRequired || pan.length === 10)
   );
 
@@ -188,12 +215,31 @@ export default function CheckoutClient({
               value={email}
               onChange={(v) => { setEmail(v); setVerified(false); setOtpSent(false); }}
               type="email"
-              disabled={verified}
+              // `readOnly`, not `disabled`. A disabled input is skipped by the
+              // tab order, cannot be selected or copied, and reads to a screen
+              // reader as unavailable — which is wrong for a value that is
+              // present and correct. It also renders greyed out, which looks
+              // like the form is broken rather than like the field is settled.
+              readOnly={emailLocked}
+              required
               className="flex-1"
             />
             {!verified && <button onClick={sendCode} disabled={pending || !email.includes('@')} className="btn-outline text-xs h-[42px]">{otpSent ? 'Resend' : 'Send OTP'}</button>}
           </div>
-          {verified && <p className="text-xs text-velvet mt-1">✓ Email verified</p>}
+          {emailLocked ? (
+            <p className="text-xs text-ink-soft mt-1">
+              <span className="text-velvet">✓ Verified</span>
+              {' · Your order confirmation goes here. '}
+              {/* Changing it belongs where the account lives, not mid-order:
+                  the address is the sign-in identifier, and editing it inline
+                  would leave the account pointing at the old one. */}
+              <Link href="/my-account" className="underline underline-offset-4 hover:text-brass">
+                Not you?
+              </Link>
+            </p>
+          ) : (
+            verified && <p className="text-xs text-velvet mt-1">✓ Email verified</p>
+          )}
           <div className="mt-3">
             <Input label="Mobile number (for delivery)" value={phone} onChange={setPhone} />
           </div>
@@ -319,11 +365,30 @@ function Section({ step, title, children }: { step: string; title: string; child
     </div>
   );
 }
-function Input({ label, value, onChange, type = 'text', disabled, className }: { label: string; value: string; onChange: (v: string) => void; type?: string; disabled?: boolean; className?: string }) {
+function Input({
+  label, value, onChange, type = 'text', disabled, readOnly, required, className,
+}: {
+  label: string; value: string; onChange: (v: string) => void;
+  type?: string; disabled?: boolean; readOnly?: boolean; required?: boolean; className?: string;
+}) {
   return (
     <label className={cn('block text-sm', className)}>
       <span className="block mb-1 text-xs text-ink-soft">{label}</span>
-      <input type={type} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} className="w-full border border-line px-3 py-2.5 outline-none focus:border-brass disabled:bg-paper-2" />
+      <input
+        type={type}
+        value={value}
+        disabled={disabled}
+        readOnly={readOnly}
+        required={required}
+        onChange={(e) => onChange(e.target.value)}
+        className={cn(
+          'w-full border px-3 py-2.5 outline-none focus:border-brass disabled:bg-paper-2',
+          // Settled, not unavailable. Full-strength text on a faint tint with a
+          // slightly firmer edge — legible at a glance as "this is fixed",
+          // without the washed-out grey that reads as a broken field.
+          readOnly ? 'border-line-strong bg-paper-2 text-ink cursor-default' : 'border-line'
+        )}
+      />
     </label>
   );
 }
