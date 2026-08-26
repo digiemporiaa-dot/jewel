@@ -49,6 +49,17 @@ export async function createShipmentForOrder(orderId: string): Promise<{ ok: boo
     items: order.items.map((i) => ({ name: i.nameSnapshot, sku: i.skuSnapshot, quantity: i.quantity, unitPrice: Number(i.unitPrice) })),
   });
 
+  if (!result.providerShipmentId) {
+    // Without their shipment id there is nothing to assign an AWB to and
+    // nothing to look the shipment up by later. A row saved anyway would block
+    // every retry — `Shipment.orderId` is unique — while being useless.
+    return {
+      ok: false,
+      error: 'Shiprocket did not return a shipment reference, so nothing was saved. '
+        + 'Check the courier dashboard before retrying: the shipment may exist at their end.',
+    };
+  }
+
   await prisma.shipment.create({
     data: {
       orderId: order.id,
@@ -66,13 +77,84 @@ export async function assignAwbForOrder(orderId: string, courierId?: string): Pr
   const order = await loadOrder(orderId);
   if (!order.shipment?.providerShipmentId) return { ok: false, error: 'Create a shipment first' };
   const provider = await getShippingProvider();
-  const awb = await provider.assignAwb(order.shipment.providerShipmentId, courierId);
-  await prisma.shipment.update({
+  const result = await provider.assignAwb(order.shipment.providerShipmentId, courierId);
+
+  if (!result.awb) {
+    // Nothing is written. The old code wrote `undefined` into every column,
+    // which Prisma reads as "leave it alone", so the row silently kept its
+    // nulls and the order looked unshipped — while a courier was on the way.
+    // Leaving the shipment PENDING and saying so is the recoverable outcome.
+    const status = result.rawStatus ? ` The courier reported "${result.rawStatus}".` : '';
+    return {
+      ok: false,
+      error: `Shiprocket did not return an AWB, so nothing was recorded and the shipment is still pending.${status} `
+        + 'If the courier dashboard shows an AWB, use "Refresh from courier" to pull it in — do not create a second shipment.',
+    };
+  }
+
+  // Write first, then describe what was written. The timeline entry that read
+  // "AWB assigned: undefined (undefined)" was built from the provider reply
+  // rather than from the row, so it announced an assignment that never landed.
+  const saved = await prisma.shipment.update({
     where: { id: order.shipment.id },
-    data: { awb: awb.awb, courier: awb.courier, labelUrl: awb.labelUrl ?? undefined, trackingUrl: awb.awb ? `https://shiprocket.co/tracking/${awb.awb}` : undefined },
+    data: {
+      awb: result.awb,
+      courier: result.courier ?? undefined,
+      labelUrl: result.labelUrl ?? undefined,
+      trackingUrl: `https://shiprocket.co/tracking/${result.awb}`,
+    },
+    select: { awb: true, courier: true },
   });
-  await prisma.orderEvent.create({ data: { orderId, message: `AWB assigned: ${awb.awb} (${awb.courier})`, actor: 'staff' } });
+  await prisma.orderEvent.create({ data: { orderId, message: awbAssignedMessage(saved.awb, saved.courier), actor: 'staff' } });
   return { ok: true };
+}
+
+/** The timeline sentence, from persisted values, naming nothing it does not have. */
+export function awbAssignedMessage(awb: string | null, courier: string | null): string {
+  return courier ? `AWB assigned: ${awb} (${courier})` : `AWB assigned: ${awb} (courier not named by Shiprocket)`;
+}
+
+/**
+ * Re-read the courier's own record for a shipment we already created.
+ *
+ * The repair path for a reply we failed to parse: the assignment succeeded at
+ * Shiprocket, our row kept its nulls, and without this the only way to get an
+ * AWB into the row would be to book a second shipment against an order a
+ * courier is already collecting.
+ */
+export async function refreshFromCourier(orderId: string): Promise<{ ok: boolean; status?: string; error?: string }> {
+  const order = await loadOrder(orderId);
+  if (!order.shipment) return { ok: false, error: 'No shipment' };
+  if (!order.shipment.providerShipmentId) {
+    return { ok: false, error: 'This shipment has no courier reference to look up.' };
+  }
+  const provider = await getShippingProvider();
+  const snapshot = await provider.getShipment(order.shipment.providerShipmentId);
+
+  if (!snapshot.awb && !snapshot.rawStatus) {
+    return { ok: false, error: 'Shiprocket returned nothing for this shipment. Check their dashboard.' };
+  }
+
+  const data: { awb?: string; courier?: string; labelUrl?: string; trackingUrl?: string } = {};
+  if (snapshot.awb && snapshot.awb !== order.shipment.awb) {
+    data.awb = snapshot.awb;
+    data.trackingUrl = snapshot.trackingUrl ?? `https://shiprocket.co/tracking/${snapshot.awb}`;
+  }
+  if (snapshot.courier && snapshot.courier !== order.shipment.courier) data.courier = snapshot.courier;
+  if (snapshot.labelUrl && snapshot.labelUrl !== order.shipment.labelUrl) data.labelUrl = snapshot.labelUrl;
+
+  if (Object.keys(data).length > 0) {
+    await prisma.shipment.update({ where: { id: order.shipment.id }, data });
+  }
+  if (data.awb) {
+    await prisma.orderEvent.create({
+      data: { orderId, message: `${awbAssignedMessage(data.awb, snapshot.courier)} — recovered from the courier`, actor: 'staff' },
+    });
+  }
+  // Status last, so the shipment already carries its AWB when the status lands.
+  if (snapshot.rawStatus) await applyShipmentStatus(orderId, snapshot.rawStatus, 'courier-refresh');
+
+  return { ok: true, status: snapshot.rawStatus ?? undefined };
 }
 
 export async function schedulePickupForOrder(orderId: string): Promise<{ ok: boolean; error?: string }> {
@@ -80,7 +162,13 @@ export async function schedulePickupForOrder(orderId: string): Promise<{ ok: boo
   if (!order.shipment) return { ok: false, error: 'No shipment' };
   const provider = await getShippingProvider();
   const pickup = await provider.schedulePickup(order.shipment.providerShipmentId ?? '');
-  await prisma.shipment.update({ where: { id: order.shipment.id }, data: { status: ShipmentStatus.PICKUP_SCHEDULED, pickupScheduledAt: pickup.pickupScheduledAt } });
+  // `pickupScheduledAt` stays null when the courier did not give a date, rather
+  // than being filled with today's — the admin renders a dash for null, and a
+  // fabricated date would be indistinguishable from a real one.
+  await prisma.shipment.update({
+    where: { id: order.shipment.id },
+    data: { status: ShipmentStatus.PICKUP_SCHEDULED, pickupScheduledAt: pickup.pickupScheduledAt ?? undefined },
+  });
   // Order becomes ready to ship if it wasn't already.
   if (PRE_READY_STATES.includes(order.status)) {
     await prisma.order.update({ where: { id: orderId }, data: { status: OrderStatus.READY_TO_SHIP, events: { create: { status: OrderStatus.READY_TO_SHIP, message: 'Pickup scheduled', actor: 'staff' } } } });

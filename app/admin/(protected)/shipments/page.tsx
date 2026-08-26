@@ -5,6 +5,7 @@ import { formatDate } from '@/lib/utils/format';
 import { cn } from '@/lib/utils/cn';
 import PageHeader from '@/components/admin/PageHeader';
 import { ShipmentStatus } from '@prisma/client';
+import { display } from '@/lib/shipping/parse';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,7 +56,7 @@ export default async function ShipmentsPage({
                 <tr key={s.id} className="border-b border-line/60 hover:bg-paper-2/40">
                   <td className="px-4 py-2"><Link href={`/admin/orders/${s.order.id}`} className="font-medium hover:text-brass">{s.order.orderNumber}</Link></td>
                   <td className="px-4 py-2">{s.order.contactName}<div className="text-xs text-ink-soft">{s.order.contactPhone}</div></td>
-                  <td className="px-4 py-2">{s.awb ?? '—'}<div className="text-xs text-ink-soft">{s.courier ?? ''}</div></td>
+                  <td className="px-4 py-2">{display(s.awb)}<div className="text-xs text-ink-soft">{s.courier ?? ''}</div></td>
                   <td className="px-4 py-2">
                     <span className={cn('text-xs px-2 py-0.5 rounded-[2px] border', ATTENTION.includes(s.status) ? 'border-red-300 text-red-700' : 'border-velvet text-velvet')}>{s.status.replace(/_/g, ' ')}</span>
                   </td>

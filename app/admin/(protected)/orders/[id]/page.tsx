@@ -6,6 +6,7 @@ import { formatCurrency, formatDate } from '@/lib/utils/format';
 import PageHeader from '@/components/admin/PageHeader';
 import OrderActions from './OrderActions';
 import ShipmentPanel from '@/components/admin/ShipmentPanel';
+import { cleanMessage } from '@/lib/shipping/parse';
 import { can as canPerm } from '@/lib/auth/rbac';
 import ArchiveOrder from './ArchiveOrder';
 import { isArchivable } from '@/lib/admin/removal-rules';
@@ -82,7 +83,7 @@ export default async function AdminOrderDetail({ params }: { params: Promise<{ i
           <Panel title="Timeline & notes">
             <ol className="space-y-1.5 text-sm">
               {order.events.map((e) => (
-                <li key={e.id} className="flex gap-3"><span className="text-ink-soft w-28 shrink-0">{formatDate(e.createdAt)}</span><span>{e.message}</span></li>
+                <li key={e.id} className="flex gap-3"><span className="text-ink-soft w-28 shrink-0">{formatDate(e.createdAt)}</span><span>{cleanMessage(e.message)}</span></li>
               ))}
             </ol>
             {order.notes.length > 0 && (

@@ -2,8 +2,12 @@ import 'server-only';
 import { randomUUID } from 'node:crypto';
 import type {
   ShippingProvider, ServiceabilityQuery, ServiceabilityResult, CreateShipmentInput,
-  CreateShipmentResult, AwbResult, PickupResult, TrackingResult,
+  CreateShipmentResult, AwbResult, PickupResult, TrackingResult, ShipmentSnapshot,
 } from '@/lib/shipping/provider';
+import {
+  readAwb, readCourier, readLabelUrl, readManifestUrl, readOrderId, readShipmentId,
+  readStatus, readField, PICKUP_DATE_KEYS, PICKUP_TOKEN_KEYS, TRACK_URL_KEYS, ETA_KEYS,
+} from '@/lib/shipping/parse';
 import { AuthBreaker, ShippingAuthError, authFailureMessage, classifyAuthFailure } from '@/lib/shipping/auth-breaker';
 
 const BASE = 'https://apiv2.shiprocket.in/v1/external';
@@ -182,7 +186,7 @@ export class ShiprocketProvider implements ShippingProvider {
       return { providerOrderId: `sr_ord_${shortId()}`, providerShipmentId: `sr_shp_${shortId()}` };
     }
     const [firstName, ...rest] = input.contact.name.split(' ');
-    const data = await this.api<{ order_id: number; shipment_id: number }>(`/orders/create/adhoc`, {
+    const data = await this.api<unknown>(`/orders/create/adhoc`, {
       method: 'POST',
       body: JSON.stringify({
         order_id: input.orderNumber,
@@ -205,55 +209,101 @@ export class ShiprocketProvider implements ShippingProvider {
         length: 10, breadth: 10, height: 5, weight: input.weightKg,
       }),
     });
-    return { providerOrderId: String(data.order_id), providerShipmentId: String(data.shipment_id) };
+    const providerShipmentId = readShipmentId(data);
+    if (!providerShipmentId) logShape('orders/create/adhoc', data);
+    return { providerOrderId: readOrderId(data), providerShipmentId };
   }
 
   async assignAwb(providerShipmentId: string, courierId?: string): Promise<AwbResult> {
     if (this.dev) {
       return { awb: `SIMAWB${shortId().toUpperCase()}`, courier: 'Maya Express (sim)', labelUrl: null };
     }
-    const data = await this.api<{ response: { data: { awb_code: string; courier_name: string } } }>(`/courier/assign/awb`, {
+    const data = await this.api<unknown>(`/courier/assign/awb`, {
       method: 'POST',
       body: JSON.stringify({ shipment_id: Number(providerShipmentId), ...(courierId ? { courier_id: Number(courierId) } : {}) }),
     });
-    return { awb: data.response.data.awb_code, courier: data.response.data.courier_name };
+    const awb = readAwb(data);
+    // The one call whose reply shape actually varied in production. If no AWB
+    // can be found anywhere in it, the full body goes to the log at error level
+    // — otherwise the next person debugging this is guessing at the shape too.
+    if (!awb) logShape('courier/assign/awb', data);
+    return { awb, courier: readCourier(data), labelUrl: readLabelUrl(data), rawStatus: readStatus(data) };
+  }
+
+  async getShipment(providerShipmentId: string): Promise<ShipmentSnapshot> {
+    if (this.dev) {
+      return {
+        awb: `SIMAWB${shortId().toUpperCase()}`, courier: 'Maya Express (sim)',
+        rawStatus: 'IN TRANSIT', labelUrl: null, trackingUrl: `https://example.com/track/${providerShipmentId}`,
+      };
+    }
+    const data = await this.api<unknown>(`/courier/track/shipment/${providerShipmentId}`);
+    return {
+      awb: readAwb(data),
+      courier: readCourier(data),
+      rawStatus: readStatus(data),
+      labelUrl: readLabelUrl(data),
+      trackingUrl: readField(data, TRACK_URL_KEYS),
+    };
   }
 
   async schedulePickup(providerShipmentId: string): Promise<PickupResult> {
     if (this.dev) return { pickupScheduledAt: new Date(Date.now() + 24 * 3600_000), pickupToken: `sim_pk_${shortId()}` };
-    const data = await this.api<{ pickup_scheduled_date?: string; pickup_token_number?: string }>(`/courier/generate/pickup`, {
+    const data = await this.api<unknown>(`/courier/generate/pickup`, {
       method: 'POST',
       body: JSON.stringify({ shipment_id: [Number(providerShipmentId)] }),
     });
-    return { pickupScheduledAt: data.pickup_scheduled_date ? new Date(data.pickup_scheduled_date) : new Date(), pickupToken: data.pickup_token_number ?? null };
+    // A missing or unparseable date used to become `new Date()` — today's date
+    // presented as the courier's answer. Null says "they did not tell us",
+    // which is the truth and is what the admin will render as a dash.
+    const raw = readField(data, PICKUP_DATE_KEYS);
+    const parsed = raw ? new Date(raw) : null;
+    const pickupScheduledAt = parsed && !Number.isNaN(parsed.getTime()) ? parsed : null;
+    if (!pickupScheduledAt) logShape('courier/generate/pickup', data);
+    return { pickupScheduledAt, pickupToken: readField(data, PICKUP_TOKEN_KEYS) };
   }
 
   async generateLabel(providerShipmentId: string): Promise<{ labelUrl: string }> {
     if (this.dev) return { labelUrl: `https://example.com/labels/${providerShipmentId}.pdf` };
-    const data = await this.api<{ label_url: string }>(`/courier/generate/label`, { method: 'POST', body: JSON.stringify({ shipment_id: [Number(providerShipmentId)] }) });
-    return { labelUrl: data.label_url };
+    const data = await this.api<unknown>(`/courier/generate/label`, { method: 'POST', body: JSON.stringify({ shipment_id: [Number(providerShipmentId)] }) });
+    const labelUrl = readLabelUrl(data);
+    if (!labelUrl) { logShape('courier/generate/label', data); throw new Error('Shiprocket returned no label URL'); }
+    return { labelUrl };
   }
 
   async generateManifest(providerShipmentIds: string[]): Promise<{ manifestUrl: string }> {
     if (this.dev) return { manifestUrl: `https://example.com/manifests/${shortId()}.pdf` };
-    const data = await this.api<{ manifest_url: string }>(`/manifests/generate`, { method: 'POST', body: JSON.stringify({ shipment_id: providerShipmentIds.map(Number) }) });
-    return { manifestUrl: data.manifest_url };
+    const data = await this.api<unknown>(`/manifests/generate`, { method: 'POST', body: JSON.stringify({ shipment_id: providerShipmentIds.map(Number) }) });
+    const manifestUrl = readManifestUrl(data);
+    if (!manifestUrl) { logShape('manifests/generate', data); throw new Error('Shiprocket returned no manifest URL'); }
+    return { manifestUrl };
   }
 
   async track(awb: string): Promise<TrackingResult> {
     if (this.dev) {
       return { rawStatus: 'IN TRANSIT', awb, courier: 'Maya Express (sim)', trackingUrl: `https://example.com/track/${awb}`, etaDate: null, checkpoints: [{ at: new Date().toISOString(), status: 'In Transit', location: 'Hub' }] };
     }
-    const data = await this.api<{ tracking_data: { shipment_track?: Array<{ current_status: string; courier_name: string; awb_code: string; edd: string }>; shipment_track_activities?: Array<{ date: string; activity: string; location: string }>; track_url?: string } }>(`/courier/track/awb/${awb}`);
-    const t = data.tracking_data;
-    const head = t.shipment_track?.[0];
+    const data = await this.api<unknown>(`/courier/track/awb/${awb}`);
+    const t = (data as { tracking_data?: unknown }).tracking_data ?? data;
+    const head = (t as { shipment_track?: unknown }).shipment_track;
+    // Read the head of `shipment_track` when it is there, and fall back to the
+    // envelope when it is not, rather than assuming the array exists.
+    const scope = Array.isArray(head) && head.length > 0 ? head[0] : t;
+    const status = readStatus(scope) ?? readStatus(t);
+    const activities = (t as { shipment_track_activities?: unknown }).shipment_track_activities;
     return {
-      rawStatus: head?.current_status ?? 'UNKNOWN',
-      awb: head?.awb_code ?? awb,
-      courier: head?.courier_name ?? null,
-      trackingUrl: t.track_url ?? null,
-      etaDate: head?.edd ?? null,
-      checkpoints: (t.shipment_track_activities ?? []).map((a) => ({ at: a.date, status: a.activity, location: a.location })),
+      // 'UNKNOWN' maps to PENDING downstream, so an unreadable reply parks the
+      // shipment rather than moving the order on evidence we do not have.
+      rawStatus: status ?? 'UNKNOWN',
+      awb: readAwb(scope) ?? awb,
+      courier: readCourier(scope),
+      trackingUrl: readField(t, TRACK_URL_KEYS),
+      etaDate: readField(scope, ETA_KEYS),
+      checkpoints: (Array.isArray(activities) ? activities : []).map((a) => ({
+        at: readField(a, ['date', 'at']) ?? '',
+        status: readField(a, ['activity', 'status']) ?? '',
+        location: readField(a, ['location']),
+      })),
     };
   }
 
@@ -261,6 +311,22 @@ export class ShiprocketProvider implements ShippingProvider {
     if (this.dev) return;
     await this.api(`/orders/cancel/shipment/awbs`, { method: 'POST', body: JSON.stringify({ awbs: [providerShipmentId] }) });
   }
+}
+
+/**
+ * One error-level line carrying the whole reply, when we could not find a value
+ * we needed in it. The point is that the actual shape becomes visible: this bug
+ * survived because a mis-parse looked exactly like a courier that had not
+ * replied yet.
+ */
+function logShape(path: string, body: unknown): void {
+  let rendered: string;
+  try {
+    rendered = JSON.stringify(body);
+  } catch {
+    rendered = String(body);
+  }
+  console.error(`[shiprocket] unreadable reply from ${path}:`, rendered?.slice(0, 4000) ?? '(empty)');
 }
 
 function shortId(): string {

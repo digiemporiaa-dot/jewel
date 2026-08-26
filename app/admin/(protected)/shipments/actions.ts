@@ -6,7 +6,7 @@ import { writeAudit } from '@/lib/audit';
 import { ShippingAuthError } from '@/lib/shipping/auth-breaker';
 import {
   createShipmentForOrder, assignAwbForOrder, schedulePickupForOrder,
-  generateLabelForOrder, generateManifestForOrder, refreshTracking,
+  generateLabelForOrder, generateManifestForOrder, refreshTracking, refreshFromCourier,
 } from '@/lib/shipping/shipments';
 
 export type Result = { ok: boolean; error?: string; info?: string };
@@ -93,5 +93,21 @@ export async function refreshTrackingAction(orderId: string): Promise<Result> {
   return guarded(orderId, 'Tracking refresh', async () => {
     const res = await refreshTracking(orderId);
     return res.ok ? { ok: true, info: res.status } : res;
+  });
+}
+
+/**
+ * Pull the courier's own record back into ours.
+ *
+ * Separate from "Refresh tracking", which needs an AWB before it can ask about
+ * one. This looks the shipment up by the reference we stored when we created
+ * it, so it works precisely when the AWB is the thing that went missing.
+ */
+export async function refreshFromCourierAction(orderId: string): Promise<Result> {
+  const staff = await assertPermission('shipments.manage');
+  return guarded(orderId, 'Courier refresh', async () => {
+    const res = await refreshFromCourier(orderId);
+    if (res.ok) await writeAudit({ userId: staff.id, action: 'SHIPMENT_REFRESH', entity: 'Order', entityId: orderId });
+    return res.ok ? { ok: true, info: res.status ? `Courier reports: ${res.status}` : 'Refreshed from courier' } : res;
   });
 }

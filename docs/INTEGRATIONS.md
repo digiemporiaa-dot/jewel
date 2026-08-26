@@ -42,6 +42,20 @@ phases noted below; the data model and env contract exist now.
 - **Customer tracking**: `/track` (order number + phone, ownership-checked) and a
   tracking block on the order page.
 - Pincode serviceability cached 24h (`PincodeServiceability`).
+- **Reading their replies**: `lib/shipping/parse.ts` looks for each value under
+  every nesting and spelling it has been seen under (`response.data`, `data`,
+  `tracking_data.shipment_track[0]`, the top level; `awb_code`/`awb`,
+  `courier_name`/`courier`) and returns `null` when it is not there. Nothing is
+  destructured from an assumed shape. `AwbResult`, `CreateShipmentResult` and
+  `PickupResult` are nullable so a caller cannot skip the missing case.
+- **Nothing half-written**: no AWB in the reply means no write at all — the
+  shipment stays `PENDING`, no timeline entry claims an assignment, and the full
+  reply body is logged once at error level. Timeline notes are written from the
+  persisted row, after validation, never from the provider payload.
+- **Repair path**: "Refresh from courier" on the order's Shipment panel re-reads
+  the AWB and status by the shipment reference we stored, so an assignment that
+  succeeded at their end but failed to parse at ours can be recovered without
+  booking a second shipment.
 - **Login handling**: the token is cached at module scope until its own `exp`
   claim runs out, and one login at a time is attempted however many callers are
   waiting. After two consecutive 401/403 refusals a breaker opens for 15

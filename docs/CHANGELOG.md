@@ -1,5 +1,120 @@
 # Changelog
 
+## The courier assigned a waybill; we recorded "undefined" · 2026-08-26
+
+Shiprocket assigned AWB 14112366393092 via Xpressbees Surface and moved the
+shipment to READY TO SHIP. Our admin recorded `AWB assigned: undefined
+(undefined)` and left the panel showing PENDING and dashes. The API call worked.
+Only our reading of the reply failed.
+
+### Why it was silent
+
+The client destructured one assumed shape:
+
+```ts
+const data = await this.api<{ response: { data: { awb_code: string; courier_name: string } } }>(...)
+return { awb: data.response.data.awb_code, courier: data.response.data.courier_name };
+```
+
+Shiprocket does not always answer that way — the nesting varies with
+`awb_assign_status`, with shipments that already carry an AWB, and between
+courier types. When it differed the destructure produced `undefined`, and
+`undefined` went into the `Shipment` row.
+
+That is where it went quiet. Prisma reads an `undefined` field as *"leave this
+column alone"*, so the update succeeded, changed nothing, and reported success.
+The row kept its nulls, the panel rendered them as dashes, and the order looked
+like one where nobody had pressed the button yet — while a courier was on the
+way to collect it. The only visible trace was the timeline, and only because
+template literals are less forgiving than Prisma: interpolating `undefined`
+prints the word.
+
+The type signature was load-bearing in the wrong direction. `AwbResult.awb` was
+`string`, so TypeScript believed a value was always there and never asked the
+caller what to do if it was not.
+
+### Look everywhere; return null when it is not there
+
+`lib/shipping/parse.ts` searches each known nesting — `response.data`, `data`,
+`tracking_data.shipment_track[0]`, the envelope itself — for each known spelling
+— `awb_code`, `awb`, `awb_number` — and returns `null` when none of them holds
+anything usable. Scope order beats key order: a reply that carries the real
+answer under `response.data` may also have a stale generic field of the same
+name at the top level.
+
+It rejects `"undefined"` and `"null"` arriving as *text*, which is not
+hypothetical — an encoder upstream turning a missing value into a string is the
+same bug one hop earlier, and it should not survive the hop.
+
+The tracking envelopes are in that same scope list rather than being unwrapped
+at each call site, because the recovery path below reads a *tracking* reply to
+repair an *assignment*: both shapes have to be legible to one reader.
+
+`AwbResult`, `CreateShipmentResult` and `PickupResult` are nullable now. The
+compiler asks the question the old types answered for it.
+
+### Nothing half-written
+
+No AWB in the reply means no write at all. The shipment stays `PENDING`, no
+timeline entry claims an assignment, the whole reply body goes to the log once
+at error level so the actual shape is visible, and the admin says what happened
+and what to do about it. A silently stored `undefined` is worse than a visible
+failure: the failure is recoverable in a minute, the silence is discovered when
+a customer asks where their order is.
+
+The same applies to the other three calls, which had the same assumption:
+
+- `createShipment` refuses to save a row with no courier reference — `orderId`
+  is unique on `Shipment`, so a useless row would block every retry
+- `schedulePickup` no longer turns a missing date into `new Date()`, which
+  presented today as the courier's answer; null is the truth and renders as a dash
+- `track` reads the head of `shipment_track` when it is there and the envelope
+  when it is not, falling back to `UNKNOWN` — which maps to `PENDING` — rather
+  than moving an order on evidence we do not have
+
+The timeline note is now written from the row after it is saved, not from the
+provider payload. That is what made the old note able to announce an assignment
+that never landed.
+
+### Repairing the order that exposed this
+
+"Refresh from courier" on the Shipment panel re-reads the AWB, courier and
+status using the shipment reference stored when the shipment was created. It is
+deliberately not "Refresh tracking", which needs an AWB before it can ask about
+one — useless precisely when the AWB is the thing that went missing.
+
+Without it the only route to a correct row would be booking a second shipment
+against an order a courier is already collecting.
+
+Where a shipment exists with no waybill the panel now says so in words —
+"AWB not recorded — check the courier dashboard" — because a row of dashes reads
+as "nothing has happened yet". Timeline entries written before this fix are
+scrubbed at render, so the historical record stays intact without showing staff
+the word "undefined".
+
+### Verified
+
+Driven through the browser against a stubbed courier, on an order set up to
+match the live one — a shipment with a provider reference, no AWB, and the
+`AWB assigned: undefined (undefined)` entry in its timeline:
+
+```
+BEFORE          panel says "undefined": false   AWB row shows a dash: true
+                warning note shown: true        timeline: AWB assigned: — (—)
+NO-AWB REPLY    refused with a reason: true     still PENDING: true
+                tells staff what to do: true
+AFTER REFRESH   AWB now shown: true             courier now shown: true
+                warning note gone: true
+                timeline: AWB assigned: 14112366393092 (Xpressbees Surface) — recovered from the courier
+```
+
+The database-backed tests mark themselves *skipped* without Postgres rather than
+returning early and reporting green — an early return makes a suite that proves
+nothing look identical to one that passed, which is the same shape of mistake as
+the bug it is testing. Confirmed by pointing them at a stopped database, and by
+removing the guard under test and watching all six fail.
+
+
 ## A wrong password should not lock the courier account · 2026-08-26
 
 `SHIPROCKET_PASSWORD` was wrong in production. Every press of "Create shipment"
