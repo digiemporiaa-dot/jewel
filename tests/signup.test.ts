@@ -259,9 +259,18 @@ describe('gender', () => {
     acceptTerms: true as const,
   };
 
-  it('offers exactly three options', () => {
-    expect([...GENDERS]).toEqual(['MALE', 'FEMALE', 'OTHER']);
+  it('offers exactly four options', () => {
+    expect([...GENDERS]).toEqual(['MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY']);
     for (const g of GENDERS) expect(GENDER_LABELS[g].length).toBeGreaterThan(0);
+  });
+
+  it('keeps "prefer not to say" distinct from never having been asked', () => {
+    // Null means the question was never put — every record predating the form,
+    // and the set the admin's "Not recorded" filter chases. This is an answer,
+    // and folding it into null would put somebody back on that list for
+    // something they have already declined to give.
+    expect(GENDERS).toContain('PREFER_NOT_TO_SAY');
+    expect(GENDER_LABELS.PREFER_NOT_TO_SAY).toMatch(/prefer not to say/i);
   });
 
   it('is required at signup', () => {
@@ -269,7 +278,7 @@ describe('gender', () => {
     expect(signupSchema.safeParse({ ...base, gender: '' }).success).toBe(false);
   });
 
-  it('rejects anything outside the three', () => {
+  it('rejects anything outside the four', () => {
     // A free-text box produces "M"/"male"/"Male"/"mail" and nothing can segment
     // on that, which is the whole reason this is an enum.
     for (const bad of ['male', 'M', 'Female', 'prefer not to say', 'OTHERS']) {
@@ -277,7 +286,7 @@ describe('gender', () => {
     }
   });
 
-  it('accepts each of the three', () => {
+  it('accepts each of the four', () => {
     for (const g of GENDERS) {
       expect(signupSchema.safeParse({ ...base, gender: g }).success, g).toBe(true);
     }

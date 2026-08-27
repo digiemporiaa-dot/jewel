@@ -1,5 +1,112 @@
 # Changelog
 
+## Signing in and signing up are one screen · 2026-08-27
+
+Two pages with a text link between them, and a returning customer who had
+forgotten their account could quietly make a second one. There is now one form:
+an address, and two buttons of equal weight.
+
+```
+  Email address
+  [ Send login code ]  [ Create account ]
+  New here? Create an account to save your details and track orders.
+```
+
+Both 308 × 48 at 390px, one filled and one outlined. Not a big button and a
+small link — a first-time customer offered a link under a button reads the link
+as the wrong door.
+
+### Both buttons send the same code
+
+This is the part worth understanding. The label says what the customer
+*expects*; what decides the next screen is what the shop finds once the address
+is proven. Press the wrong one and nothing bad happens:
+
+| pressed | address is | what happens |
+|---|---|---|
+| Send login code | known, complete | signed in |
+| Send login code | unknown | carried on to the details form |
+| Create account | known | signed into the existing account, told so |
+| Create account | unknown | details form |
+
+Nobody is ever sent back to press the other button.
+
+### What the screen must not say
+
+The brief asked for "No account found. Would you like to create one?" before
+sending a code, and "you already have an account" on the signup path. Both would
+tell an anonymous visitor whether a given address shops here — anybody could
+test a list and learn who buys jewellery from this shop. That oracle was closed
+deliberately earlier in this project and is not worth reopening for a message.
+
+So the message moved rather than disappearing: the same sentence is shown
+**after** the code is entered, where the only person reading it is the one
+holding the inbox. Before the code, both buttons produce an identical screen.
+
+### The panel navigates instead of being torn off screen
+
+Setting the session cookie inside a server action makes Next re-render the
+route, which then sees a signed-in customer and swaps the panel for the account
+page. A details step rendered *inside* the panel vanished the instant it
+appeared — the same shape as the spin dialog that unmounted at the moment it
+awarded a prize, and the `router.refresh()` that once hid the minor-consent
+notice.
+
+Rather than fight it, the panel decides where to go and goes there: `refresh()`
+into the account for a complete profile, `push('/signup')` for the details, with
+`?returning=1` when they pressed "Create account" on an address that already had
+one.
+
+### `/signup` is no longer a way in
+
+It is the continuation of one flow, not a second front door. Arriving without a
+session redirects to `/my-account`; arriving with a complete profile redirects
+there too. What survives is the case it is genuinely for — somebody signed in
+whose profile has gaps, following the prompt on their account page.
+
+The fields moved into `components/auth/ProfileDetailsForm.tsx`, so the page and
+the panel cannot drift into two forms that were meant to be the same one. One
+field per row at every width: these are a name, a number, two dates and a
+choice, and a two-column grid on a phone turns each of them into something you
+have to zoom to hit.
+
+### "Prefer not to say" is an answer
+
+A fourth `Gender`, not a null. Null means the question was never put — every
+record predating the profile form, and exactly the set the admin's "Not
+recorded" filter chases. Folding a declined answer into null would put that
+customer back on a list to be chased for something they have already answered.
+
+### Contrast, measured
+
+The filled button is paper on velvet at **12.37:1**, the outlined one ink on
+white at **18.25:1** — both far past the 4.5:1 AA asks for text.
+
+The outlined button's *border* needed fixing. `btn-outline`'s stone edge
+measures **1.69:1** against white, and for a button whose only visible boundary
+is that edge, WCAG 1.4.11 wants 3:1. It is overridden to velvet — **13.12:1** —
+on this pair. The default is wrong everywhere it is used, which is a bigger
+change than this one and is noted rather than smuggled in here.
+
+### Verified end to end
+
+At 390px, against a running build:
+
+```
+Send login code : 308 × 48, paper on velvet      Create account : 308 × 48, ink on white
+identical size  : true                            second door    : gone
+
+unknown address, "Send login code"   leaks "no account found": no
+                                     → /signup, details form shown, email marked verified
+                                     gender: Choose one, Male, Female, Other, Prefer not to say
+                                     saved: yes
+
+known address, "Create account"      leaks before the code: no
+                                     signed into the existing account: yes
+                                     second account created: no  (one row in the database)
+```
+
+
 ## The checkout email field was blank for the people who had already given it · 2026-08-26
 
 One prop was missing. `app/(storefront)/checkout/page.tsx` fetched the customer

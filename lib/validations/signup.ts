@@ -34,14 +34,15 @@ export const DOB_PURPOSE = 'So we can send you a birthday offer. Nothing else.';
 export const ANNIVERSARY_PURPOSE = 'Optional. If you tell us, we will send an anniversary offer too.';
 export const GENDER_PURPOSE = 'So we can show you pieces that are more likely to be relevant.';
 
-/** The three the form offers. A free-text box produces data nothing can segment. */
-export const GENDERS = ['MALE', 'FEMALE', 'OTHER'] as const;
+/** The four the form offers. A free-text box produces data nothing can segment. */
+export const GENDERS = ['MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY'] as const;
 export type Gender = (typeof GENDERS)[number];
 
 export const GENDER_LABELS: Record<Gender, string> = {
   MALE: 'Male',
   FEMALE: 'Female',
   OTHER: 'Other',
+  PREFER_NOT_TO_SAY: 'Prefer not to say',
 };
 
 /** DPDP treats anyone under this age as a child. */

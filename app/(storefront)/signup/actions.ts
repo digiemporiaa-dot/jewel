@@ -7,7 +7,7 @@ import { checkLimit, LIMITS } from '@/lib/rate-limit';
 import { getClientIp } from '@/lib/request-id';
 import { setCustomerSession, getCustomerId } from '@/lib/customer-session';
 import { saveCustomerProfile, type SaveProfileResult } from '@/lib/customers/profile';
-import { signupSchema } from '@/lib/validations/signup';
+import { signupSchema, profileGaps } from '@/lib/validations/signup';
 import { sendWelcome } from '@/lib/email/notifications';
 
 /**
@@ -48,7 +48,24 @@ export async function sendSignupOtp(email: string): Promise<OtpResult> {
   return res.ok ? { ok: true, devCode: res.devCode } : { ok: false, error: res.error };
 }
 
-export async function verifySignupOtp(email: string, code: string): Promise<OtpResult> {
+/**
+ * What the panel needs to know once the address is proven.
+ *
+ * `existingAccount` is deliberately only ever reported **after** verification.
+ * Telling an anonymous visitor whether an address is a customer here — which is
+ * what "no account found" before a code would do — lets anybody test a list of
+ * addresses and learn who buys jewellery from this shop. After the code, the
+ * only person seeing it is the one who controls the inbox, and then it is
+ * simply useful.
+ */
+export type VerifyResult = OtpResult & {
+  /** A customer row existed before this verification. */
+  existingAccount?: boolean;
+  /** Nothing more to ask for — sign them straight in. */
+  profileComplete?: boolean;
+};
+
+export async function verifySignupOtp(email: string, code: string): Promise<VerifyResult> {
   const parsedEmail = emailSchema.safeParse(email);
   if (!parsedEmail.success) return { ok: false, error: 'Invalid email' };
   const parsedCode = codeSchema.safeParse(code);
@@ -61,6 +78,14 @@ export async function verifySignupOtp(email: string, code: string): Promise<OtpR
   const res = await verifyOtp(parsedEmail.data, 'EMAIL_VERIFY', parsedCode.data);
   if (!res.ok) return { ok: false, error: res.error };
 
+  // Looked up before the upsert, because afterwards the row always exists and
+  // the question "did they already have an account?" can no longer be answered.
+  // This is what stops the two buttons producing two accounts for one person.
+  const before = await prisma.customer.findUnique({
+    where: { email: parsedEmail.data },
+    select: { id: true, name: true, phone: true, dob: true, gender: true, email: true },
+  });
+
   // An existing record is reused rather than refused. Someone who gave this
   // address at checkout already has a row; verifying it should sign them into
   // that row, not start a second history beside it.
@@ -70,7 +95,12 @@ export async function verifySignupOtp(email: string, code: string): Promise<OtpR
     update: { emailVerified: true },
   });
   await setCustomerSession(customer.id);
-  return { ok: true };
+
+  return {
+    ok: true,
+    existingAccount: before !== null,
+    profileComplete: before !== null && profileGaps(before).length === 0,
+  };
 }
 
 export type SignupResult = SaveProfileResult;

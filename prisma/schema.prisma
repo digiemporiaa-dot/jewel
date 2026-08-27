@@ -244,6 +244,14 @@ enum Gender {
   MALE
   FEMALE
   OTHER
+  /// Asked, and declined.
+  ///
+  /// A distinct value rather than a null, because the two mean different
+  /// things: null is "we never asked", which is every record predating the
+  /// profile form and is what the admin's "Not recorded" filter is for. This is
+  /// an answer the customer gave, and collapsing it into null would put them
+  /// back on a list of people to chase for something they already declined.
+  PREFER_NOT_TO_SAY
 }
 
 enum OtpPurpose {
