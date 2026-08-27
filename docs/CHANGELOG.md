@@ -1,5 +1,30 @@
 # Changelog
 
+## The dashboard now asks whether mail will send, not whether it is configured · 2026-08-27
+
+`isEmailConfigured()` reads two environment variables. The health check on the
+admin dashboard reported "SMTP is configured" on the strength of that, and every
+way a mail server can reject you — wrong password, no TLS, auth not permitted —
+sits on the other side of it.
+
+That was tolerable when email carried receipts. It is not now: a sign-in code
+travels on this channel and nothing else, so a green tick over a rejecting
+server tells an operator the shop works while nobody can get into their account.
+
+`probeSmtp()` opens a real connection and authenticates, so the dashboard
+reports what the server actually said. Three states rather than two — not
+configured, connecting, refusing — and the refusing one is critical, quotes the
+server's own words, and names the mistake that causes it nine times out of ten
+with Gmail: an ordinary account password instead of a 16-character App Password,
+which cannot even be created until 2-Step Verification is on.
+
+The result is cached for five minutes. A dashboard is a page an operator
+refreshes, and a handshake per refresh is a good way to be rate-limited by the
+very server being checked. The "send a test" button on the templates screen
+clears that cache first — it is the one moment a stale answer is worth nothing,
+because the operator has just changed something and is asking whether it took.
+
+
 ## Signing in and signing up are one screen · 2026-08-27
 
 Two pages with a text link between them, and a returning customer who had

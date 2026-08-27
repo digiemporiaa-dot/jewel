@@ -7,7 +7,7 @@ import { prisma } from '@/lib/prisma';
 import { templateDefinition, isTemplateKey, sampleValues } from '@/lib/templates/registry';
 import { sanitizeTemplateHtml, unknownVariables, wouldStripMarkup } from '@/lib/templates/render';
 import { previewTemplate, resolveTemplate, commonValues, renderResolved } from '@/lib/templates';
-import { sendEmail, isEmailConfigured } from '@/lib/email';
+import { sendEmail, isEmailConfigured, probeSmtp, resetSmtpProbe } from '@/lib/email';
 
 /**
  * Editing email copy.
@@ -172,6 +172,19 @@ export async function sendTestAction(fd: FormData): Promise<Result> {
   // path, but here it would tell the operator a test arrived when none did.
   if (!isEmailConfigured()) {
     return { ok: false, error: 'No mail server is configured, so nothing can be sent yet. Set SMTP_HOST and SMTP_PORT in the deployment environment.' };
+  }
+
+  // A test send is the one moment a stale answer is worth nothing: the operator
+  // has just changed something and is asking whether it took.
+  resetSmtpProbe();
+  const probe = await probeSmtp();
+  if (probe.state === 'failing') {
+    return {
+      ok: false,
+      error:
+        `The mail server rejected us: ${probe.error}. With Gmail this is nearly always the password — ` +
+        'it has to be a 16-character App Password, and 2-Step Verification has to be on before one can be made.',
+    };
   }
 
   const template = await resolveTemplate(key);

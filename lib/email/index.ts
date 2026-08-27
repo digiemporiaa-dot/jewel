@@ -25,6 +25,53 @@ function getTransporter(): nodemailer.Transporter {
   return transporter;
 }
 
+export type SmtpProbe =
+  | { state: 'unconfigured' }
+  | { state: 'ok' }
+  | { state: 'failing'; error: string };
+
+/**
+ * Does the mail server actually accept us?
+ *
+ * `isEmailConfigured()` answers a different and much weaker question — whether
+ * two environment variables are set. Everything past that point can still be
+ * wrong, and with Gmail it usually is: an ordinary account password instead of
+ * an app password, 2-Step Verification not switched on, port 465 without TLS.
+ * All of those set the variables and none of them deliver a message.
+ *
+ * That matters more than it used to. Email is the only channel a sign-in code
+ * goes out on, so a dashboard reporting "SMTP is configured" over a rejected
+ * login is not a cosmetic inaccuracy — it is the operator being told the shop
+ * works while nobody can get into it.
+ *
+ * `verify()` opens a real connection and authenticates, so it catches all three.
+ * The result is cached because the dashboard is a page an operator refreshes,
+ * and a handshake per refresh is a good way to get an IP rate-limited by the
+ * very server being checked.
+ */
+let probe: { at: number; result: SmtpProbe } | null = null;
+const PROBE_TTL_MS = 5 * 60_000;
+
+export async function probeSmtp(now: number = Date.now()): Promise<SmtpProbe> {
+  if (!isEmailConfigured()) return { state: 'unconfigured' };
+  if (probe && now - probe.at < PROBE_TTL_MS) return probe.result;
+
+  let result: SmtpProbe;
+  try {
+    await getTransporter().verify();
+    result = { state: 'ok' };
+  } catch (e) {
+    result = { state: 'failing', error: e instanceof Error ? e.message : 'connection refused' };
+  }
+  probe = { at: now, result };
+  return result;
+}
+
+/** Forget the cached handshake — for a test send, which should never be stale. */
+export function resetSmtpProbe(): void {
+  probe = null;
+}
+
 export type EmailInput = {
   to: string;
   subject: string;

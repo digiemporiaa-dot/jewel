@@ -1,6 +1,6 @@
 import 'server-only';
 import { prisma } from '@/lib/prisma';
-import { isEmailConfigured } from '@/lib/email';
+import { isEmailConfigured, probeSmtp } from '@/lib/email';
 import { isStorageConfigured } from '@/lib/storage';
 import { jobStatuses, type JobStatus } from '@/lib/system/jobs';
 
@@ -36,26 +36,44 @@ export async function systemHealth(now: Date = new Date()): Promise<{
   jobs: JobStatus[];
   criticalCount: number;
 }> {
-  const [jobs, rate, tags] = await Promise.all([
+  const [jobs, rate, tags, smtp] = await Promise.all([
     jobStatuses(now),
     prisma.metalRate.findFirst({ where: { isCurrent: true }, orderBy: { effectiveFrom: 'desc' }, select: { effectiveFrom: true } }),
     prisma.marketingTags.findUnique({ where: { id: 'default' }, select: { id: true } }).catch(() => null),
+    probeSmtp(now.getTime()),
   ]);
 
   const checks: HealthCheck[] = [];
 
   // ── Email ──────────────────────────────────────────────────────────────────
-  checks.push(
-    isEmailConfigured()
-      ? { id: 'email', label: 'Email', severity: 'ok', detail: 'SMTP is configured.' }
-      : {
-          id: 'email',
-          label: 'Email',
-          severity: 'critical',
-          detail: 'No SMTP is configured, so nothing is being sent — including order confirmations. Templates can still be written and previewed.',
-          fix: 'Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD and SMTP_FROM, then restart.',
-        }
-  );
+  //
+  // Checked by connecting, not by reading environment variables. Sign-in codes
+  // go out on this channel and nothing else, so "configured" is not the
+  // question worth answering — "will it deliver" is.
+  if (smtp.state === 'ok') {
+    checks.push({ id: 'email', label: 'Email', severity: 'ok', detail: 'The mail server accepted a connection and our credentials.' });
+  } else if (smtp.state === 'failing') {
+    checks.push({
+      id: 'email',
+      label: 'Email',
+      severity: 'critical',
+      detail:
+        `SMTP is set but the mail server rejected us: ${smtp.error}. ` +
+        'Nothing is being delivered — including sign-in codes, so no customer can get into their account.',
+      fix:
+        'With Gmail this is almost always the password: it must be a 16-character App Password, ' +
+        'which needs 2-Step Verification switched on first — an ordinary account password will not work. ' +
+        'Check SMTP_USER is the full address, and that SMTP_PORT is 587 (or 465 for TLS).',
+    });
+  } else {
+    checks.push({
+      id: 'email',
+      label: 'Email',
+      severity: 'critical',
+      detail: 'No SMTP is configured, so nothing is being sent — including sign-in codes and order confirmations. Templates can still be written and previewed.',
+      fix: 'Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD and SMTP_FROM, then restart.',
+    });
+  }
 
   // ── Scheduler ──────────────────────────────────────────────────────────────
   const neverRun = jobs.filter((j) => j.health === 'never');
