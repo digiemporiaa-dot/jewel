@@ -62,15 +62,23 @@ export default function CheckoutClient({
   const [verified, setVerified] = useState(!!verifiedEmail);
 
   /**
-   * Locked, not merely pre-filled — and only when an OTP has proven it.
+   * Locked, not merely pre-filled — and only when an OTP has proven it *and*
+   * there is something in the box.
    *
    * Letting a verified customer retype the address here would send the order
    * confirmation somewhere the account cannot be signed into, and leave the
    * account's own address stale. An address that is on the record but *not*
    * verified stays editable: it is a starting point, and it still has to go
    * through the code below before an order can be placed.
+   *
+   * The emptiness check is the part that is not obvious. The bug this replaced
+   * was a field that was blank *and* uneditable at the same time — nothing to
+   * pay with and no way to fix it — and the second half of that is what made it
+   * unrecoverable. Tying the lock to the value rather than to the prop alone
+   * means no combination of props can reproduce it: an empty box is always
+   * something the customer can type into, whatever the session claims.
    */
-  const emailLocked = verifiedEmail !== null;
+  const emailLocked = verifiedEmail !== null && email.trim() !== '';
   const [otpSent, setOtpSent] = useState(false);
   const [otp, setOtp] = useState('');
   const [devCode, setDevCode] = useState<string | null>(null);

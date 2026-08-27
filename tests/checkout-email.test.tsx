@@ -120,6 +120,26 @@ describe('a customer whose email is on record but never proven', () => {
   });
 });
 
+describe('the reported symptom cannot be reconstructed', () => {
+  it('never renders a field that is blank AND uneditable', () => {
+    // The bug as the customer met it: nothing to pay with, and no way to fix
+    // it. Even handed the contradictory props that would have produced it — a
+    // session claiming a verified address, and no address — the field stays
+    // editable, because the lock is tied to the value and not to the claim.
+    render(<CheckoutClient {...BASE} customerEmail={null} verifiedEmail="ghost@example.com" />);
+    const el = emailInput();
+    expect(el.value).toBe('');
+    expect(el.readOnly).toBe(false);
+    expect(el.disabled).toBe(false);
+    expect(el.required).toBe(true);
+  });
+
+  it('locks again the moment there is something to lock', () => {
+    render(<CheckoutClient {...BASE} customerEmail="ananya@example.com" verifiedEmail="ananya@example.com" />);
+    expect(emailInput().readOnly).toBe(true);
+  });
+});
+
 describe('what reaches Razorpay', () => {
   const actions = readFileSync(join(__dirname, '..', 'app/(storefront)/checkout/actions.ts'), 'utf8');
   const page = readFileSync(join(__dirname, '..', 'app/(storefront)/checkout/page.tsx'), 'utf8');

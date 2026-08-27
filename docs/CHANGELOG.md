@@ -76,6 +76,19 @@ field just moved the failure to the payment screen. And the error for a missing
 session still said "Please verify your phone number first", which stopped being
 true when email became the identifier.
 
+### The lock is tied to the value, not to the claim
+
+`emailLocked` requires a non-empty field as well as a verified session.
+
+The prop wiring alone would have been enough to fix the reported bug, but the
+half that made it unrecoverable was not the blank field — it was that the blank
+field could not be typed into. Deriving the lock from `verifiedEmail` alone
+leaves that reachable in principle: any future path that produces a session
+claiming a verified address while the field is empty gets a customer with
+nothing to pay with and no way to fix it. Requiring a value means an empty box
+is always editable, whatever the session claims, and the test suite reconstructs
+the original bug to prove it fails.
+
 ### Verified in a browser
 
 ```
