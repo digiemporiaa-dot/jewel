@@ -5,7 +5,7 @@ import { join } from 'node:path';
 vi.mock('server-only', () => ({}));
 
 import { chunk, BATCH_SIZE, JEWELLERY_CATEGORY_ID, type MerchantProduct } from '@/lib/merchant/provider';
-import { toGoogleProduct, stripHtml, truncate, formatPrice } from '@/lib/merchant/mapping';
+import { toGoogleProduct, googleProductId, stripHtml, truncate, formatPrice } from '@/lib/merchant/mapping';
 import { escapeXml, buildGoogleShoppingFeed } from '@/lib/merchant/feed';
 import { readBatchResponse, parseServiceAccount } from '@/lib/merchant/google';
 
@@ -172,6 +172,58 @@ describe('the service account key', () => {
     for (const bad of [undefined, '', '   ', 'not json', '{}', JSON.stringify({ client_email: 'a' })]) {
       expect(parseServiceAccount(bad), String(bad)).toBeNull();
     }
+  });
+});
+
+describe('the endpoints the API is actually called on', () => {
+  const google = readFileSync(join(__dirname, '..', 'lib/merchant/google.ts'), 'utf8');
+
+  it('does not scope custombatch by merchant id', () => {
+    // products.custombatch lives at /products/batch and carries a merchantId on
+    // every entry, so one batch can span several accounts. Prefixing the path
+    // with the id gave /content/v2.1/{id}/products/batch — a 404, and since the
+    // batch is the call the reprice cron makes, the whole feature failed.
+    expect(google).toContain("this.request('/products/batch'");
+    expect(google).not.toContain('${API}/${this.merchantId}');
+    expect(google).toContain('await fetch(`${API}${path}`');
+  });
+
+  it('does scope the per-product endpoints by merchant id', () => {
+    expect(google).toContain('`/${this.merchantId}/products`');
+    expect(google).toContain('`/${this.merchantId}/products/${encodeURIComponent(id)}`');
+  });
+
+  it('addresses a delete with the same id an upsert creates', () => {
+    // A delete sent with a different language or country is a 404 that leaves
+    // the listing up — a discontinued piece still being advertised.
+    expect(googleProductId('MJ-1')).toBe('online:en:IN:MJ-1');
+    const g = toGoogleProduct(item({ offerId: 'MJ-1' }));
+    expect(googleProductId(g.offerId)).toBe(
+      `${g.channel}:${g.contentLanguage}:${g.targetCountry}:${g.offerId}`
+    );
+  });
+});
+
+describe('what counts as in stock', () => {
+  const catalogue = readFileSync(join(__dirname, '..', 'lib/merchant/catalogue.ts'), 'utf8');
+
+  it('treats a made-to-order piece as available', () => {
+    // addToCart is the authority: it caps quantity against stock only for
+    // ready-to-ship pieces, because a made-to-order one has not been made yet.
+    // Calling those out of stock suppressed three of the twenty seeded products
+    // from Shopping entirely.
+    expect(catalogue).toContain("const madeToOrder = p.fulfilmentType === 'MADE_TO_ORDER';");
+    expect(catalogue).toContain('const buyable = p.variants.length > 0 && (madeToOrder || available > 0);');
+    expect(catalogue).toContain("availability: buyable ? 'in stock' : 'out of stock'");
+  });
+
+  it('no longer decides availability on stock alone', () => {
+    expect(catalogue).not.toContain("availability: available > 0 ? 'in stock' : 'out of stock'");
+  });
+
+  it('keeps a product with no variant out of stock', () => {
+    // addToCart requires a variant id, so one without any is genuinely unbuyable.
+    expect(catalogue).toContain('p.variants.length > 0 &&');
   });
 });
 

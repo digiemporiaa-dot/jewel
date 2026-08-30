@@ -1,7 +1,7 @@
 import 'server-only';
 import { JWT } from 'google-auth-library';
 import { chunk, BATCH_SIZE, type BatchResult, type MerchantProduct, type MerchantProvider } from '@/lib/merchant/provider';
-import { toGoogleProduct, type GoogleProduct } from '@/lib/merchant/mapping';
+import { toGoogleProduct, googleProductId, type GoogleProduct } from '@/lib/merchant/mapping';
 
 /**
  * Google Content API for Shopping, v2.1.
@@ -81,6 +81,14 @@ export class GoogleMerchantProvider implements MerchantProvider {
    * A 400 will fail identically forever — retrying it just doubles the log.
    */
   private async request(path: string, init: RequestInit, attempt = 0): Promise<Response | null> {
+    // `path` is everything after `/content/v2.1`, including the merchant id
+    // where the endpoint is scoped by one. It is not prefixed here, because
+    // `products.custombatch` is *not* merchant-scoped: it lives at
+    // `/products/batch` and carries a merchantId on every entry, so one batch
+    // can span several accounts. Prefixing it produced
+    // `/content/v2.1/{id}/products/batch`, which is a 404 — and since the batch
+    // is the call the reprice cron makes, that was the whole feature failing.
+    void 0;
     const client = this.auth();
     if (!client) return null;
     try {
@@ -89,7 +97,7 @@ export class GoogleMerchantProvider implements MerchantProvider {
         console.error('[merchant:google] no access token — check the service account key');
         return null;
       }
-      const res = await fetch(`${API}/${this.merchantId}${path}`, {
+      const res = await fetch(`${API}${path}`, {
         ...init,
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(init.headers ?? {}) },
       });
@@ -106,7 +114,7 @@ export class GoogleMerchantProvider implements MerchantProvider {
 
   async upsertProduct(product: MerchantProduct): Promise<void> {
     if (this.dev) return;
-    const res = await this.request('/products', { method: 'POST', body: JSON.stringify(toGoogleProduct(product)) });
+    const res = await this.request(`/${this.merchantId}/products`, { method: 'POST', body: JSON.stringify(toGoogleProduct(product)) });
     if (res && !res.ok) {
       console.error('[merchant:google] upsert rejected', product.offerId, res.status, (await res.text()).slice(0, 500));
     }
@@ -116,8 +124,8 @@ export class GoogleMerchantProvider implements MerchantProvider {
     if (this.dev) return;
     // The product id Google keys on, not our SKU alone: channel, language,
     // country and offer id, joined by colons.
-    const id = `online:en:IN:${offerId}`;
-    const res = await this.request(`/products/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    const id = googleProductId(offerId);
+    const res = await this.request(`/${this.merchantId}/products/${encodeURIComponent(id)}`, { method: 'DELETE' });
     // 404 is the desired end state reached by another route, not a failure.
     if (res && !res.ok && res.status !== 404) {
       console.error('[merchant:google] delete rejected', offerId, res.status);
@@ -140,6 +148,7 @@ export class GoogleMerchantProvider implements MerchantProvider {
         product: toGoogleProduct(product),
       }));
 
+      // Top level, deliberately — see the note in `request`.
       const res = await this.request('/products/batch', { method: 'POST', body: JSON.stringify({ entries }) });
       if (!res) {
         // The whole group never left. Counted as failed so the caller's numbers

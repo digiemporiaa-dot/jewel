@@ -1,5 +1,55 @@
 # Changelog
 
+## Two bugs in the Merchant Center push, one of them fatal · 2026-08-27
+
+Found by reading the code back rather than by running it — neither would have
+surfaced here, because this environment has no route to Google and no
+made-to-order piece is ever exercised by a feed test.
+
+### The batch went to a URL that does not exist
+
+`products.custombatch` is **not** scoped by merchant id. It lives at
+`/content/v2.1/products/batch` and carries a `merchantId` on every entry, so one
+batch can span several accounts — unlike `products.insert` and
+`products.delete`, which are `/content/v2.1/{merchantId}/products…`.
+
+The client prefixed every path with the merchant id, so the batch went to
+`/content/v2.1/{id}/products/batch` and would have come back 404. That is the
+one call the reprice cron makes, so the entire feature was dead — and dead
+quietly, since `batchUpsert` never throws: the cron would have reported a clean
+run with every product listed as failed.
+
+`request()` now takes the full path and each caller spells out whether it is
+merchant-scoped.
+
+### Three of twenty products were advertised as out of stock
+
+Availability was `stockQty - reservedQty > 0`. `addToCart` is the authority on
+what can actually be bought, and it caps quantity against stock **only for
+ready-to-ship pieces** — a made-to-order piece is unbounded, because it has not
+been made yet.
+
+So every made-to-order item holding no shelf stock went to Google as "out of
+stock", which suppresses it from Shopping entirely. On the seeded catalogue that
+was three of twenty; for a jeweller, whose made-to-order share is far higher
+than a shelf-stock retailer's, it would be a large part of the range invisible.
+
+Availability now follows the same rule the cart does. A product with no active
+variant stays out of stock — `addToCart` requires a variant id, so one without
+any is genuinely unbuyable.
+
+Confirmed against the live feed: the three SKUs read `in stock`, and the file
+still parses.
+
+### And a smaller one, before it bit
+
+The delete path built its product id as a hardcoded `online:en:IN:${sku}` while
+the upsert took language and country from options. A delete addressed with a
+different pair is a 404 that leaves the listing up — a discontinued piece still
+being advertised. Both now derive from `googleProductId()` and one set of
+constants.
+
+
 ## Google Shopping listings follow the gold rate, not the crawler · 2026-08-27
 
 Gold moves every day. A crawl-based feed is discovered on Google's schedule,

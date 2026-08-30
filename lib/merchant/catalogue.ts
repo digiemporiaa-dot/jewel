@@ -24,7 +24,7 @@ export async function catalogueForMerchant(): Promise<{ items: MerchantProduct[]
       where: { isActive: true, deletedAt: null, publishedAt: { not: null }, noIndex: false },
       select: {
         sku: true, name: true, slug: true, shortDescription: true, description: true,
-        priceFrom: true, metalColor: true,
+        priceFrom: true, metalColor: true, fulfilmentType: true,
         category: { select: { name: true } },
         metal: { select: { name: true } },
         purity: { select: { name: true } },
@@ -83,6 +83,22 @@ export async function catalogueForMerchant(): Promise<{ items: MerchantProduct[]
       0
     );
 
+    /**
+     * Made to order is in stock, whatever the shelf says.
+     *
+     * `addToCart` is the authority on what can be bought, and it caps quantity
+     * against stock only for ready-to-ship pieces — a made-to-order piece is
+     * unbounded, because it has not been made yet. Advertising those as out of
+     * stock suppresses them from Shopping entirely; on the seeded catalogue that
+     * was three of twenty, and a jeweller's made-to-order share is usually far
+     * higher than a shelf-stock retailer's.
+     *
+     * A product with no active variant is genuinely unbuyable — `addToCart`
+     * requires a variant id — so that stays out of stock.
+     */
+    const madeToOrder = p.fulfilmentType === 'MADE_TO_ORDER';
+    const buyable = p.variants.length > 0 && (madeToOrder || available > 0);
+
     items.push({
       offerId: p.sku,
       title: p.name,
@@ -90,7 +106,7 @@ export async function catalogueForMerchant(): Promise<{ items: MerchantProduct[]
       link: `${base}/p/${p.slug}`,
       imageLink: image,
       additionalImageLinks: p.images.slice(1, 10).map((i) => absolute(i.url)).filter((u): u is string => u !== null),
-      availability: available > 0 ? 'in stock' : 'out of stock',
+      availability: buyable ? 'in stock' : 'out of stock',
       price: p.priceFrom.toString(),
       currency: store.currency,
       brand: store.brandName,

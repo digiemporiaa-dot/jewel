@@ -91,6 +91,25 @@ export function formatPrice(value: string | number): string {
   return n.toFixed(2);
 }
 
+/** The defaults every call here uses. One place, so a delete cannot drift. */
+export const DEFAULT_LANGUAGE = 'en';
+export const DEFAULT_COUNTRY = 'IN';
+export const CHANNEL = 'online';
+
+/**
+ * The id Google keys an offer on: channel, language, country and our SKU.
+ *
+ * Built from the same constants the upsert sends, because a delete addressed
+ * with a different language or country is a 404 that silently leaves the
+ * listing up — a discontinued piece still being advertised.
+ */
+export function googleProductId(
+  offerId: string,
+  options: { language?: string; country?: string } = {}
+): string {
+  return `${CHANNEL}:${options.language ?? DEFAULT_LANGUAGE}:${options.country ?? DEFAULT_COUNTRY}:${offerId}`;
+}
+
 export function toGoogleProduct(
   product: MerchantProduct,
   options: { language?: string; country?: string } = {}
@@ -100,9 +119,9 @@ export function toGoogleProduct(
     title: truncate(stripHtml(product.title), TITLE_MAX),
     description: truncate(stripHtml(product.description), DESCRIPTION_MAX),
     link: product.link,
-    contentLanguage: options.language ?? 'en',
-    targetCountry: options.country ?? 'IN',
-    channel: 'online',
+    contentLanguage: options.language ?? DEFAULT_LANGUAGE,
+    targetCountry: options.country ?? DEFAULT_COUNTRY,
+    channel: CHANNEL,
     availability: product.availability,
     condition: 'new',
     price: { value: formatPrice(product.price), currency: product.currency },
