@@ -6,6 +6,8 @@ import { getProductFormRefs } from '@/lib/admin/products';
 import { formatCurrency } from '@/lib/utils/format';
 import { cn } from '@/lib/utils/cn';
 import PageHeader from '@/components/admin/PageHeader';
+import MerchantSyncButton from '@/components/admin/MerchantSyncButton';
+import { getMerchantProvider } from '@/lib/merchant';
 import type { PricingMode } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
@@ -36,8 +38,12 @@ export default async function ProductsPage({
   return (
     <div>
       <PageHeader title="Products" description={`${result.total} products`} action={{ label: 'New product', href: '/admin/products/new' }} />
-      <div className="mb-4 -mt-2">
+      <div className="mb-4 -mt-2 flex flex-wrap items-start justify-between gap-3">
         <Link href="/admin/products/import" className="text-sm underline decoration-line-strong underline-offset-4 hover:text-brass">Bulk import CSV</Link>
+        {/* Prices go out with the nightly reprice; this is for right after a
+            bulk change, when a day of mismatched Shopping listings is a day of
+            customers finding a different price than the ad promised. */}
+        <MerchantSyncButton configured={!getMerchantProvider().dev} />
       </div>
 
       <ArchiveToggle

@@ -1,5 +1,112 @@
 # Changelog
 
+## Google Shopping listings follow the gold rate, not the crawler · 2026-08-27
+
+Gold moves every day. A crawl-based feed is discovered on Google's schedule,
+which is days, and for those days the Shopping ad quotes one price and the
+product page quotes another. On an ₹80,000 necklace that is not a rounding
+error — it is the customer deciding the shop cannot be trusted, and eventually
+Google disapproving the item for a price mismatch against its own landing page.
+
+So the catalogue is pushed, not crawled, straight after the nightly reprice.
+
+### One reader, two destinations
+
+`lib/merchant/catalogue.ts` turns the catalogue into `MerchantProduct[]`, and
+both the Content API push and the XML feed are built from it. Two readers is
+precisely how a feed and an API start advertising different prices for the same
+piece, which is the failure this whole feature exists to prevent — a test holds
+the two to the same number.
+
+It skips what Google would reject anyway and says why: a product with no
+computed price (the reprice job has not reached it) and one with no image.
+Google's answer to either is a disapproval, so a listing is not attempted.
+
+`noIndex` is honoured here too. A product the shop has told search engines to
+ignore should not reappear as a paid Shopping listing.
+
+### The mapping is where the money is
+
+`lib/merchant/mapping.ts` is pure and has no `server-only`, because it is the
+part nothing else will catch. A wrong field is not a crash: Google accepts the
+item and disapproves it hours later in a dashboard nobody is watching, and the
+listing quietly stops appearing.
+
+- **Price is a two-decimal string, never a number.** `19999.9` serialises as
+  `19999.9`, Google reads a price ten paise short of the landing page, and
+  suspends the item.
+- **Optional fields are omitted, not sent empty.** `""` is a supplied value to
+  Google and earns a warning about a blank colour; an absent field is simply
+  not known.
+- **`identifierExists: false`.** Jewellery has no GTIN or MPN, and without
+  saying so every item warns and the listing is eventually limited.
+- **Category 188 as a number.** The path wording changes between taxonomy
+  revisions; the id does not.
+- **No `gender`.** `Product` has no target-audience column. Guessing it from a
+  category name would put a claim on the listing the shop never made, so the
+  field stays absent until something is behind it.
+
+### A 200 is not a success
+
+`products.custombatch` returns per-entry results: a batch of a hundred can come
+back HTTP 200 with ninety-nine rejections inside it. `readBatchResponse` counts
+those, so a sync reports what Google actually accepted rather than what it was
+willing to receive. An unreadable 200 claims nothing.
+
+### Nothing here can fail the reprice
+
+The sync runs inside the pricing cron, and the cron's job is repricing. An
+unreachable Merchant Center must not stop the catalogue being repriced, so:
+`batchUpsert` never throws, an unparseable service-account key returns `dev`
+rather than an exception, and the cron races the sync against a 20-second wall
+and answers without it.
+
+The race is a race, not a cancellation. There is no way to un-send batches
+already accepted, and aborting halfway would leave the catalogue half updated —
+worse than letting it finish unattended.
+
+An unconfigured shop is genuinely inert: no client is built, no request is made,
+and the result says `skipped` rather than `0 sent, all fine`.
+
+### What the live run caught
+
+The feed rendered `<g:image_link>/products/diamond-solitaire-ring-1.jpg</g:image_link>`.
+
+Image addresses in this database are a mix — R2 uploads come back absolute, and
+seeded or hand-entered ones are site-relative. A relative path renders correctly
+on our own pages, and Google rejects **every item carrying one**, because the
+feed is fetched from outside where that path means nothing. No fixture would
+have shown it; the seeded catalogue did, on the first real request.
+
+The same run turned up `/api/admin/merchant-sync` answering **500** to a request
+with no session. `assertPermission` throws, which a server action handles and a
+route handler does not. It answers 401 and 403 now.
+
+### Verified
+
+Against a running build, `SITE_URL=https://tickettofly.in`:
+
+```
+feed, no secret          401
+feed, with the secret    200  application/xml  20 items
+  absolute image links   20 / 20        relative   0
+  unescaped ampersands   0              XML parses cleanly
+  price                  55091.82 INR   category   188
+
+reprice cron             {"ok":true,"updated":20,
+                          "merchant":{"state":"skipped","reason":"No Merchant Center is configured…"}}
+admin sync, no session   401
+admin sync, signed in    400 with the setup instruction, naming Coolify's Literal setting
+products page            button present, disabled, and says why
+```
+
+The Content API calls themselves are **not** verified against Google — this
+environment has no credentials and no route to `shoppingcontent.googleapis.com`.
+What is tested is everything up to the wire: the mapping, the batching, the
+reply parsing, the skip path, and the feed. The first real push will be the
+first time Google sees any of it.
+
+
 ## The dashboard now asks whether mail will send, not whether it is configured · 2026-08-27
 
 `isEmailConfigured()` reads two environment variables. The health check on the
