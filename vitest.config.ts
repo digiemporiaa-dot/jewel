@@ -5,6 +5,10 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, '.'),
+      // The real package throws unless it is imported from a React Server
+      // Component, which would make every server module untestable. See the
+      // stub for why that guard does not apply here.
+      'server-only': resolve(__dirname, 'tests/stubs/server-only.ts'),
     },
   },
   // tsconfig sets jsx:"preserve" for Next, which esbuild will not transform.

@@ -34,6 +34,47 @@ describe('abandoned-cart: marking abandonment', () => {
   });
 });
 
+/**
+ * The bag now survives checkout, so a cart with items in it is no longer proof
+ * that nobody tried to buy them: the shopper may be at the payment window right
+ * now. `convertedOrderId` is only set once the money arrives, so the placement
+ * time of an unpaid order is what tells these two apart.
+ */
+describe('abandoned-cart: a cart whose order is mid-payment', () => {
+  it('is left alone while the payment is plausibly still happening', () => {
+    const c = cart({ pendingPaymentSince: minutesAgo(5), updatedAt: minutesAgo(120) });
+    expect(decideReminder(c, base)).toEqual({ action: 'none', reason: 'awaiting-payment' });
+  });
+
+  it('is not marked abandoned during the grace window, however idle it looks', () => {
+    // The cart has not been touched for hours precisely because the shopper
+    // moved on to paying for it.
+    const c = cart({ pendingPaymentSince: minutesAgo(2), updatedAt: minutesAgo(5000) });
+    expect(decideReminder(c, base)).toEqual({ action: 'none', reason: 'awaiting-payment' });
+  });
+
+  it('gets no reminder mid-payment, even with a stage long overdue', () => {
+    const c = cart({ pendingPaymentSince: minutesAgo(1), abandonedAt: minutesAgo(5000), updatedAt: minutesAgo(6000) });
+    expect(decideReminder(c, base)).toEqual({ action: 'none', reason: 'awaiting-payment' });
+  });
+
+  it('is chased again once the window has passed — an unpaid order is what this recovers', () => {
+    const c = cart({ pendingPaymentSince: minutesAgo(31), updatedAt: minutesAgo(120) });
+    expect(decideReminder(c, base)).toEqual({ action: 'mark-abandoned' });
+  });
+
+  it('honours a configured grace window', () => {
+    const config = { ...DEFAULT_REMINDER_CONFIG, paymentGraceMinutes: 120 };
+    const c = cart({ pendingPaymentSince: minutesAgo(90), updatedAt: minutesAgo(500) });
+    expect(decideReminder(c, base, config)).toEqual({ action: 'none', reason: 'awaiting-payment' });
+    expect(decideReminder(c, base, { ...config, paymentGraceMinutes: 60 })).toEqual({ action: 'mark-abandoned' });
+  });
+
+  it('is unaffected when there is no unpaid order behind it', () => {
+    expect(decideReminder(cart({ updatedAt: minutesAgo(61) }), base)).toEqual({ action: 'mark-abandoned' });
+  });
+});
+
 describe('abandoned-cart: staged reminders', () => {
   it('sends reminder 1 once the first delay has elapsed', () => {
     const c = cart({ abandonedAt: minutesAgo(61), updatedAt: minutesAgo(200) });

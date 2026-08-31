@@ -1,5 +1,90 @@
 # Changelog
 
+## The bag is emptied when payment lands, not when the order is written · 2026-08-31
+
+`createOrder` deleted the cart items the moment the order row existed:
+
+```ts
+await prisma.cartItem.deleteMany({ where: { cart: { sessionToken } } });
+```
+
+At that point the order is `PENDING_PAYMENT`. Nothing has been paid. The
+shopper is about to be handed to Razorpay, and every ordinary way that goes
+wrong — dismissing the modal, pressing back, a declined card, a phone losing
+signal on a payment page — returned them to an empty bag with nothing to retry
+from. A ₹70,000 basket is fifteen minutes of choosing between near-identical
+pieces; almost nobody rebuilds it. Every abandoned payment attempt was costing
+the whole order rather than the attempt.
+
+### Where the bag goes now
+
+At the point the order actually becomes real, and in the same statement as the
+status that makes it real:
+
+- **Razorpay / COD token** — in `confirmPayment`, inside the transaction that
+  writes `CAPTURED` and moves the order to `CONFIRMED` or `IN_MAKING`. That is
+  the webhook path (`payment.captured`, `order.paid`) and the browser callback
+  alike, so neither can leave the two disagreeing.
+- **Plain cash on delivery** — in the `createOrder` transaction, because that
+  order is confirmed outright with no payment window to face.
+- **Bank transfer** — the same, because it is placed the moment it is created:
+  the customer is shown the account details and the confirmation email goes out.
+  There is no modal to dismiss and nothing to retry.
+- **Backstop** — the order confirmation page, keyed by the order's own
+  `sessionToken`. The webhook is the primary path, but webhooks get lost, and
+  the opposite failure is real too: a paid order whose bag survived lets the
+  same basket be bought twice.
+
+Orders now carry a `sessionToken`, because clearing can happen long after the
+checkout request has ended and something has to remember which bag to empty.
+
+`clearConvertedCart` is two `*Many` statements over a filter, so running it
+again — a redelivered webhook, a callback racing that webhook, a refreshed
+confirmation page — matches nothing and changes nothing. An already-empty cart
+is the desired end state, not an error.
+
+It also takes the order's `placedAt` and only removes items added before it.
+That is the part worth being careful about: a bank transfer is confirmed by hand
+the next day, and by then the shopper may have started a new bag in the same
+session. Emptying *that* would be this same bug wearing a different hat.
+
+### Coming back to an unpaid order
+
+Leaving the bag alone is only half of it. Without a way back into the order, the
+shopper's only route was to rebuild the bag and check out again — one basket
+becoming two orders and two stock reservations.
+
+So an order sitting in `PENDING_PAYMENT` now offers **Complete payment**, on the
+order page and flagged in `/my-account/orders`. It reopens the gateway for
+*that* order, reusing the provider order id already allocated to it, so even
+Razorpay sees one attempt being retried rather than several orders for one bag.
+Where an earlier attempt failed and released the order's stock, the retry
+re-reserves before it opens — a shopper whose piece sold out in the meantime is
+told before they pay, not after.
+
+### The abandoned-cart job
+
+`convertedOrderId` is now set when an order is paid, not when it is created, so
+a cart whose shopper is at the payment window looks exactly like one that was
+walked away from. The reminder scheduler is given the placement time of any
+unpaid order behind the cart and leaves it alone for a short grace window
+(`paymentGraceMinutes`, 30 by default).
+
+Only a short one. A `PENDING_PAYMENT` order that is hours old is one nobody
+completed, and its bag is precisely what this campaign exists to recover. The
+window suppresses the "you left something behind" email that would otherwise
+land *during* a payment — not the one that recovers a failed payment.
+
+### Tests
+
+The rule itself is pure and lives in `lib/checkout/cart-clearing.ts`, so the
+cases can be stated plainly: which methods hand the shopper to a payment window,
+when an order counts as real, when it is still the shopper's to finish paying.
+The lifecycle is exercised against a small in-memory database — creating an
+order leaves the bag intact, `payment.captured` empties it, a second delivery of
+the same capture is a no-op, a confirmed COD order empties it, and a shopper who
+closed the payment window still has their items.
+
 ## Two bugs in the Merchant Center push, one of them fatal · 2026-08-27
 
 Found by reading the code back rather than by running it — neither would have

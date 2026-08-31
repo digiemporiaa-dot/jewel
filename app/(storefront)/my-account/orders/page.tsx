@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { getCurrentCustomer } from '@/lib/customer-session';
 import { getCustomerOrders } from '@/lib/order-detail';
+import { canCompletePayment } from '@/lib/checkout/cart-clearing';
 import { formatCurrency, formatDate } from '@/lib/utils/format';
 import AccountLogin from '../AccountLogin';
 import { privateMetadata } from '@/lib/seo/metadata';
@@ -32,20 +33,36 @@ export default async function MyOrdersPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {orders.map((o) => (
-            <Link key={o.id} href={`/order/${o.orderNumber}`} className="block border border-line bg-white p-4 hover:border-brass transition-colors">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">{o.orderNumber}</p>
-                  <p className="text-xs text-ink-soft">{formatDate(o.placedAt)} · {o.items.map((i) => `${i.nameSnapshot} ×${i.quantity}`).join(', ').slice(0, 60)}</p>
+          {orders.map((o) => {
+            // Still payable: waiting on a gateway that was never completed.
+            const unpaid = canCompletePayment({
+              status: o.status,
+              paymentMethod: o.paymentMethod,
+              amountPaid: Number(o.amountPaid),
+            });
+            return (
+              <Link key={o.id} href={`/order/${o.orderNumber}`} className="block border border-line bg-white p-4 hover:border-brass transition-colors">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">{o.orderNumber}</p>
+                    <p className="text-xs text-ink-soft">{formatDate(o.placedAt)} · {o.items.map((i) => `${i.nameSnapshot} ×${i.quantity}`).join(', ').slice(0, 60)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm">{formatCurrency(o.grandTotal)}</p>
+                    <p className="text-xs text-ink-soft">{o.status.replace(/_/g, ' ')}</p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm">{formatCurrency(o.grandTotal)}</p>
-                  <p className="text-xs text-ink-soft">{o.status.replace(/_/g, ' ')}</p>
-                </div>
-              </div>
-            </Link>
-          ))}
+                {/* The way back into a payment that was interrupted. It leads to
+                    the order's own page, where the gateway reopens for THIS
+                    order — checking out again would buy the same basket twice. */}
+                {unpaid && (
+                  <p className="mt-2 border-t border-line pt-2 text-xs text-velvet">
+                    Payment not completed — <span className="underline underline-offset-4">complete payment</span>
+                  </p>
+                )}
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>

@@ -2,13 +2,15 @@ import 'server-only';
 import Decimal from 'decimal.js';
 import { randomBytes } from 'node:crypto';
 import { prisma } from '@/lib/prisma';
-import { getCart, type CartSummary } from '@/lib/cart';
+import { getCart, clearConvertedCart, type CartSummary } from '@/lib/cart';
 import { getStoreSettings } from '@/lib/store';
 import { buildTaxBreakup, resolveStateCode, type TaxLineInput } from '@/lib/tax/gst';
 import { evaluateCoupon, claimCouponUse, applyDiscountToTotals } from '@/lib/coupons/apply';
 import { getCurrentRates } from '@/lib/rates';
 import { reserveStock, releaseStock, OutOfStockError } from '@/lib/inventory';
 import { isRateLockValid } from '@/lib/pricing';
+import { createRazorpayOrder, isDevMode } from '@/lib/payments/razorpay';
+import { awaitsGatewayPayment, orderIsPlaced } from '@/lib/checkout/cart-clearing';
 import { PaymentMethod, PaymentType, OrderStatus, PaymentStatus, type Prisma } from '@prisma/client';
 
 export class CheckoutError extends Error {}
@@ -168,6 +170,14 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
     input.paymentMethod === PaymentMethod.BANK_TRANSFER ||
     (input.paymentMethod === PaymentMethod.COD && codToken.gt(0));
 
+  // This, not `online`, decides whether the bag survives checkout: a bank
+  // transfer is `online` because the money arrives outside the shop, but nothing
+  // opens a payment window for it. The rule itself lives in one place.
+  const awaitingGatewayPayment = awaitsGatewayPayment({
+    paymentMethod: input.paymentMethod,
+    codTokenRequired: codToken.gt(0),
+  });
+
   const rateSnapshot = await buildRateSnapshot(store.rateLockMinutes);
   const orderNumber = await generateOrderNumber();
 
@@ -234,6 +244,9 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
         orderNumber,
         status,
         customerId: input.customerId ?? null,
+        // Remembered so the bag can be emptied later, when the order becomes
+        // real — which may be a webhook minutes after this request has ended.
+        sessionToken: input.sessionToken,
         contactName: input.contactName,
         contactPhone: input.contactPhone,
         contactEmail: input.contactEmail ?? null,
@@ -322,12 +335,22 @@ export async function createOrder(input: CreateOrderInput): Promise<CreateOrderR
       },
     });
 
+    // The bag is emptied here only for orders that are placed outright: plain
+    // COD, and a bank transfer the customer is now asked to make. Everything
+    // else leaves checkout in PENDING_PAYMENT with a gateway still to face, and
+    // its bag stays exactly as it was — `confirmPayment` empties it when the
+    // money actually arrives. Emptying it here was a direct revenue loss: a
+    // dismissed payment window returned the shopper to nothing, and a
+    // ₹70,000 bag does not get rebuilt from memory.
+    //
+    // Inside the transaction, alongside the status it belongs to, so an order
+    // that fails to be written cannot take a cart with it.
+    if (!awaitingGatewayPayment) {
+      await clearConvertedCart(tx, { sessionToken: input.sessionToken, orderId: order.id, placedAt: order.placedAt });
+    }
+
     return order;
   });
-
-  // Mark the source cart as converted (clear items so it isn't reordered).
-  await prisma.cartItem.deleteMany({ where: { cart: { sessionToken: input.sessionToken } } }).catch(() => {});
-  await prisma.cart.updateMany({ where: { sessionToken: input.sessionToken }, data: { convertedOrderId: created.id, abandonedAt: null } }).catch(() => {});
 
   return {
     orderId: created.id,
@@ -372,7 +395,14 @@ export async function confirmPayment(params: {
     const existingCaptured = await tx.payment.findFirst({
       where: { providerPaymentId: params.providerPaymentId, status: PaymentStatus.CAPTURED },
     });
-    if (existingCaptured) return { ok: true, alreadyProcessed: true };
+    if (existingCaptured) {
+      // Nothing to transition — but the clear is repeated rather than skipped.
+      // A redelivered webhook is the second chance to empty a bag whose first
+      // clear was lost (a browser callback that raced this one and crashed
+      // after capturing, say), and repeating it costs one no-op statement.
+      await clearConvertedCart(tx, { sessionToken: order.sessionToken, orderId: order.id, placedAt: order.placedAt });
+      return { ok: true, alreadyProcessed: true };
+    }
 
     // Find the pending payment to capture.
     const pending = order.payments.find((p) => p.status === PaymentStatus.PENDING) ?? order.payments[0];
@@ -416,8 +446,158 @@ export async function confirmPayment(params: {
       },
     });
 
+    // The order is now real, so the bag it came from goes — in this transaction,
+    // immediately after the status that made it real, so the two can never
+    // disagree. A made-to-order advance counts: the balance is owed on an order
+    // that is being made, not on a bag the shopper could check out a second time.
+    await clearConvertedCart(tx, { sessionToken: order.sessionToken, orderId: order.id, placedAt: order.placedAt });
+
     return { ok: true };
   });
+}
+
+/**
+ * Backstop: make sure a placed order's bag really did get emptied.
+ *
+ * The webhook is the primary path and the COD/bank paths clear inside their own
+ * transaction, so this normally finds nothing to do. It exists for the opposite
+ * failure to the one this change is about: a paid order whose cart was never
+ * cleared leaves the shopper able to check the same ₹70,000 basket out twice.
+ * Webhooks get lost, and the confirmation page is the one screen every paid
+ * order passes through.
+ *
+ * Keyed by the order's own `sessionToken`, and bounded by its `placedAt`, so it
+ * can never reach a bag the shopper has started since.
+ */
+export async function ensureCartClearedForOrder(orderId: string): Promise<void> {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { id: true, sessionToken: true, placedAt: true, status: true, paymentStatus: true },
+  });
+  if (!order?.sessionToken) return;
+  if (!orderIsPlaced(order)) return;
+
+  await clearConvertedCart(prisma, { sessionToken: order.sessionToken, orderId: order.id, placedAt: order.placedAt });
+}
+
+/**
+ * Reopen the gateway for an order that is still waiting to be paid.
+ *
+ * The bug this exists for: a shopper dismisses the Razorpay window, comes back,
+ * and pays for the same bag again — leaving the shop with two orders, two
+ * reservations and one customer. So this never creates an order. It finds the
+ * one that is already sitting in PENDING_PAYMENT and hands back the gateway
+ * order to reopen, reusing the provider order id where one was already
+ * allocated so even the gateway sees a single attempt being retried.
+ *
+ * Ownership is the caller's to check — this is the money path, and the caller
+ * is the one holding the session.
+ */
+export async function resumeOrderPayment(orderId: string): Promise<
+  | { ok: true; orderNumber: string; amountDue: string; providerOrderId: string; amountPaise: number; dev: boolean }
+  | { ok: false; error: string }
+> {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { items: true, payments: { orderBy: { createdAt: 'desc' } } },
+  });
+  if (!order) return { ok: false, error: 'Order not found' };
+
+  if (order.paymentStatus === PaymentStatus.CAPTURED || order.paymentStatus === PaymentStatus.AUTHORIZED) {
+    return { ok: false, error: 'This order has already been paid' };
+  }
+  if (order.status !== OrderStatus.PENDING_PAYMENT) {
+    return { ok: false, error: 'This order is no longer awaiting payment' };
+  }
+  if (order.paymentMethod === PaymentMethod.BANK_TRANSFER) {
+    return { ok: false, error: 'This order is being paid by bank transfer' };
+  }
+
+  // The payment to retry: the one still pending, or the one that failed.
+  let payment = order.payments.find((p) => p.status === PaymentStatus.PENDING) ?? null;
+  const failed = order.payments.find((p) => p.status === PaymentStatus.FAILED) ?? null;
+  if (!payment && !failed) return { ok: false, error: 'No payment to complete' };
+  if ((payment ?? failed)?.provider !== 'razorpay') {
+    return { ok: false, error: 'This order is not paid online' };
+  }
+
+  if (!payment && failed) {
+    // A failed attempt released the order's reserved stock (see
+    // `markPaymentFailed`), so retrying has to take it back before promising the
+    // gateway anything — otherwise a successful retry confirms an order with
+    // nothing held for it. Reserving first also means a shopper whose ring sold
+    // out in the meantime is told so here, rather than after paying.
+    const reserved: { variantId: string; quantity: number }[] = [];
+    try {
+      for (const item of order.items) {
+        if (!item.variantId) continue;
+        // Made-to-order lines are produced on demand and were never reserved.
+        const variant = await prisma.productVariant.findUnique({
+          where: { id: item.variantId },
+          select: { product: { select: { fulfilmentType: true } } },
+        });
+        if (variant?.product.fulfilmentType === 'MADE_TO_ORDER') continue;
+        await reserveStock(item.variantId, item.quantity, order.id);
+        reserved.push({ variantId: item.variantId, quantity: item.quantity });
+      }
+    } catch (e) {
+      // All or nothing: a half-reserved retry would hold stock for an order
+      // nobody can pay for.
+      for (const r of reserved) await releaseStock(r.variantId, r.quantity, order.id).catch(() => {});
+      if (e instanceof OutOfStockError) {
+        return { ok: false, error: 'Something in this order is no longer in stock. Please contact us.' };
+      }
+      throw e;
+    }
+
+    payment = await prisma.payment.create({
+      data: {
+        orderId: order.id,
+        provider: failed.provider,
+        method: failed.method,
+        type: failed.type,
+        amount: failed.amount,
+        currency: failed.currency,
+        status: PaymentStatus.PENDING,
+      },
+    });
+    await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        paymentStatus: PaymentStatus.PENDING,
+        events: { create: { message: 'Payment retried by customer', actor: 'customer' } },
+      },
+    });
+  }
+
+  if (!payment) return { ok: false, error: 'No payment to complete' };
+
+  const amountDue = new Decimal(payment.amount.toString()).toFixed(2);
+
+  // Reuse the gateway order where one exists. Razorpay keeps an unpaid order
+  // open, so retrying against the same id is one attempt continuing — a fresh
+  // id every time would scatter a single basket across several gateway orders
+  // and make the reconciliation report lie.
+  let providerOrderId = payment.providerOrderId;
+  if (!providerOrderId) {
+    const rzp = await createRazorpayOrder({
+      amount: amountDue,
+      currency: payment.currency,
+      receipt: order.orderNumber,
+      notes: { orderId: order.id },
+    });
+    providerOrderId = rzp.id;
+    await prisma.payment.update({ where: { id: payment.id }, data: { providerOrderId } });
+  }
+
+  return {
+    ok: true,
+    orderNumber: order.orderNumber,
+    amountDue,
+    providerOrderId,
+    amountPaise: Math.round(Number(amountDue) * 100),
+    dev: isDevMode(),
+  };
 }
 
 /** Mark payment failed and release any reserved inventory. */
