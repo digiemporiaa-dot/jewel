@@ -4,8 +4,67 @@ import { prisma } from '@/lib/prisma';
 import { getProductPricing } from '@/lib/pricing/resolve';
 import { getStoreSettings } from '@/lib/store';
 import type { PriceBreakup } from '@/lib/pricing';
+import type { Prisma } from '@prisma/client';
 
 export class CartError extends Error {}
+
+/**
+ * Just the two writes the clear below needs, so either the client or an open
+ * transaction can be passed — and so a test can stand in its own.
+ */
+type CartWriter = {
+  cartItem: { deleteMany(args: { where: Prisma.CartItemWhereInput }): Promise<{ count: number }> };
+  cart: {
+    updateMany(args: { where: Prisma.CartWhereInput; data: Prisma.CartUpdateManyMutationInput }): Promise<{ count: number }>;
+  };
+};
+
+/**
+ * Empty the bag an order was placed from, and record which order took it.
+ *
+ * Called at the moment an order becomes real — payment captured, a COD order
+ * confirmed, a bank transfer placed — never when the order row is first
+ * written. An order sitting in PENDING_PAYMENT still has a shopper who may
+ * close the payment window, and they must come back to their bag rather than to
+ * an empty one they have to rebuild.
+ *
+ * Idempotent by construction. Both statements are `*Many` over a filter, so a
+ * webhook redelivery, a browser callback racing that webhook, and the
+ * confirmation-page backstop can all run this for the same order: the second
+ * and third match nothing and change nothing. Nothing here throws on an
+ * already-empty cart, because "the cart is already clear" is the desired end
+ * state, not an error.
+ *
+ * `placedAt` is what keeps that safe rather than merely harmless. Clearing can
+ * now happen long after checkout returned — a bank transfer is confirmed by
+ * hand the next day, a webhook is redelivered, the confirmation page is
+ * reopened from an email — and by then the shopper may have started a new bag
+ * in the same session. Only items that were in the bag when this order was
+ * placed are removed; anything added since belongs to the next order, and
+ * deleting it would be the very bug this whole change exists to fix.
+ *
+ * Pass the surrounding transaction as `client` where one is open, so the cart
+ * cannot be emptied by a status change that then rolls back.
+ */
+export async function clearConvertedCart(
+  client: CartWriter,
+  params: { sessionToken: string | null | undefined; orderId: string; placedAt: Date }
+): Promise<void> {
+  const sessionToken = params.sessionToken;
+  // Orders raised by staff have no browser session behind them; there is no bag
+  // to empty and no cart that could belong to this order.
+  if (!sessionToken) return;
+
+  await client.cartItem.deleteMany({
+    where: { cart: { sessionToken }, addedAt: { lt: params.placedAt } },
+  });
+  await client.cart.updateMany({
+    where: { sessionToken },
+    // `abandonedAt` is cleared too: a cart that reached a placed order is not a
+    // cart to chase, whatever the reminder job decided about it earlier.
+    data: { convertedOrderId: params.orderId, abandonedAt: null },
+  });
+}
 
 async function getOrCreateCart(sessionToken: string): Promise<string> {
   const existing = await prisma.cart.findUnique({ where: { sessionToken }, select: { id: true } });

@@ -9,7 +9,7 @@ import { sendOtp, verifyOtp } from '@/lib/otp';
 import { checkLimit, LIMITS } from '@/lib/rate-limit';
 import { getClientIp } from '@/lib/request-id';
 import { phoneSchema, placeOrderSchema } from '@/lib/validations/checkout';
-import { createOrder, confirmPayment, markPaymentFailed, CheckoutError } from '@/lib/orders';
+import { createOrder, confirmPayment, markPaymentFailed, resumeOrderPayment, CheckoutError } from '@/lib/orders';
 import { getCart } from '@/lib/cart';
 import { evaluateCoupon, applyDiscountToTotals } from '@/lib/coupons/apply';
 import { createRazorpayOrder, verifyRazorpayPayment, publicKeyId } from '@/lib/payments/razorpay';
@@ -139,6 +139,11 @@ export async function placeOrder(input: unknown): Promise<PlaceResult> {
 
     if (result.paymentMethod === 'BANK_TRANSFER') {
       sendOrderConfirmation(result.orderId);
+      // A bank transfer is placed the moment it is created — the customer is
+      // shown the account details and there is no payment window to dismiss —
+      // so `createOrder` has already emptied the bag. Re-render the pages that
+      // still show it.
+      revalidatePath('/cart');
       return { stage: 'bank', orderId: result.orderId, orderNumber: result.orderNumber, amountDue: result.amountDue };
     }
 
@@ -221,9 +226,61 @@ export async function confirmCheckoutPayment(params: {
     await confirmPayment({ orderId: params.orderId, providerPaymentId: params.razorpayPaymentId, providerOrderId: params.razorpayOrderId, source: 'callback' });
     sendPaymentConfirmation(params.orderId);
     sendOrderConfirmation(params.orderId);
+    // The bag was left alone until this point and has just been emptied by
+    // `confirmPayment`. Both the bag page and the header count are rendered on
+    // the server, so without this they keep showing items that are gone.
+    revalidatePath('/cart');
     return { ok: true, orderNumber: order.orderNumber };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Payment confirmation failed' };
+  }
+}
+
+// ── Finish paying an order that was left in PENDING_PAYMENT ──────────────────
+
+export type ResumePayment =
+  | { ok: true; orderId: string; orderNumber: string; amountDue: string; razorpay: { orderId: string; amount: number; keyId: string | null; dev: boolean }; prefill: { name: string; email: string; phone: string } }
+  | { ok: false; error: string };
+
+/**
+ * Reopen the payment window for an order the shopper did not finish paying.
+ *
+ * The point of this is what it does *not* do: it never places a second order.
+ * Before the cart survived checkout there was no way back to an unpaid order at
+ * all — the shopper's only route was to rebuild the bag and check out again,
+ * which is how one basket became two orders and two stock reservations. This
+ * hands back the gateway order that already exists for the order they are
+ * looking at.
+ */
+export async function resumePaymentAction(orderId: string): Promise<ResumePayment> {
+  // Ownership fails closed, exactly as the confirm path does: an order id is
+  // not a credential, and this one allocates a gateway order.
+  const customerId = await getCustomerId();
+  if (!customerId) return { ok: false, error: 'Please sign in to complete this payment.' };
+
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { customerId: true, contactName: true, contactEmail: true, contactPhone: true },
+  });
+  if (!order || order.customerId !== customerId) return { ok: false, error: 'Order not found' };
+
+  try {
+    const resumed = await resumeOrderPayment(orderId);
+    if (!resumed.ok) return resumed;
+    return {
+      ok: true,
+      orderId,
+      orderNumber: resumed.orderNumber,
+      amountDue: resumed.amountDue,
+      razorpay: { orderId: resumed.providerOrderId, amount: resumed.amountPaise, keyId: publicKeyId(), dev: resumed.dev },
+      prefill: {
+        name: order.contactName,
+        email: order.contactEmail ?? '',
+        phone: order.contactPhone,
+      },
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof CheckoutError ? e.message : 'Could not reopen the payment. Please try again.' };
   }
 }
 

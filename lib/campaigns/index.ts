@@ -42,6 +42,7 @@ async function reminderConfig(): Promise<{ enabled: boolean; config: ReminderCon
       abandonAfterMinutes: cfg.abandonAfterMinutes ?? DEFAULT_REMINDER_CONFIG.abandonAfterMinutes,
       stageDelaysMinutes: cfg.stageDelaysMinutes ?? DEFAULT_REMINDER_CONFIG.stageDelaysMinutes,
       minGapMinutes: cfg.minGapMinutes ?? DEFAULT_REMINDER_CONFIG.minGapMinutes,
+      paymentGraceMinutes: cfg.paymentGraceMinutes ?? DEFAULT_REMINDER_CONFIG.paymentGraceMinutes,
     },
   };
 }
@@ -70,6 +71,30 @@ function cartValue(items: { quantity: number; product: { priceFrom: unknown } }[
 }
 
 /**
+ * When each of these sessions last placed an order that is still unpaid.
+ *
+ * Keyed by session token, which is what ties a bag to the order made from it:
+ * `Order.sessionToken` is recorded at checkout precisely so the bag can be
+ * found again later. The most recent placement wins — a shopper on their second
+ * attempt is mid-payment now, whatever the first attempt's age suggests.
+ */
+async function pendingPaymentByCart(sessionTokens: (string | null)[]): Promise<Map<string, Date>> {
+  const tokens = sessionTokens.filter((t): t is string => !!t);
+  const byToken = new Map<string, Date>();
+  if (tokens.length === 0) return byToken;
+
+  const orders = await prisma.order.findMany({
+    where: { sessionToken: { in: tokens }, status: 'PENDING_PAYMENT' },
+    select: { sessionToken: true, placedAt: true },
+    orderBy: { placedAt: 'asc' },
+  });
+  for (const order of orders) {
+    if (order.sessionToken) byToken.set(order.sessionToken, order.placedAt);
+  }
+  return byToken;
+}
+
+/**
  * Abandoned-cart pass: mark newly abandoned carts, then send at most one staged
  * reminder per cart per run. Scheduling is decided by the pure logic in
  * lib/campaigns/schedule.ts.
@@ -88,6 +113,17 @@ export async function runAbandonedCartCampaign(now = new Date()): Promise<Abando
     take: 200,
   });
 
+  // Which of these bags belong to an order that is still waiting to be paid.
+  //
+  // `convertedOrderId` above is no longer the whole answer. It is now set when
+  // an order is actually paid, not when it is created, so a cart whose shopper
+  // is at the payment window still looks exactly like one that was walked away
+  // from: items in it, nothing converted. That is deliberate — an order nobody
+  // pays for must eventually be chased, and its bag is what there is to chase
+  // with — but it must not be chased *while the payment is being made*, so the
+  // scheduler gets the placement time and applies its grace window to it.
+  const pendingPaymentSince = await pendingPaymentByCart(carts.map((c) => c.sessionToken));
+
   for (const cart of carts) {
     result.scanned += 1;
     const decision = decideReminder(
@@ -98,6 +134,7 @@ export async function runAbandonedCartCampaign(now = new Date()): Promise<Abando
         lastReminderAt: cart.lastReminderAt,
         hasItems: cart.items.length > 0,
         converted: !!cart.convertedOrderId,
+        pendingPaymentSince: cart.sessionToken ? pendingPaymentSince.get(cart.sessionToken) ?? null : null,
       },
       now,
       config

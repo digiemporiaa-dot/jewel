@@ -3,6 +3,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getCustomerId } from '@/lib/customer-session';
 import { getOrderForView } from '@/lib/order-detail';
+import { ensureCartClearedForOrder } from '@/lib/orders';
+import { canCompletePayment } from '@/lib/checkout/cart-clearing';
+import CompletePayment from './CompletePayment';
 import { getStoreSettings } from '@/lib/store';
 import { formatCurrency, formatDate } from '@/lib/utils/format';
 import { cn } from '@/lib/utils/cn';
@@ -40,6 +43,24 @@ export default async function OrderPage({ params }: { params: Promise<{ orderNum
   const paid = Number(order.amountPaid) > 0;
   const isBank = order.paymentMethod === 'BANK_TRANSFER';
 
+  // The shopper can still pay this one: it is waiting on a gateway that was
+  // never completed. The button below finishes THIS order — it never starts a
+  // second one for the same basket.
+  const payable = canCompletePayment({
+    status: order.status,
+    paymentMethod: order.paymentMethod,
+    amountPaid: Number(order.amountPaid),
+  });
+
+  // Backstop for the bag, keyed by this order's own session token.
+  //
+  // The Razorpay webhook empties it, and the COD and bank-transfer paths empty
+  // it as they place the order. Webhooks get lost, though, and a paid order
+  // whose bag survived lets the same basket be bought twice — so the one screen
+  // every placed order passes through checks as well. It is bounded by the
+  // order's `placedAt`, so a bag started after this order is never touched.
+  if (!payable) await ensureCartClearedForOrder(order.id);
+
   // Conversion reporting. The claim is atomic and single-use, so this returns a
   // payload on exactly one render per order — a refresh gets null and reports
   // nothing. Meta CAPI is sent from here with the same event id as the browser
@@ -74,6 +95,8 @@ export default async function OrderPage({ params }: { params: Promise<{ orderNum
           {STATUS_LABELS[order.status] ?? order.status}
         </span>
       </div>
+
+      {payable && <CompletePayment orderId={order.id} brandName={store.brandName} />}
 
       {order.requiresCall && order.status === 'VERIFICATION_HOLD' && (
         <p className="mt-6 border border-line-strong bg-paper-2 px-4 py-3 text-sm text-center">

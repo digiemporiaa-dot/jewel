@@ -9,10 +9,7 @@ import { resolvePayable, type SummaryTotals } from '@/lib/checkout/totals';
 import CheckoutSummary from './CheckoutSummary';
 import type { SummaryLine } from '@/components/storefront/OrderSummary';
 import Link from 'next/link';
-
-declare global {
-  interface Window { Razorpay?: new (opts: unknown) => { open: () => void } }
-}
+import { loadRazorpay, type RazorpayHandlerResponse } from '@/lib/payments/browser';
 
 /** The fields checkout needs from a saved address. */
 export type SavedAddressOption = {
@@ -190,7 +187,7 @@ export default function CheckoutClient({
         // sets the actual tenure and rate here — the figures shown on the
         // product page and in the bag are indicative only.
         method: { emi: true, cardless_emi: true },
-        handler: async (r: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => {
+        handler: async (r: RazorpayHandlerResponse) => {
           const confirm = await confirmCheckoutPayment({ orderId: res.orderId, razorpayPaymentId: r.razorpay_payment_id, razorpayOrderId: r.razorpay_order_id, signature: r.razorpay_signature });
           if (confirm.ok) router.push(`/order/${confirm.orderNumber}`);
           else setError(confirm.error ?? 'Payment could not be verified');
@@ -350,17 +347,6 @@ export default function CheckoutClient({
       />
     </div>
   );
-}
-
-async function loadRazorpay(): Promise<void> {
-  if (window.Razorpay) return;
-  await new Promise<void>((resolve) => {
-    const s = document.createElement('script');
-    s.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    s.onload = () => resolve();
-    s.onerror = () => resolve();
-    document.body.appendChild(s);
-  });
 }
 
 function Section({ step, title, children }: { step: string; title: string; children: React.ReactNode }) {

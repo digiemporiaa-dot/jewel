@@ -6,6 +6,7 @@
  *  - Reminders fire in stages with configurable delays measured from abandonment.
  *  - At most one reminder per run, and never before `minGapMinutes` since the last.
  *  - Stop after the final stage — no endless nagging.
+ *  - A cart whose order is mid-payment is left alone for `paymentGraceMinutes`.
  */
 
 export type ReminderConfig = {
@@ -13,12 +14,22 @@ export type ReminderConfig = {
   /** Delay (minutes, from abandonment) for reminder 1, 2 and the final one. */
   stageDelaysMinutes: number[];
   minGapMinutes: number;
+  /**
+   * How long a cart is left alone while its order waits to be paid.
+   *
+   * Optional so a config already stored on the campaign row keeps working; the
+   * default applies when it is absent.
+   */
+  paymentGraceMinutes?: number;
 };
 
 export const DEFAULT_REMINDER_CONFIG: ReminderConfig = {
   abandonAfterMinutes: 60,
   stageDelaysMinutes: [60, 24 * 60, 72 * 60], // 1h, 1d, 3d after abandonment
   minGapMinutes: 60,
+  // Long enough to cover a bank app, an OTP and a second attempt; short enough
+  // that a payment nobody is going to finish still gets chased the same evening.
+  paymentGraceMinutes: 30,
 };
 
 export type CartState = {
@@ -28,6 +39,16 @@ export type CartState = {
   lastReminderAt: Date | null;
   hasItems: boolean;
   converted: boolean;
+  /**
+   * When this bag's order was placed, while that order is still awaiting
+   * payment. Null when there is no such order.
+   *
+   * The bag now survives checkout, so a cart with items in it is no longer
+   * proof that nobody tried to buy them — the shopper may be looking at the
+   * payment window this very second. Chasing that as abandoned sends "you left
+   * something behind" to somebody who is in the middle of paying for it.
+   */
+  pendingPaymentSince?: Date | null;
 };
 
 export type ReminderDecision =
@@ -39,6 +60,18 @@ export type ReminderDecision =
 export function decideReminder(cart: CartState, now: Date, config: ReminderConfig = DEFAULT_REMINDER_CONFIG): ReminderDecision {
   if (cart.converted) return { action: 'none', reason: 'converted' };
   if (!cart.hasItems) return { action: 'none', reason: 'empty' };
+
+  // Mid-payment: not abandoned, and not a candidate for a reminder either.
+  //
+  // Only for a short window. A PENDING_PAYMENT order that is hours old is one
+  // nobody completed, and its bag is exactly the cart this campaign exists to
+  // recover — the grace window suppresses the message that would land *during* a
+  // payment, not the one that recovers a failed one.
+  if (cart.pendingPaymentSince) {
+    const grace = config.paymentGraceMinutes ?? DEFAULT_REMINDER_CONFIG.paymentGraceMinutes ?? 0;
+    const sincePlaced = (now.getTime() - cart.pendingPaymentSince.getTime()) / 60_000;
+    if (sincePlaced < grace) return { action: 'none', reason: 'awaiting-payment' };
+  }
 
   const idleMinutes = (now.getTime() - cart.updatedAt.getTime()) / 60_000;
 

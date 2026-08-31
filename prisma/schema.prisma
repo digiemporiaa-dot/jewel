@@ -1261,6 +1261,14 @@ model Order {
   contactEmail String?
   pan          String?
 
+  /// The bag this order was created from.
+  ///
+  /// The cart is emptied when the order becomes real — payment captured, a COD
+  /// order confirmed, a bank transfer placed — not when the row is written, so
+  /// something has to remember which bag to empty long after checkout returned.
+  /// Nullable because orders raised by staff have no browser session behind them.
+  sessionToken String?
+
   // Address snapshots (immutable copies stored on the order)
   shippingAddress Json
   billingAddress  Json?
@@ -1330,6 +1338,7 @@ model Order {
   @@index([contactPhone])
   @@index([contactEmail])
   @@index([placedAt])
+  @@index([sessionToken])
 }
 
 model OrderItem {
