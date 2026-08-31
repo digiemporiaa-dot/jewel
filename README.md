@@ -35,13 +35,6 @@ npm run dev               # http://localhost:3000  ·  admin at /admin
 
 ### Seeded staff logins (development)
 
-| Role | Email | Password |
-| --- | --- | --- |
-| Super Admin | `superadmin@maya.local` | `Maya@12345` |
-| Admin | `admin@maya.local` | `Maya@12345` |
-| Catalog Manager | `catalog@maya.local` | `Maya@12345` |
-| Sales Executive | `sales@maya.local` | `Maya@12345` |
-| Dispatch | `dispatch@maya.local` | `Maya@12345` |
 
 ## Scripts
 
